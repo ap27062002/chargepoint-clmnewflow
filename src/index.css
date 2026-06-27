@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+* { box-sizing: border-box; }
+
+/* Thin scrollbars */
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; }
+*::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* Tracked-changes rendering */
+.tc-ins { color: #1f8c3f; text-decoration: underline; text-decoration-color: #45c279; }
+.tc-del { color: #b91c1c; text-decoration: line-through; text-decoration-color: #ef4444; }
+.tc-ins-cp { color: #1d4ed8; text-decoration: underline; text-decoration-color: #60a5fa; }
+.tc-del-cp { color: #b91c1c; text-decoration: line-through; }
+
+.doc-prose p { margin: 0 0 12px; line-height: 1.7; }
+.doc-prose h1 { font-size: 15px; font-weight: 700; text-align: center; margin: 0 0 16px; }
+.doc-prose h2 { font-size: 13px; font-weight: 700; margin: 18px 0 8px; }
+.doc-prose .clause { scroll-margin-top: 80px; }
+
+.markdown p { margin: 0 0 10px; line-height: 1.6; }
+.markdown ul { margin: 0 0 10px; padding-left: 18px; list-style: disc; }
+.markdown li { margin: 2px 0; line-height: 1.55; }
+.markdown strong { font-weight: 600; }
+.markdown h3 { font-weight: 700; font-size: 13px; margin: 12px 0 6px; }
+.markdown code { background: #eef2ff; padding: 1px 5px; border-radius: 4px; font-size: 12px; font-family: ui-monospace, monospace; }
