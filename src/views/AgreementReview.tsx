@@ -9,6 +9,7 @@ import { useStore } from '@/store'
 import { IssuesView } from '@/views/IssuesView'
 import { DocumentViewer } from '@/views/DocumentViewer'
 import { AIPanel } from '@/views/AIPanel'
+import { StageTracker } from '@/views/StageTracker'
 import { Chip, Avatar, Button, Card } from '@/components/ui'
 import { sourceLabel, fmtDateTime } from '@/lib/labels'
 import { diffVersions } from '@/data/documents'
@@ -165,7 +166,9 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full flex-col">
+      <StageTracker agreementId={agreementId} />
+      <div className="flex min-h-0 flex-1">
       {/* LEFT: document / issues */}
       <div className="flex min-w-0 flex-1 flex-col border-r border-slate-200">
         <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-white px-3 py-2">
@@ -223,6 +226,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
             ? <CommentsPanel ticketId={agreement.ticket_id} agreementId={agreementId} />
             : <AIPanel agreementTitle={agreement.title} />}
         </div>
+      </div>
       </div>
     </div>
   )

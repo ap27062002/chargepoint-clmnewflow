@@ -161,6 +161,26 @@ const intents: Intent[] = [
     },
   },
   {
+    name: 'lifecycle', cap: 'review',
+    test: (t) => has(t, 'lifecycle', 'what stage', 'which stage', 'stage of', 'approval chain', 'approvals', 'how does it move', 'how will it move', 'next step', 'move from redlin', 'how an agreement'),
+    reply: () => ({
+      text: `Each agreement moves through this lifecycle:\n\n**Draft → Internal Review → Sent to Counterparty → Redline Received → Negotiation → Pending Execution → Executed**\n\nSending to the counterparty is **gated by an approval chain** (senior counsel + privacy), and execution runs through DocuSign. I've opened the Vishay NDA — the **lifecycle bar at the top** shows the current stage, ball-in-court, the "Advance to next stage" button, and any pending approvals inline.`,
+      artifact: { kind: 'redline_review', refId: 'AGR-2201', title: 'Vishay NDA — lifecycle & approvals' },
+      effect: () => useStore.getState().openAgreement('AGR-2201', 'review'),
+      actions: [{ label: 'Advance to the next stage', prompt: 'advance the Vishay NDA to the next stage', variant: 'primary' }],
+    }),
+  },
+  {
+    name: 'advance_stage', cap: 'disposition',
+    test: (t) => has(t, 'advance', 'next stage', 'move it forward', 'move forward', 'progress the', 'move to next', 'send to internal', 'internal review'),
+    reply: () => ({
+      text: `Advancing the **Vishay NDA** to its next stage. If the next step is **Sent to Counterparty**, I route it through the **approval chain** first — it appears in the lifecycle bar with Grant/Deny, and I can't deliver externally until it's approved.`,
+      artifact: { kind: 'redline_review', refId: 'AGR-2201', title: 'Vishay NDA — lifecycle' },
+      effect: () => { const s = useStore.getState(); s.openAgreement('AGR-2201', 'review'); s.advanceAgreementStage('AGR-2201') },
+      actions: [{ label: 'Route for e-signature', prompt: 'route the Vishay NDA for signature' }],
+    }),
+  },
+  {
     name: 'execute', cap: 'disposition',
     test: (t) => has(t, 'execute', 'docusign', 'signature', 'send for signature', 'route for signature', 'e-sign', 'esign', 'for signing'),
     reply: () => ({

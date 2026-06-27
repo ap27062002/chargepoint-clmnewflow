@@ -4,6 +4,7 @@ import type {
   AuditEvent, AppNotification, ChatMessage, CanvasState, ViewKey,
   DispositionStatus, MessageTag, ThreadType, AuditEventType,
   ApprovalRequest, ApprovalType, Envelope, AgreementType,
+  AgreementStatus, BallInCourt, ContractStatus,
 } from '@/types'
 import {
   users, tickets as seedTickets, agreements as seedAgreements,
@@ -34,6 +35,17 @@ function buildAudit(): AuditEvent[] {
     return { ...e, hash }
   })
 }
+
+// ----- Agreement lifecycle -------------------------------------------------
+export const AGREEMENT_LIFECYCLE: AgreementStatus[] = [
+  'draft', 'internal_review', 'sent_to_counterparty', 'redline_received', 'negotiation', 'pending_execution', 'executed',
+]
+const ballForStatus = (s: AgreementStatus): BallInCourt => (s === 'sent_to_counterparty' ? 'counterparty' : 'cp_legal')
+const ticketStatusForStatus = (s: AgreementStatus): ContractStatus => ({
+  draft: 'Draft', internal_review: 'Internal Review', sent_to_counterparty: 'Sent to Counterparty',
+  redline_received: 'Red Line Analysis', negotiation: 'Red Line Analysis',
+  pending_execution: 'Pending Execution', executed: 'Executed',
+} as Record<AgreementStatus, ContractStatus>)[s]
 
 interface CLMState {
   users: typeof users
@@ -83,7 +95,8 @@ interface CLMState {
   rejectChange: (versionId: string, cid: string) => void
   addTrackedChange: (versionId: string, clauseId: string, text: string, kind: 'ins' | 'del') => void
 
-  // routing / approvals / e-sign
+  // lifecycle / routing / approvals / e-sign
+  advanceAgreementStage: (agreementId: string) => void
   setRoutingStrategy: (s: RoutingStrategy) => void
   createApproval: (agreementId: string, type: ApprovalType) => ApprovalRequest | null
   decideApproval: (approvalId: string, approverId: string, grant: boolean) => void
@@ -257,6 +270,37 @@ export const useStore = create<CLMState>((set, get) => ({
       return { documents: { ...s.documents, [versionId]: { ...doc, clauses } } }
     })
     get().audit_push({ event_type: 'version_created', summary: `ChargePoint ${kind === 'ins' ? 'insertion' : 'deletion'} added (${clauseId}).` })
+  },
+
+  // ----- lifecycle: advance an agreement to its next stage (with gates) -----
+  advanceAgreementStage: (agreementId) => {
+    const a = get().agreements.find((x) => x.id === agreementId)
+    if (!a) return
+    const idx = AGREEMENT_LIFECYCLE.indexOf(a.status)
+    const next = AGREEMENT_LIFECYCLE[idx + 1]
+    if (!next) { get().setToast('This agreement is already executed.'); return }
+
+    // Gate 1 — external delivery requires an approval chain before "Sent to Counterparty".
+    if (next === 'sent_to_counterparty') {
+      const ap = get().approvals.find((x) => x.agreement_id === agreementId && x.type === 'external_delivery')
+      if (!ap) { get().createApproval(agreementId, 'external_delivery'); get().setToast('Sending requires approval — routed to the approval chain. Grant it below to proceed.'); return }
+      if (ap.state === 'denied') { get().setToast('Approval was denied — cannot send to counterparty.'); return }
+      if (ap.state !== 'granted') { get().setToast('Waiting on the approval chain before sending to counterparty.'); return }
+    }
+    // Gate 2 — execution happens through the e-sign flow, not a direct status flip.
+    if (next === 'executed') {
+      get().openCanvas({ view: 'execution', executionAgreementId: agreementId })
+      get().setToast('Opening the execution & e-signature flow.')
+      return
+    }
+
+    set((s) => ({
+      agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, status: next, ball_in_court: ballForStatus(next) } : x)),
+      tickets: s.tickets.map((t) => (t.id === a.ticket_id ? { ...t, status: ticketStatusForStatus(next) } : t)),
+    }))
+    get().audit_push({ event_type: 'status_changed', agreement_id: agreementId, ticket_id: a.ticket_id, summary: `Stage advanced: ${a.status.replace(/_/g, ' ')} → ${next.replace(/_/g, ' ')}.` })
+    if (next === 'sent_to_counterparty') get().audit_push({ event_type: 'document_sent', agreement_id: agreementId, summary: 'Document sent to counterparty; ball in their court.' })
+    get().setToast(`Advanced to ${ticketStatusForStatus(next)}.`)
   },
 
   // ----- routing / approvals / e-sign ---------------------------------------
