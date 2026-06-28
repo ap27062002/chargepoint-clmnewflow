@@ -376,10 +376,19 @@ export const useStore = create<CLMState>((set, get) => ({
     }))
     const after = get().envelopes.find((e) => e.id === envelopeId)!
     if (after.state === 'completed') {
+      const openDevs = get().deviations.filter((d) => d.agreement_id === env.agreement_id && d.disposition_status === 'open')
+      const uid = get().currentUserId
       set((s) => ({
         agreements: s.agreements.map((x) => (x.id === env.agreement_id ? { ...x, status: 'executed', executed_date: now() } : x)),
         tickets: s.tickets.map((t) => (t.id === env.ticket_id ? { ...t, status: 'Executed', closed_date: now() } : t)),
+        // executed record must be clean — resolve any still-open deviations to their recommended disposition
+        deviations: s.deviations.map((d) => {
+          if (d.agreement_id !== env.agreement_id || d.disposition_status !== 'open') return d
+          const status: DispositionStatus = d.risk_category === 'accept' ? 'accepted' : d.risk_category === 'red_line' ? 'rejected' : 'countered'
+          return { ...d, disposition_status: status, disposition_by: uid, disposition_date: now() }
+        }),
       }))
+      if (openDevs.length) get().audit_push({ event_type: 'disposition_decided', agreement_id: env.agreement_id, summary: `${openDevs.length} open deviation(s) auto-resolved to recommended on execution.` })
       get().audit_push({ event_type: 'signature_completed', agreement_id: env.agreement_id, summary: 'All parties signed; agreement executed and archived.' })
       get().audit_push({ event_type: 'status_changed', ticket_id: env.ticket_id, summary: 'Ticket → Executed.' })
     } else {
