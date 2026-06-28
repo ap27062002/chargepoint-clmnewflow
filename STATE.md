@@ -1,0 +1,22 @@
+# Project state — resume here
+
+**App:** ChargePoint Legal CLM — agent-first, chat-driven CLM prototype (Unify build).
+**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-7` (git tag) · repo clean.
+**Stack:** React + Vite + TS + Tailwind + Zustand. In-memory store; simulated agent with live-Claude fallback (`/api/chat`, needs `ANTHROPIC_API_KEY` in Vercel to activate).
+
+## Run / deploy / revert
+- Run: `cd chargepoint-clm && npm install && npm run dev` → http://localhost:5190
+- Deploy: `NODE_OPTIONS="--use-system-ca" npx vercel deploy --prod --yes --scope bansal-s-projects --token=<token>` (token good ~30d from 2026-06-27; system-CA + sandbox-off required — see VERSIONING.md)
+- Revert (one prompt): "revert to the previous build" → `vercel rollback`. Builds also tagged in git (`build-4`…`build-7`).
+
+## Done (builds 1→7)
+1 original 14-screen app · 2 agent-first redesign (hero + side-by-side, ⌘K palette) · 3 RBAC (starters/palette/agent-denial/row-scoping) · 4 "make it real" (live-Claude wiring, real track-changes editor, e-sign/exec, approvals/routing/SLA engines, computed analytics, version diff) · 5 visible lifecycle stage tracker + inline approval chain · 6 redesigned Deal Summary + signed/executed document (view + download + DocuSign completion certificate) · 7 execution auto-resolves open deviations.
+
+## Open / offered next steps (not done)
+- **Live Claude:** set `ANTHROPIC_API_KEY` in Vercel project to switch the agent from simulated → real (plumbing is built).
+- **Real backend/persistence + integrations** (Entra/DocuSign/SharePoint/CRM are simulated), tests, accessibility, Azure/CI-CD — the production build.
+- Smaller offered tweaks: gate negotiation→re-send with an approval; push the repo to GitHub for Vercel Git integration (auto-deploy + previews).
+- Rotate the Vercel token (was pasted in chat).
+
+## Key context (also in auto-memory)
+User = Vaibhav @ **Unify** (vendor) building for **ChargePoint Legal** (customer; Eric Batill). Engagement docs in `../chargepoint-legal-hub/` (MEETING-BRIEF, UNIFY-BUILD-ASSESSMENT, CHARGEPOINT-OPEN-QUESTIONS, RENDERING-ARCHITECTURE-PROPOSAL, CANONICAL-DATA-DICTIONARY). Gotcha: zustand selectors must not return fresh `.filter()` arrays (infinite loop) — select base array, derive in body.
