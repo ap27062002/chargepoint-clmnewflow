@@ -17,7 +17,8 @@ production alias (`chargepoint-clm.vercel.app`) to that deployment **instantly, 
 ### Build → deployment map (newest first)
 | Build | What changed | Deployment | Live? |
 |---|---|---|---|
-| **build-6** | redesigned Deal Summary + signed/executed document (viewable + downloadable, DocuSign completion certificate), filled commercial terms, computed negotiation summary, counterparty history | latest production deployment (`vercel ls` for URL) | ✅ current |
+| **build-7** | execution auto-resolves any open deviations to their recommended disposition, so the executed record + deal summary read cleanly | latest production deployment (`vercel ls` for URL) | ✅ current |
+| build-6 | redesigned Deal Summary + signed/executed document (viewable + downloadable, DocuSign completion certificate), filled commercial terms, computed negotiation summary, counterparty history | prior production deployment | |
 | build-5 | visible lifecycle stage tracker + inline approval chain (advance Draft→…→Executed; grant/deny at the Sent-to-Counterparty gate) | prior production deployment | |
 | build-4 | make-it-real: live Claude, real editor, e-sign, approvals/routing/SLA, computed analytics, version diff, RBAC row-scoping | `chargepoint-erwifon3u-bansal-s-projects.vercel.app` | |
 | build-3 | role-based access control (greeting/starters/command-palette/agent-denial/row-scoping) | `chargepoint-lnjyzaj91-bansal-s-projects.vercel.app` | |
