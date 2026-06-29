@@ -251,10 +251,15 @@ export type ArtifactKind =
   | 'playbook'
   | 'redline_review'
   | 'agreement'
+  | 'document'
+  | 'ticket'
   | 'ticket_created'
   | 'deal_summary'
   | 'tagged_items'
   | 'intake_form'
+  | 'execution'
+  | 'admin'
+  | 'audit'
   | 'none'
 
 export interface ChatMessage {

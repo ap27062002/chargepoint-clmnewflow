@@ -62,8 +62,8 @@ export function TicketWorkspace() {
         </div>
       </div>
 
-      {/* Agreement selector pills (Agreement Review only) */}
-      {tab === 'review' && ags.length > 0 && (
+      {/* Agreement selector pills — only when a ticket bundles multiple agreements (e.g. MSA/DPA/SOW) */}
+      {tab === 'review' && ags.length > 1 && (
         <div className="flex shrink-0 items-center gap-1.5 border-b border-slate-100 bg-white px-5 py-2">
           <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Agreements</span>
           {ags.map((a) => (

@@ -47,7 +47,6 @@ const intents: Intent[] = [
       return {
         text: `Here's everything currently on your plate, ${userById(uid)?.name.split(' ')[0]}.\n\n**${mentions.length} provision sign-off${mentions.length === 1 ? '' : 's'} awaiting you** and **${myTickets.length} active ticket${myTickets.length === 1 ? '' : 's'}** assigned to you. The Airbus NDA (TKT-1039) is at **80% of its SLA window** — I'd take that first.`,
         artifact: { kind: 'tagged_items', title: 'My queue & tagged items' },
-        effect: () => useStore.getState().openCanvas({ view: 'queue' }),
         actions: [
           { label: 'Open Airbus (SLA risk)', prompt: 'open ticket TKT-1039', variant: 'primary' },
           { label: 'Review Vishay redline', prompt: 'review the Vishay redline' },
@@ -67,9 +66,8 @@ const intents: Intent[] = [
       const neg = devs.filter((d) => d.risk_category === 'negotiate').length
       const acc = devs.filter((d) => d.risk_category === 'accept').length
       return {
-        text: `I analyzed **Vishay Intertechnology's Draft 2 redline** against the NDA playbook. **${devs.length} deviations** — ${red} red line, ${neg} negotiate, ${acc} accept, and a couple of QA flags.\n\nThe one that matters most: counterparty added a **Residuals clause (§1(f))** — that's an explicit playbook **red line**, and InfoSec agrees it has to come out. Term was stretched to 3 years and CI survival cut to 2 — both land on approved fallbacks.\n\nI've opened the **Issues View** on the right, sorted by risk. ${open} are still open. For each you can **Apply / Skip / Reject**, or I can apply all recommended dispositions.`,
-        artifact: { kind: 'redline_review', refId: 'AGR-2201', title: 'Vishay NDA — Redline analysis' },
-        effect: () => useStore.getState().openAgreement('AGR-2201', 'review'),
+        text: `I analyzed **Vishay Intertechnology's Draft 2 redline** against the NDA playbook. **${devs.length} deviations** — ${red} red line, ${neg} negotiate, ${acc} accept, and a couple of QA flags.\n\nThe one that matters most: counterparty added a **Residuals clause (§1(f))** — that's an explicit playbook **red line**, and InfoSec agrees it has to come out. Term was stretched to 3 years and CI survival cut to 2 — both land on approved fallbacks.\n\n${open} are still open. **Open the Issues View** (below, sorted by risk) to step through them — Apply / Skip / Reject each, or I can apply all recommended dispositions.`,
+        artifact: { kind: 'redline_review', refId: 'AGR-2201', title: 'Open the Issues View — Vishay redline' },
         actions: [
           { label: 'Apply all recommended', prompt: 'apply all recommended dispositions to Vishay', variant: 'primary' },
           { label: 'Why is residuals a red line?', prompt: 'why is the residuals clause a red line?' },
@@ -108,7 +106,7 @@ const intents: Intent[] = [
     test: (t) => has(t, 'reject') && has(t, 'residual'),
     reply: () => ({
       text: `Rejected **§1(f) Residuals**. It's marked *rejected* in the Issues View and will be struck in our response, with a short note citing our standard position. InfoSec's concurrence is logged on the thread.`,
-      artifact: { kind: 'redline_review', refId: 'AGR-2201' },
+      artifact: { kind: 'redline_review', refId: 'AGR-2201', title: 'Vishay NDA — residuals rejected' },
       effect: () => useStore.getState().setDisposition('D-02', 'rejected'),
       actions: [{ label: 'Generate our response', prompt: 'generate our redline response for Vishay', variant: 'primary' }],
     }),
@@ -164,9 +162,8 @@ const intents: Intent[] = [
     name: 'lifecycle', cap: 'review',
     test: (t) => has(t, 'lifecycle', 'what stage', 'which stage', 'stage of', 'approval chain', 'approvals', 'how does it move', 'how will it move', 'next step', 'move from redlin', 'how an agreement'),
     reply: () => ({
-      text: `Each agreement moves through this lifecycle:\n\n**Draft → Internal Review → Sent to Counterparty → Redline Received → Negotiation → Pending Execution → Executed**\n\nSending to the counterparty is **gated by an approval chain** (senior counsel + privacy), and execution runs through DocuSign. I've opened the Vishay NDA — the **lifecycle bar at the top** shows the current stage, ball-in-court, the "Advance to next stage" button, and any pending approvals inline.`,
+      text: `Each agreement moves through this lifecycle:\n\n**Draft → Internal Review → Sent to Counterparty → Redline Received → Pending Execution → Executed**\n\nSending to the counterparty is **gated by an approval chain** (senior counsel + privacy), and execution runs through DocuSign. Open the Vishay NDA below — the **lifecycle bar at the top** shows the current stage, the "Advance to next stage" button, and any pending approvals inline.`,
       artifact: { kind: 'redline_review', refId: 'AGR-2201', title: 'Vishay NDA — lifecycle & approvals' },
-      effect: () => useStore.getState().openAgreement('AGR-2201', 'review'),
       actions: [{ label: 'Advance to the next stage', prompt: 'advance the Vishay NDA to the next stage', variant: 'primary' }],
     }),
   },
@@ -176,7 +173,7 @@ const intents: Intent[] = [
     reply: () => ({
       text: `Advancing the **Vishay NDA** to its next stage. If the next step is **Sent to Counterparty**, I route it through the **approval chain** first — it appears in the lifecycle bar with Grant/Deny, and I can't deliver externally until it's approved.`,
       artifact: { kind: 'redline_review', refId: 'AGR-2201', title: 'Vishay NDA — lifecycle' },
-      effect: () => { const s = useStore.getState(); s.openAgreement('AGR-2201', 'review'); s.advanceAgreementStage('AGR-2201') },
+      effect: () => useStore.getState().advanceAgreementStage('AGR-2201'),
       actions: [{ label: 'Route for e-signature', prompt: 'route the Vishay NDA for signature' }],
     }),
   },
@@ -184,9 +181,8 @@ const intents: Intent[] = [
     name: 'execute', cap: 'disposition',
     test: (t) => has(t, 'execute', 'docusign', 'signature', 'send for signature', 'route for signature', 'e-sign', 'esign', 'for signing'),
     reply: () => ({
-      text: `Opening the **execution flow** for the Vishay NDA. It runs the **approval chain** → **DocuSign envelope** (ChargePoint signer, then counterparty) → **archive** → status **Executed** → an auto-generated **deal summary**. I can't sign — each step is yours to advance.`,
-      artifact: { kind: 'none' },
-      effect: () => useStore.getState().openCanvas({ view: 'execution', executionAgreementId: 'AGR-2201' }),
+      text: `The **execution flow** for the Vishay NDA is ready. It runs the **approval chain** → **DocuSign envelope** (ChargePoint signer, then counterparty) → **archive** → status **Executed** → an auto-generated **deal summary**. I can't sign — each step is yours to advance. Open it below.`,
+      artifact: { kind: 'execution', refId: 'AGR-2201', title: 'Vishay NDA — execution & e-sign' },
       actions: [],
     }),
   },
@@ -195,13 +191,12 @@ const intents: Intent[] = [
     test: (t) => has(t, 'create', 'new nda', 'draft nda', 'start an nda', 'new agreement', 'new ticket') && !has(t, 'response'),
     reply: (t) => {
       const m = t.match(/(?:for|with)\s+([a-z0-9 .&'-]{2,40})/i)
-      const cp = (m?.[1] || 'the counterparty').replace(/\b\w/g, (c) => c.toUpperCase()).trim()
+      const cp = m?.[1] ? m[1].replace(/\b\w/g, (c) => c.toUpperCase()).trim() : ''
       return {
-        text: `Starting a new **Mutual NDA** for **${cp}** on ChargePoint paper. Before I draft, a few quick questions — I'll pull what I can from CRM:\n\n1. **Purpose / business context** — use template default (broad) or a specific purpose?\n2. **Assigned attorney** — default to you (Kirsten Sachs)?\n3. **Counterparty entity & address** — I'll look this up in CRM first, internet as fallback.\n\nAnswer inline on the right, or just say *"use defaults"* and I'll generate V1 from the CP Mutual NDA 2025 template, create the ticket and deal folder, and run a key-field QA check.`,
-        artifact: { kind: 'intake_form', title: `New NDA — ${cp}` },
-        effect: () => useStore.getState().openCanvas({ view: 'intake', intakeCp: cp }),
+        text: `Starting a new **Mutual NDA**${cp ? ` for **${cp}**` : ''} on ChargePoint paper. Before I draft, a few quick questions — I'll pull what I can from CRM:\n\n1. **Counterparty entity & address** — ${cp ? `I'll look up ${cp} in CRM first, internet as fallback.` : 'who is the counterparty?'}\n2. **Purpose / business context** — template default (broad) or a specific purpose?\n3. **Assigned attorney** — default to you (Kirsten Sachs)?\n\nOpen the intake form below to fill it in, or say *"use defaults"* and I'll generate V1 from the CP Mutual NDA 2025 template, create the ticket and deal folder, and run a key-field QA check.`,
+        artifact: { kind: 'intake_form', refId: cp, title: cp ? `New NDA — ${cp}` : 'New NDA — intake' },
         actions: [
-          { label: 'Use defaults & generate', prompt: `use defaults and generate the NDA for ${cp}`, variant: 'primary' },
+          { label: 'Use defaults & generate', prompt: `use defaults and generate the NDA${cp ? ` for ${cp}` : ''}`, variant: 'primary' },
           { label: 'Specific purpose…', prompt: 'let me specify the purpose' },
         ],
       }
@@ -224,7 +219,7 @@ const intents: Intent[] = [
         },
         actions: [
           { label: 'Show the dashboard', prompt: 'show me the dashboard', variant: 'primary' },
-          { label: 'Create another', prompt: 'create a new NDA for ' },
+          { label: 'Create another', prompt: 'create a new NDA' },
         ],
       }
     },
@@ -237,7 +232,6 @@ const intents: Intent[] = [
         return {
           text: `I can extend the **NDA playbook** in natural language. You mentioned **residuals** — right now it lives only as a strict *red line* under §4 Exclusions. I can add it as a **named provision** with its own positions so the system flags it consistently.\n\nProposed entry:\n- **Standard position:** No residuals clause.\n- **Fallback 1:** *(none — not negotiable)*\n- **Red line:** Any clause permitting use of information retained in memory.\n- **Rationale:** Erodes trade-secret protection; rejected in 100% of sampled deals.\n\nPlaybook changes require **Playbook Owner** approval (Eric Batill). Want me to draft this as a change request for his sign-off?`,
           artifact: { kind: 'playbook', title: 'NDA playbook — add provision' },
-          effect: () => useStore.getState().setView('playbook'),
           actions: [
             { label: 'Draft change request for Eric', prompt: 'draft the playbook change request', variant: 'primary' },
             { label: 'Open the playbook', prompt: 'show me the NDA playbook' },
@@ -245,9 +239,8 @@ const intents: Intent[] = [
         }
       }
       return {
-        text: `Opening the **ChargePoint Mutual NDA 2025 (North America)** playbook — v3, owned by Eric Batill, generated from 11 executed NDAs plus Clever Devices and Mondelez.\n\nIt has **8 provisions** with baseline positions, approved fallback tiers, and strict red lines. The most-negotiated are **Term & Termination (41% of deals)** and **Governing Law (33%)**. Each provision shows its negotiation rate and rationale on the right.`,
+        text: `The **ChargePoint Mutual NDA 2025 (North America)** playbook — v3, owned by Eric Batill, generated from 11 executed NDAs plus Clever Devices and Mondelez.\n\nIt has **8 provisions** with baseline positions, approved fallback tiers, and strict red lines. The most-negotiated are **Term & Termination (41% of deals)** and **Governing Law (33%)**. Open it below — each provision shows its negotiation rate and rationale.`,
         artifact: { kind: 'playbook', title: 'NDA Negotiation Playbook' },
-        effect: () => useStore.getState().setView('playbook'),
         actions: [
           { label: 'Most-negotiated provisions', prompt: 'which provisions are most negotiated?' },
           { label: 'Add a residuals provision', prompt: 'add a residuals provision to the playbook' },
@@ -261,7 +254,6 @@ const intents: Intent[] = [
     reply: () => ({
       text: `Here's the **deal summary** for the executed **Mondelez Mutual NDA** (closed 2026-05-19, signed via DocuSign):\n\n- **Counterparty:** Mondelez International · **Type:** Mutual NDA · **Paper:** CP\n- **Key terms:** 2-yr term, 5-yr CI survival, Delaware law.\n- **Concessions:** accepted marking grace period (Fallback 1); legal-hold copy retention.\n- **Improvements vs. their first draft:** removed unilateral indemnity; restored mutual injunctive relief.\n- **Lessons learned:** counterparty consistently pushes marking requirements → already an approved fallback, so cycle time was fast (17 days).\n\nStored permanently and feeding the weekly playbook-refinement loop.`,
       artifact: { kind: 'deal_summary', refId: 'AGR-2150', title: 'Mondelez NDA — Deal summary' },
-      effect: () => useStore.getState().openCanvas({ view: 'deal_summary', dealSummaryId: 'AGR-2150' }),
       actions: [{ label: 'See refinement insights', prompt: 'what is the refinement loop recommending?' }],
     }),
   },
@@ -271,7 +263,6 @@ const intents: Intent[] = [
     reply: () => ({
       text: `From the **weekly refinement analysis** across executed NDAs:\n\n- **Marking / Identification** — negotiated in 27%; both fallbacks now widely accepted → **recommend: keep, monitor.**\n- **Term & Termination** — negotiated in 41%, almost always landing at 3yr/3yr → **recommend: add 3yr/3yr as an approved Fallback 1** (already drafted).\n- **Residuals** — counterparties introduced it in 3 recent deals, rejected each time → **recommend: promote to a named red-line provision** for consistent flagging.\n- **Governing Law** — 33% negotiated; neutral-NY fallback trending up.\n\nAll recommendations route to **Eric Batill** for approval before changing the playbook.`,
       artifact: { kind: 'playbook', title: 'Refinement recommendations' },
-      effect: () => useStore.getState().setView('playbook'),
       actions: [{ label: 'Open the playbook', prompt: 'show me the NDA playbook', variant: 'primary' }],
     }),
   },
@@ -301,9 +292,8 @@ const intents: Intent[] = [
     name: 'admin', cap: 'admin',
     test: (t) => has(t, 'admin', 'configure', 'routing', 'integration', 'sla config', 'manage user'),
     reply: () => ({
-      text: `Opening the **Admin Console**. From here you configure assignment **routing**, **SLA** targets, **approval** chains, **notification** channels, **users & RBAC**, and **integrations** (Entra, DocuSign, SharePoint, Salesforce, LLMs). Changes are audited.`,
-      artifact: { kind: 'none' },
-      effect: () => useStore.getState().setView('admin'),
+      text: `The **Admin Console** is ready — open it below. From here you configure assignment **routing**, **SLA** targets, **approval** chains, **notification** channels, **users & RBAC**, and **integrations** (Entra, DocuSign, SharePoint, Salesforce, LLMs). Changes are audited.`,
+      artifact: { kind: 'admin', title: 'Admin console' },
       actions: [{ label: 'Review the audit log', prompt: 'show me the audit log', variant: 'primary' }],
     }),
   },
@@ -311,9 +301,8 @@ const intents: Intent[] = [
     name: 'audit', cap: 'audit',
     test: (t) => has(t, 'audit', 'event history', 'event log', 'who changed', 'tamper'),
     reply: () => ({
-      text: `Opening the **Audit Center** — every action is an immutable, hash-chained event (7-year retention, regional residency). You can filter by event type and see whether the actor was a person or the CLM agent.`,
-      artifact: { kind: 'none' },
-      effect: () => useStore.getState().setView('audit'),
+      text: `The **Audit Center** — every action is an immutable, hash-chained event (7-year retention, regional residency). Open it below to filter by event type and see whether the actor was a person or the CLM agent.`,
+      artifact: { kind: 'audit', title: 'Audit center' },
     }),
   },
   {
@@ -323,9 +312,8 @@ const intents: Intent[] = [
       const s = useStore.getState()
       const active = s.tickets.filter((t) => t.status !== 'Executed' && t.status !== 'Resolved').length
       return {
-        text: `Here's the legal pipeline. **${active} active matters**, ${s.tickets.filter((t) => t.status === 'Executed').length} recently executed. One SLA alert: **Airbus (TKT-1039)** at 80%. Vishay's redline is analyzed and waiting on your dispositions.`,
+        text: `Here's the legal pipeline. **${active} active matters**, ${s.tickets.filter((t) => t.status === 'Executed').length} recently executed. One SLA alert: **Airbus (TKT-1039)** at 80%. Vishay's redline is analyzed and waiting on your dispositions. Open the dashboard below.`,
         artifact: { kind: 'dashboard', title: 'Legal CLM dashboard' },
-        effect: () => useStore.getState().setView('dashboard'),
         actions: [
           { label: 'Review Vishay redline', prompt: 'review the Vishay redline', variant: 'primary' },
           { label: "What's on my plate?", prompt: "what's on my plate?" },
@@ -352,9 +340,8 @@ const intents: Intent[] = [
         return { text: `🔒 **${id}** isn't in your scope. As ${ROLE_LABEL[me.role]}, you can only access matters you ${me.role === 'initiator' ? 'created' : me.role === 'contributor' ? 'are tagged on' : 'are assigned to'}.`, artifact: { kind: 'none' }, actions: [{ label: "What's on my plate?", prompt: "what's on my plate?", variant: 'primary' }] }
       }
       return {
-        text: `Opening **${t2.title}** (${id}). It's a ${t2.type.replace('_', ' ')} at **${t2.status}**, assigned to ${userById(t2.assigned_attorney_id || '')?.name}. The workspace is on the right — Deal Discussion and Agreement Review.`,
-        artifact: { kind: 'none' },
-        effect: () => useStore.getState().openTicket(id),
+        text: `**${t2.title}** (${id}) — a ${t2.type.replace('_', ' ')} at **${t2.status}**, assigned to ${userById(t2.assigned_attorney_id || '')?.name}. Open the workspace below — Deal Discussion and Agreement Review.`,
+        artifact: { kind: 'ticket', refId: id, title: t2.title },
         actions: [{ label: 'Review the agreement', prompt: `review the ${t2.counterparty_name} redline`, variant: 'primary' }],
       }
     },
@@ -363,12 +350,8 @@ const intents: Intent[] = [
     name: 'open_doc', cap: 'review',
     test: (t) => has(t, 'open the', 'document', 'show the doc', 'word', 'view the document'),
     reply: () => ({
-      text: `Opened the **document view** for the Vishay NDA. Tracked changes show insertions and deletions with party attribution — counterparty edits are in blue, ours in green. Click any clause with an issue badge to jump to its analysis.`,
-      artifact: { kind: 'none' },
-      effect: () => {
-        useStore.getState().openAgreement('AGR-2201', 'review')
-        useStore.getState().navigate({ reviewMode: 'document' })
-      },
+      text: `The **document view** for the Vishay NDA is ready. Tracked changes show insertions and deletions with party attribution — counterparty edits are in blue, ours in green. Open it below; click any clause with an issue badge to jump to its analysis.`,
+      artifact: { kind: 'document', refId: 'AGR-2201', title: 'Vishay NDA — document view' },
       actions: [{ label: 'Back to issues', prompt: 'review the Vishay redline' }],
     }),
   },
@@ -378,10 +361,9 @@ const intents: Intent[] = [
     reply: () => ({
       text: `I'm the **CLM Agent** — I run ChargePoint's contract lifecycle end to end, and you stay the decision-maker. I can:\n\n- **Intake & draft** — "create a new NDA for Vishay"\n- **Analyze redlines** against the playbook — "review the Vishay redline"\n- **Walk dispositions** — accept / negotiate / red-line each deviation, or apply all recommended\n- **Draft your response** — clean + redline, internal comments stripped\n- **Manage the playbook** in natural language — "add a residuals provision"\n- **Answer status questions** — "what's on my plate?", "summarize the Mondelez deal"\n\nI never approve terms, send externally, or sign — those are yours. What would you like to do?`,
       artifact: { kind: 'dashboard', title: 'CLM dashboard' },
-      effect: () => useStore.getState().setView('dashboard'),
       actions: [
         { label: 'Review the Vishay redline', prompt: 'review the Vishay redline', variant: 'primary' },
-        { label: 'Create a new NDA', prompt: 'create a new NDA for ' },
+        { label: 'Create a new NDA', prompt: 'create a new NDA' },
         { label: "What's on my plate?", prompt: "what's on my plate?" },
       ],
     }),
@@ -403,7 +385,7 @@ function route(text: string): { reply: AgentReply; matched: boolean } {
       actions: [
         { label: 'Review the Vishay redline', prompt: 'review the Vishay redline', variant: 'primary' },
         { label: 'Show the dashboard', prompt: 'show me the dashboard' },
-        { label: 'Create a new NDA', prompt: 'create a new NDA for ' },
+        { label: 'Create a new NDA', prompt: 'create a new NDA' },
       ],
     },
   }
@@ -445,22 +427,36 @@ export function openArtifact(a: { kind: ArtifactKind; refId?: string; title?: st
   switch (a.kind) {
     case 'redline_review':
     case 'agreement': s.openAgreement(a.refId ?? 'AGR-2201', 'review'); break
+    case 'document':
+      s.openAgreement(a.refId ?? 'AGR-2201', 'review')
+      s.navigate({ reviewMode: 'document' })
+      break
+    case 'ticket': s.openTicket(a.refId ?? 'TKT-1042'); break
     case 'playbook': s.setView('playbook'); break
     case 'dashboard': s.setView('dashboard'); break
     case 'deal_summary': s.openCanvas({ view: 'deal_summary', dealSummaryId: a.refId ?? 'AGR-2150' }); break
     case 'tagged_items': s.openCanvas({ view: 'queue' }); break
-    case 'intake_form': s.openCanvas({ view: 'intake', intakeCp: (a.title ?? '').replace(/^New NDA — /, '') }); break
+    case 'intake_form': s.openCanvas({ view: 'intake', intakeCp: a.refId || undefined }); break
+    case 'execution': s.openCanvas({ view: 'execution', executionAgreementId: a.refId ?? 'AGR-2201' }); break
+    case 'admin': s.setView('admin'); break
+    case 'audit': s.setView('audit'); break
     case 'ticket_created': s.setView('dashboard'); break
     default: break
   }
 }
 
 const pushAgent = (reply: AgentReply) => {
+  // Mutations (dispositions, approvals, ticket creation, …) run immediately.
   reply.effect?.()
   useStore.getState().pushChat({
     id: cid(), role: 'agent', text: reply.text, ts: ts(),
     artifact: reply.artifact, actions: reply.actions, aiGenerated: true,
   })
+  // Navigation is click-to-open: from the hero we never auto-open the right pane —
+  // the user clicks the artifact chip. If a workspace is already docked, we keep it in sync.
+  if (useStore.getState().canvas.open && reply.artifact && reply.artifact.kind !== 'none') {
+    openArtifact(reply.artifact)
+  }
   useStore.getState().setAgentThinking(false)
 }
 

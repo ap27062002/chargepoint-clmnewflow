@@ -4,6 +4,7 @@ import { TopBar } from '@/components/TopBar'
 import { ChatPanel } from '@/components/ChatPanel'
 import { Canvas } from '@/components/Canvas'
 import { CommandMenu } from '@/components/CommandMenu'
+import { LeftRail } from '@/components/LeftRail'
 import { useStore } from '@/store'
 
 function Toast() {
@@ -34,6 +35,7 @@ export default function App() {
     <div className="flex h-screen flex-col overflow-hidden bg-slate-50">
       <TopBar />
       <main className="flex min-h-0 flex-1">
+        <LeftRail />
         {open ? (
           <>
             <aside className="w-[40%] min-w-[440px] max-w-[600px] shrink-0 border-r border-slate-200 bg-white animate-dock-in">

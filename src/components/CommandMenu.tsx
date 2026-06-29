@@ -38,7 +38,7 @@ export function CommandMenu() {
     const base: Cmd[] = ([
       { id: 'a1', group: 'Ask the agent', label: 'Review the Vishay redline', icon: <GitPullRequestArrow size={15} />, cap: 'review', run: () => ask('review the Vishay redline') },
       { id: 'a2', group: 'Ask the agent', label: "What's on my plate?", icon: <Inbox size={15} />, cap: 'queue', run: () => ask("what's on my plate?") },
-      { id: 'a3', group: 'Ask the agent', label: 'Draft a new NDA…', icon: <FileText size={15} />, cap: 'intake', run: () => ask('create a new NDA for ') },
+      { id: 'a3', group: 'Ask the agent', label: 'Draft a new NDA…', icon: <FileText size={15} />, cap: 'intake', run: () => ask('create a new NDA') },
       { id: 'a4', group: 'Ask the agent', label: 'Summarize the Mondelez deal', icon: <ScrollText size={15} />, cap: 'deal_summary', run: () => ask('summarize the Mondelez deal') },
       { id: 'n1', group: 'Go to', label: 'My Queue', icon: <Inbox size={15} />, cap: 'queue', run: () => go('queue') },
       { id: 'n2', group: 'Go to', label: 'NDA Playbook', icon: <BookOpen size={15} />, cap: 'playbook_view', run: () => go('playbook') },

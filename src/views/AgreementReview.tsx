@@ -151,7 +151,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
   const canvas = useStore((s) => s.canvas)
   const navigate = useStore((s) => s.navigate)
   const mode = canvas.reviewMode ?? 'issues'
-  const [rightTab, setRightTab] = useState<'comments' | 'ai'>('comments')
+  const [rightTab, setRightTab] = useState<'comments' | 'ai'>('ai')
   const [focusClause, setFocusClause] = useState<string | undefined>()
 
   const documents = useStore((s) => s.documents)

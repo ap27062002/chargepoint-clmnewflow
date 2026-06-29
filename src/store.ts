@@ -38,7 +38,7 @@ function buildAudit(): AuditEvent[] {
 
 // ----- Agreement lifecycle -------------------------------------------------
 export const AGREEMENT_LIFECYCLE: AgreementStatus[] = [
-  'draft', 'internal_review', 'sent_to_counterparty', 'redline_received', 'negotiation', 'pending_execution', 'executed',
+  'draft', 'internal_review', 'sent_to_counterparty', 'redline_received', 'pending_execution', 'executed',
 ]
 const ballForStatus = (s: AgreementStatus): BallInCourt => (s === 'sent_to_counterparty' ? 'counterparty' : 'cp_legal')
 const ticketStatusForStatus = (s: AgreementStatus): ContractStatus => ({

@@ -119,7 +119,7 @@ export const agreements: Agreement[] = [
     ball_in_court: 'cp_legal', red_line_count: 4, created_date: '2026-06-18' },
 
   { id: 'AGR-2198', ticket_id: 'TKT-1039', title: 'Airbus Mutual NDA', agreement_type: 'MNDA',
-    status: 'negotiation', current_version_id: 'V-2198-2', playbook_id: 'pb_nda', paper_origin: 'cp_paper',
+    status: 'redline_received', current_version_id: 'V-2198-2', playbook_id: 'pb_nda', paper_origin: 'cp_paper',
     ball_in_court: 'cp_legal', red_line_count: 3, created_date: '2026-06-12' },
 
   { id: 'AGR-2180', ticket_id: 'TKT-1031', title: 'Northwind Master Services Agreement', agreement_type: 'MSA',

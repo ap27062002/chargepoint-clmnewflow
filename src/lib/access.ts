@@ -79,7 +79,7 @@ export function startersFor(role: Role): Starter[] {
   switch (role) {
     case 'initiator':
       return [
-        { label: 'Submit a new contract request', sub: 'Create a ticket', prompt: 'create a new NDA for ' },
+        { label: 'Submit a new contract request', sub: 'Create a ticket', prompt: 'create a new NDA' },
         { label: 'Track my requests', sub: 'Status of my tickets', prompt: "what's on my plate?" },
       ]
     case 'contributor':
@@ -89,7 +89,7 @@ export function startersFor(role: Role): Starter[] {
       ]
     case 'playbook_owner':
       return [
-        { label: 'Open the NDA playbook', sub: '8 provisions · v3', prompt: 'show me the NDA playbook' },
+        { label: 'Review 2 new changes in playbook', sub: '2 refinement updates to approve', prompt: 'show me the NDA playbook' },
         { label: 'Refinement recommendations', sub: 'Weekly analysis to approve', prompt: 'what is the refinement loop recommending?' },
         { label: 'Summarize the Mondelez deal', sub: 'Executed · analytics', prompt: 'summarize the Mondelez deal' },
         { label: "What's on my plate?", sub: 'My queue', prompt: "what's on my plate?" },
@@ -106,8 +106,8 @@ export function startersFor(role: Role): Starter[] {
       return [
         { label: 'Review the Vishay redline', sub: '9 deviations · 2 red lines', prompt: 'review the Vishay redline' },
         { label: "What's on my plate today?", sub: 'Tagged items & SLA queue', prompt: "what's on my plate?" },
-        { label: 'Draft a new NDA for Vishay', sub: 'CP paper · from template', prompt: 'create a new NDA for Vishay' },
-        { label: 'Open the NDA playbook', sub: '8 provisions · v3', prompt: 'show me the NDA playbook' },
+        { label: 'Draft a new NDA', sub: 'CP paper · from template', prompt: 'create a new NDA' },
+        { label: 'Review 2 new changes in playbook', sub: '2 refinement updates to approve', prompt: 'show me the NDA playbook' },
       ]
   }
 }

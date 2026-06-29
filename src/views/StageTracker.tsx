@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { clsx } from 'clsx'
 import { Check, ChevronRight, ArrowRight, ShieldCheck, Lock } from 'lucide-react'
 import { useStore, AGREEMENT_LIFECYCLE } from '@/store'
@@ -13,51 +14,52 @@ export function StageTracker({ agreementId }: { agreementId: string }) {
   const decideApproval = useStore((s) => s.decideApproval)
   const uid = useStore((s) => s.currentUserId)
   const canAdvance = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'disposition'))
+  const stepperRef = useRef<HTMLDivElement>(null)
+  const curIdx = agreement ? AGREEMENT_LIFECYCLE.indexOf(agreement.status) : -1
+  // Keep the current stage visible when the stepper overflows behind the Advance button.
+  useEffect(() => {
+    const c = stepperRef.current
+    const cur = c?.querySelector('[data-current="true"]') as HTMLElement | null
+    if (c && cur) c.scrollLeft = Math.max(0, cur.offsetLeft - 24)
+  }, [curIdx])
   if (!agreement) return null
 
-  const curIdx = AGREEMENT_LIFECYCLE.indexOf(agreement.status)
   const next = AGREEMENT_LIFECYCLE[curIdx + 1]
   const pendingApproval = approvals.find((ap) => ap.state === 'pending')
   const blockedBySend = next === 'sent_to_counterparty' && (!approvals.some((a) => a.type === 'external_delivery' && a.state === 'granted'))
 
   return (
-    <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-3">
-      <div className="mb-2.5 flex items-center gap-2">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Lifecycle</span>
-        <Chip className={agreement.ball_in_court === 'counterparty' ? 'bg-slate-100 text-slate-600 ring-slate-300/30' : 'bg-brand-50 text-brand-700 ring-brand-500/20'}>
-          Ball in court: {agreement.ball_in_court === 'counterparty' ? 'Counterparty' : 'ChargePoint Legal'}
-        </Chip>
-        <span className="ml-auto" />
+    <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-2.5">
+      {/* stepper + advance — single compact row */}
+      <div className="flex items-center gap-2">
+        <div ref={stepperRef} className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+          {AGREEMENT_LIFECYCLE.map((st, i) => {
+            const done = i < curIdx
+            const current = i === curIdx
+            return (
+              <div key={st} data-current={current} className="flex items-center gap-1">
+                <div className={clsx('flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11.5px] font-semibold',
+                  done ? 'bg-brand-50 text-brand-600' : current ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-400')}>
+                  {done && <Check size={11} />}
+                  {agreementStatusMeta[st].label}
+                </div>
+                {i < AGREEMENT_LIFECYCLE.length - 1 && <ChevronRight size={13} className="shrink-0 text-slate-300" />}
+              </div>
+            )
+          })}
+        </div>
         {agreement.status !== 'executed' && next && (
           canAdvance ? (
             <button onClick={() => advance(agreementId)}
-              className="flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-[12.5px] font-semibold text-white transition hover:bg-brand-600">
+              className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-[12.5px] font-semibold text-white transition hover:bg-brand-600">
               {next === 'executed' ? 'Execute & sign' : next === 'sent_to_counterparty' && blockedBySend ? 'Request approval to send' : `Advance to ${agreementStatusMeta[next].label}`}
               <ArrowRight size={13} />
             </button>
           ) : (
-            <span className="flex items-center gap-1 text-[11.5px] font-medium text-slate-400"><Lock size={12} /> Stage transitions are attorney-only</span>
+            <span className="flex shrink-0 items-center gap-1 text-[11.5px] font-medium text-slate-400"><Lock size={12} /> Attorney-only</span>
           )
         )}
-        {agreement.status === 'executed' && <Chip className="bg-brand-100 text-brand-800 ring-brand-500/20"><Check size={11} /> Executed</Chip>}
-      </div>
-
-      {/* stepper */}
-      <div className="flex items-center gap-1 overflow-x-auto">
-        {AGREEMENT_LIFECYCLE.map((st, i) => {
-          const done = i < curIdx
-          const current = i === curIdx
-          return (
-            <div key={st} className="flex items-center gap-1">
-              <div className={clsx('flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11.5px] font-semibold',
-                done ? 'bg-brand-50 text-brand-600' : current ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-400')}>
-                {done && <Check size={11} />}
-                {agreementStatusMeta[st].label}
-              </div>
-              {i < AGREEMENT_LIFECYCLE.length - 1 && <ChevronRight size={13} className="shrink-0 text-slate-300" />}
-            </div>
-          )
-        })}
+        {agreement.status === 'executed' && <Chip className="shrink-0 bg-brand-100 text-brand-800 ring-brand-500/20"><Check size={11} /> Executed</Chip>}
       </div>
 
       {/* inline approval chain */}
