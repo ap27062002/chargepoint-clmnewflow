@@ -48,6 +48,7 @@ export const VIEW_CAP: Record<ViewKey, Capability> = {
   deal_summary: 'deal_summary',
   intake: 'intake',
   execution: 'disposition',
+  repository: 'review',
 }
 
 export function canView(role: Role, view: ViewKey): boolean {

@@ -12,6 +12,7 @@ import { MyQueue } from '@/views/MyQueue'
 import { DealSummary } from '@/views/DealSummary'
 import { IntakeFlow } from '@/views/IntakeFlow'
 import { ExecutionView } from '@/views/ExecutionView'
+import { Repository } from '@/views/Repository'
 
 function useBreadcrumb(): string {
   const canvas = useStore((s) => s.canvas)
@@ -20,6 +21,7 @@ function useBreadcrumb(): string {
     dashboard: 'Pipeline overview', playbook: 'NDA Negotiation Playbook', admin: 'Admin console',
     audit: 'Audit center', notifications: 'Notification center', queue: 'My queue',
     deal_summary: 'Deal summary', intake: 'New agreement intake', execution: 'Execution & e-signature',
+    repository: 'Agreements repository',
   }
   if (canvas.view === 'ticket' || canvas.view === 'agreement') {
     const t = tickets.find((x) => x.id === canvas.ticketId)
@@ -80,6 +82,7 @@ export function Canvas() {
             {view === 'deal_summary' && <DealSummary />}
             {view === 'intake' && <IntakeFlow />}
             {view === 'execution' && <ExecutionView />}
+            {view === 'repository' && <Repository />}
           </>
         )}
       </div>

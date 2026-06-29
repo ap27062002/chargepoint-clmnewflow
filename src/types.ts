@@ -177,6 +177,8 @@ export type CrossCuttingCategory =
   | 'data_privacy'
   | 'term_and_termination'
 
+export type ProvisionTier = 'baseline' | 'fallback' | 'red_line' | 'deferred'
+
 export interface Provision {
   id: string
   provision_name: string
@@ -187,6 +189,8 @@ export interface Provision {
   cross_cutting_category?: CrossCuttingCategory
   negotiated_pct?: number // % of deals this was negotiated
   counterparty_introduced?: boolean
+  tier?: ProvisionTier // playbook classification used for filtering
+  deferred_to?: string // for tier 'deferred' — who the decision is escalated to
 }
 
 export interface Playbook {
@@ -260,6 +264,7 @@ export type ArtifactKind =
   | 'execution'
   | 'admin'
   | 'audit'
+  | 'repository'
   | 'none'
 
 export interface ChatMessage {
@@ -335,6 +340,7 @@ export type ViewKey =
   | 'deal_summary'
   | 'intake'
   | 'execution'
+  | 'repository'
 
 export interface CanvasState {
   view: ViewKey

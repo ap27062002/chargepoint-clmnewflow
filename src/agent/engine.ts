@@ -37,6 +37,35 @@ function denial(role: Role, cap: Capability): AgentReply {
 // ---- intent handlers --------------------------------------------------------
 const intents: Intent[] = [
   {
+    // "Ask AI" on a highlighted clause in the document view.
+    name: 'explain_clause', cap: 'review',
+    test: (t) => has(t, 'explain this clause', 'flag any playbook risk', 'ask ai about this', 'what does this clause'),
+    reply: (t) => {
+      let body: string
+      if (has(t, 'residual')) {
+        body = `This is a **residuals** clause — a strict playbook **red line**. It would let the other side reuse anything their people "retain in memory," which guts trade-secret protection. **Recommendation: reject in full.** It's rejected in 100% of sampled deals and InfoSec treats it as a hard no.`
+      } else if (has(t, 'survive', 'years from', 'expire', 'termination', 'term of')) {
+        body = `This is a **term / survival** clause. Playbook baseline is a **2-year term with 5-year CI survival** (trade secrets indefinite). Approved fallbacks go to **3yr/3yr** then **3yr/2yr**. **Red line:** CI survival under 2 years, or trade-secret protection ending on expiry.`
+      } else if (has(t, 'governing', 'jurisdiction', 'venue', 'delaware', 'arbitration')) {
+        body = `This is a **governing law & venue** clause. Baseline is **Delaware law + Delaware courts**; approved fallbacks are counterparty home-state law (Delaware venue) or neutral New York. **Red line:** foreign governing law or ICC arbitration seated outside the U.S.`
+      } else if (has(t, 'injunctive', 'irreparable', 'bond')) {
+        body = `This is an **injunctive relief** clause. Baseline: mutual, no bond required. Approved fallback: leave the bond "as the court deems appropriate." **Red line:** relief available to the counterparty only, or a mandatory bond on ChargePoint.`
+      } else if (has(t, 'indemnif', 'liability', 'damages', 'consequential')) {
+        body = `This reads like an **indemnity / liability** term — generally **out of scope for an NDA** and one-sided when counterparties add it. **Recommendation: strike it** and keep remedies to injunctive relief, unless the deal team specifically wants it.`
+      } else {
+        body = `Mapped against the **NDA playbook**: I don't see a red-line trigger in this text. Confirm the defined terms ("Confidential Information", not "Proprietary") are used consistently and that any obligation is **mutual**. If you want, I can compare it to the matching playbook provision.`
+      }
+      return {
+        text: `**Clause analysis** — for the text you highlighted:\n\n${body}`,
+        artifact: { kind: 'none' },
+        actions: [
+          { label: 'Open the playbook', prompt: 'show me the NDA playbook' },
+          { label: 'Review the full redline', prompt: 'review the Vishay redline' },
+        ],
+      }
+    },
+  },
+  {
     name: 'tagged',
     test: (t) => has(t, 'tagged', 'assigned to me', 'my plate', "what's on me", 'waiting on me', 'sign-off', 'sign off'),
     reply: () => {
@@ -322,6 +351,15 @@ const intents: Intent[] = [
     },
   },
   {
+    name: 'repository', cap: 'review',
+    test: (t) => has(t, 'all agreements', 'all the agreements', 'all versions', 'repository', 'document library', 'all my agreements', 'every agreement', 'agreement folder', 'version history of all'),
+    reply: () => ({
+      text: `The **Agreements repository** organizes every matter by counterparty, with the full version history (V1 → executed) under each agreement. Open it below to browse the folders or jump straight into any version's document.`,
+      artifact: { kind: 'repository', title: 'Agreements repository' },
+      actions: [],
+    }),
+  },
+  {
     name: 'open_ticket', cap: 'review',
     test: (t) => /tkt-?\d{3,}/i.test(t) || has(t, 'open ticket', 'open airbus', 'open vishay', 'open northwind'),
     reply: (t) => {
@@ -440,6 +478,7 @@ export function openArtifact(a: { kind: ArtifactKind; refId?: string; title?: st
     case 'execution': s.openCanvas({ view: 'execution', executionAgreementId: a.refId ?? 'AGR-2201' }); break
     case 'admin': s.setView('admin'); break
     case 'audit': s.setView('audit'); break
+    case 'repository': s.setView('repository'); break
     case 'ticket_created': s.setView('dashboard'); break
     default: break
   }

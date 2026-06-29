@@ -151,7 +151,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
   const canvas = useStore((s) => s.canvas)
   const navigate = useStore((s) => s.navigate)
   const mode = canvas.reviewMode ?? 'issues'
-  const [rightTab, setRightTab] = useState<'comments' | 'ai'>('ai')
+  const [rightTab, setRightTab] = useState<'comments' | 'ai' | null>(null)
   const [focusClause, setFocusClause] = useState<string | undefined>()
 
   const documents = useStore((s) => s.documents)
@@ -224,7 +224,21 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
         <div className="min-h-0 flex-1">
           {rightTab === 'comments'
             ? <CommentsPanel ticketId={agreement.ticket_id} agreementId={agreementId} />
-            : <AIPanel agreementTitle={agreement.title} />}
+            : rightTab === 'ai'
+              ? <AIPanel agreementTitle={agreement.title} />
+              : (
+                <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+                  <div className="flex gap-2">
+                    <button onClick={() => setRightTab('comments')} className="flex flex-col items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-500 shadow-card transition hover:border-slate-300 hover:bg-slate-50">
+                      <MessageSquare size={18} /><span className="text-[12px] font-semibold">Comments</span>
+                    </button>
+                    <button onClick={() => setRightTab('ai')} className="flex flex-col items-center gap-1.5 rounded-xl border border-ai-200 bg-ai-50/40 px-4 py-3 text-ai-700 shadow-card transition hover:bg-ai-50">
+                      <Sparkles size={18} /><span className="text-[12px] font-semibold">AI Assistant</span>
+                    </button>
+                  </div>
+                  <p className="text-[11.5px] text-slate-400">Pick a panel — provision comments or the AI assistant.</p>
+                </div>
+              )}
         </div>
       </div>
       </div>

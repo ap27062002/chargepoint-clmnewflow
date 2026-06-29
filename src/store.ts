@@ -68,6 +68,8 @@ interface CLMState {
   toast: string | null
   cmdkOpen: boolean
   slaChecked: boolean
+  entered: boolean
+  enterApp: () => void
   setCmdkOpen: (v: boolean) => void
 
   // navigation
@@ -130,6 +132,8 @@ export const useStore = create<CLMState>((set, get) => ({
   toast: null,
   cmdkOpen: false,
   slaChecked: false,
+  entered: false,
+  enterApp: () => set({ entered: true }),
   setCmdkOpen: (v) => set({ cmdkOpen: v }),
 
   navigate: (c) => set((s) => ({ canvas: { ...s.canvas, ...c } })),

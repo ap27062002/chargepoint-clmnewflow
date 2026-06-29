@@ -1,14 +1,24 @@
 import { useState } from 'react'
 import { clsx } from 'clsx'
-import { BookOpen, ChevronDown, ShieldCheck, TrendingUp, Plus, Sparkles, Check } from 'lucide-react'
+import { BookOpen, ChevronDown, ShieldCheck, TrendingUp, Plus, Sparkles, Check, Clock, Filter } from 'lucide-react'
 import { useStore } from '@/store'
 import { Card, Chip, Avatar, Button, SectionLabel } from '@/components/ui'
 import { fmtDate } from '@/lib/labels'
 import { refinementRecs } from '@/lib/analytics'
 import { userById } from '@/data/seed'
-import type { Provision } from '@/types'
+import type { Provision, ProvisionTier } from '@/types'
 
 const actionColor: Record<string, string> = { Revise: 'text-amber-600', Add: 'text-violet-600', Maintain: 'text-brand-600' }
+
+// Effective tier (falls back to fallback/baseline when not explicitly classified).
+const tierOf = (p: Provision): ProvisionTier => p.tier ?? (p.fallback_tiers.length > 0 ? 'fallback' : 'baseline')
+
+const tierMeta: Record<ProvisionTier, { label: string; chip: string }> = {
+  baseline: { label: 'Baseline', chip: 'bg-brand-50 text-brand-700 ring-brand-500/20' },
+  fallback: { label: 'Fallback', chip: 'bg-amber-50 text-amber-700 ring-amber-500/20' },
+  red_line: { label: 'Red line', chip: 'bg-red-50 text-red-700 ring-red-500/20' },
+  deferred: { label: 'Deferred', chip: 'bg-violet-50 text-violet-700 ring-violet-500/20' },
+}
 
 const ccLabel: Record<string, string> = {
   liability: 'Liability', indemnification: 'Indemnification', confidentiality: 'Confidentiality',
@@ -16,7 +26,8 @@ const ccLabel: Record<string, string> = {
 }
 
 function ProvisionRow({ p, owner }: { p: Provision; owner: boolean }) {
-  const [open, setOpen] = useState(p.provision_name.includes('Residual') || p.negotiated_pct! >= 40)
+  const tier = tierOf(p)
+  const [open, setOpen] = useState(tier === 'red_line' || tier === 'deferred' || p.negotiated_pct! >= 40)
   return (
     <div className="border-b border-slate-100 last:border-0">
       <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50">
@@ -27,15 +38,19 @@ function ProvisionRow({ p, owner }: { p: Provision; owner: boolean }) {
             {p.cross_cutting_category && <Chip className="bg-indigo-50 text-indigo-600 ring-indigo-500/20">{ccLabel[p.cross_cutting_category]}</Chip>}
           </div>
         </div>
-        {p.fallback_tiers.length > 0
-          ? <Chip className="bg-amber-50 text-amber-700 ring-amber-500/20">{p.fallback_tiers.length} fallback{p.fallback_tiers.length > 1 ? 's' : ''}</Chip>
-          : <Chip className="bg-brand-50 text-brand-700 ring-brand-500/20">Baseline</Chip>}
+        <Chip className={tierMeta[tier].chip}>{tierMeta[tier].label}{tier === 'fallback' && p.fallback_tiers.length > 1 ? ` ×${p.fallback_tiers.length}` : ''}</Chip>
         {p.negotiated_pct! > 0 && <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-400"><TrendingUp size={12} /> {p.negotiated_pct}%</span>}
       </button>
       {open && (
         <div className="space-y-2.5 px-4 pb-4 pl-11">
+          {tier === 'deferred' && (
+            <div className="flex items-start gap-2 rounded-lg bg-violet-50/70 px-3 py-2 text-[12px] leading-snug text-violet-800 ring-1 ring-violet-100">
+              <Clock size={13} className="mt-0.5 shrink-0" />
+              <span><b>Deferred</b> — no single baseline position. The agent escalates this clause to <b>{p.deferred_to ?? 'the deal team'}</b> for a written decision, then validates it against the red line.</span>
+            </div>
+          )}
           <div>
-            <div className="mb-1 flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-wide text-brand-600"><ShieldCheck size={11} /> Standard position (strongest)</div>
+            <div className="mb-1 flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-wide text-brand-600"><ShieldCheck size={11} /> {tier === 'deferred' ? 'Default approach (pending business input)' : 'Standard position (strongest)'}</div>
             <div className="rounded-lg bg-brand-50/60 px-3 py-2 text-[12.5px] leading-snug text-slate-700 ring-1 ring-brand-100">{p.standard_position}</div>
           </div>
           {p.fallback_tiers.map((f, i) => (
@@ -55,6 +70,14 @@ function ProvisionRow({ p, owner }: { p: Provision; owner: boolean }) {
   )
 }
 
+const FILTERS: { key: ProvisionTier | 'all'; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'baseline', label: 'Baseline' },
+  { key: 'fallback', label: 'Fallback' },
+  { key: 'red_line', label: 'Red line' },
+  { key: 'deferred', label: 'Deferred' },
+]
+
 export function PlaybookView() {
   const pb = useStore((s) => s.playbooks[0])
   const role = useStore((s) => s.users.find((u) => u.id === s.currentUserId)?.role)
@@ -64,6 +87,9 @@ export function PlaybookView() {
   const allDeviations = useStore((s) => s.deviations)
   const recs = refinementRecs(pb, allDeviations)
   const [applied, setApplied] = useState(false)
+  const [filter, setFilter] = useState<ProvisionTier | 'all'>('all')
+  const shown = filter === 'all' ? pb.provisions : pb.provisions.filter((p) => tierOf(p) === filter)
+  const tierCount = (t: ProvisionTier) => pb.provisions.filter((p) => tierOf(p) === t).length
 
   const approve = () => {
     setApplied(true)
@@ -111,12 +137,30 @@ export function PlaybookView() {
         </div>
       </Card>
 
+      {/* Filter bar */}
+      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+        <Filter size={13} className="mr-0.5 text-slate-400" />
+        {FILTERS.map((f) => {
+          const count = f.key === 'all' ? pb.provisions.length : tierCount(f.key)
+          const active = filter === f.key
+          return (
+            <button key={f.key} onClick={() => setFilter(f.key)}
+              className={clsx('flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-semibold transition',
+                active ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50')}>
+              {f.label}
+              <span className={clsx('rounded-full px-1.5 text-[10.5px]', active ? 'bg-white/20' : 'bg-slate-100 text-slate-400')}>{count}</span>
+            </button>
+          )
+        })}
+      </div>
+
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
-          <SectionLabel>Provisions ({pb.provisions.length})</SectionLabel>
+          <SectionLabel>Provisions ({shown.length}{filter !== 'all' ? ` of ${pb.provisions.length}` : ''})</SectionLabel>
           <span className="text-[11px] text-slate-400">Existing agreements retain their original playbook version</span>
         </div>
-        {pb.provisions.map((p) => <ProvisionRow key={p.id} p={p} owner={owner} />)}
+        {shown.map((p) => <ProvisionRow key={p.id} p={p} owner={owner} />)}
+        {shown.length === 0 && <div className="py-8 text-center text-[12px] text-slate-400">No provisions in this category.</div>}
       </Card>
     </div>
   )

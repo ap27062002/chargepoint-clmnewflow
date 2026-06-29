@@ -3,7 +3,7 @@ import { clsx } from 'clsx'
 import {
   ArrowUp, Sparkles, ArrowUpRight, FileText, LayoutDashboard, BookOpen,
   GitPullRequestArrow, ScrollText, Inbox, Paperclip, X, PanelRightOpen,
-  PenTool, Settings, ShieldCheck,
+  PenTool, Settings, ShieldCheck, FolderTree,
 } from 'lucide-react'
 import { useStore } from '@/store'
 import { sendToAgent, openArtifact } from '@/agent/engine'
@@ -19,6 +19,7 @@ const artifactIcon: Record<ArtifactKind, JSX.Element> = {
   ticket_created: <Inbox size={13} />, deal_summary: <ScrollText size={13} />,
   tagged_items: <Inbox size={13} />, intake_form: <FileText size={13} />,
   execution: <PenTool size={13} />, admin: <Settings size={13} />, audit: <ShieldCheck size={13} />,
+  repository: <FolderTree size={13} />,
   none: <FileText size={13} />,
 }
 

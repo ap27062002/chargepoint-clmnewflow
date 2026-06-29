@@ -1,19 +1,22 @@
 import { clsx } from 'clsx'
-import { Sparkles, LayoutDashboard, BookOpen } from 'lucide-react'
+import { Sparkles, LayoutDashboard, BookOpen, FolderTree } from 'lucide-react'
 import { useStore } from '@/store'
-import { can, type Capability } from '@/lib/access'
+import { can } from '@/lib/access'
+import type { Role } from '@/types'
 
+type RailKey = 'agent' | 'dashboard' | 'repository' | 'playbook'
 type RailItem = {
-  key: 'agent' | 'dashboard' | 'playbook'
+  key: RailKey
   label: string
   icon: JSX.Element
-  cap?: Capability
+  show?: (role: Role) => boolean
 }
 
 const ITEMS: RailItem[] = [
   { key: 'agent', label: 'Agent', icon: <Sparkles size={18} /> },
-  { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} />, cap: 'pipeline' },
-  { key: 'playbook', label: 'Playbook', icon: <BookOpen size={18} />, cap: 'playbook_view' },
+  { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} />, show: (r) => can(r, 'pipeline') },
+  { key: 'repository', label: 'Files', icon: <FolderTree size={18} />, show: (r) => can(r, 'review') || can(r, 'pipeline') },
+  { key: 'playbook', label: 'Playbook', icon: <BookOpen size={18} />, show: (r) => can(r, 'playbook_view') },
 ]
 
 export function LeftRail() {
@@ -23,14 +26,14 @@ export function LeftRail() {
   const closeCanvas = useStore((s) => s.closeCanvas)
   const role = useStore((s) => s.users.find((u) => u.id === s.currentUserId)!.role)
 
-  const visible = ITEMS.filter((i) => !i.cap || can(role, i.cap))
+  const visible = ITEMS.filter((i) => !i.show || i.show(role))
 
-  const go = (k: RailItem['key']) => {
+  const go = (k: RailKey) => {
     if (k === 'agent') closeCanvas()
     else setView(k)
   }
 
-  const isActive = (k: RailItem['key']) =>
+  const isActive = (k: RailKey) =>
     k === 'agent' ? !open : open && view === k
 
   return (

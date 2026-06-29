@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
-import { Bold, Italic, Underline, List, Table, Pilcrow, Check, X, Pencil, Eye, Plus } from 'lucide-react'
+import { Bold, Italic, Underline, List, Table, Pilcrow, Check, X, Pencil, Eye, Plus, Sparkles } from 'lucide-react'
 import { useStore } from '@/store'
+import { sendToAgent } from '@/agent/engine'
 import { can } from '@/lib/access'
 import { Chip } from '@/components/ui'
 import { riskMeta } from '@/lib/labels'
@@ -48,6 +50,26 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId }: { vers
   const canEdit = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'disposition'))
   const [edit, setEdit] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const [askBtn, setAskBtn] = useState<{ text: string; x: number; y: number } | null>(null)
+
+  // Surface an "Ask AI" action whenever the reader highlights text in the document.
+  const onSelect = () => {
+    const sel = window.getSelection()
+    const text = sel?.toString().trim() ?? ''
+    if (!text || text.length < 3 || !containerRef.current || !sel?.anchorNode || !containerRef.current.contains(sel.anchorNode)) {
+      setAskBtn(null)
+      return
+    }
+    const rect = sel.getRangeAt(0).getBoundingClientRect()
+    setAskBtn({ text, x: rect.left + rect.width / 2, y: rect.top })
+  }
+  const askAi = () => {
+    if (!askBtn) return
+    const snippet = askBtn.text.length > 320 ? askBtn.text.slice(0, 320) + '…' : askBtn.text
+    sendToAgent(`Explain this clause and flag any playbook risk:\n\n"${snippet}"`)
+    setAskBtn(null)
+    window.getSelection()?.removeAllRanges()
+  }
 
   useEffect(() => {
     if (focusClauseId && containerRef.current) {
@@ -80,7 +102,18 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId }: { vers
         )}
       </div>
 
-      <div ref={containerRef} className="flex-1 overflow-y-auto py-6">
+      <div ref={containerRef} onMouseUp={onSelect} onScroll={() => setAskBtn(null)} className="flex-1 overflow-y-auto py-6">
+        {askBtn && createPortal(
+          <button
+            style={{ position: 'fixed', left: askBtn.x, top: askBtn.y - 10, transform: 'translate(-50%, -100%)', zIndex: 60 }}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={askAi}
+            className="flex items-center gap-1.5 rounded-lg bg-ai-600 px-2.5 py-1.5 text-[12px] font-semibold text-white shadow-pop transition hover:bg-ai-700"
+          >
+            <Sparkles size={13} /> Ask AI
+          </button>,
+          document.body,
+        )}
         <div className="doc-prose mx-auto max-w-2xl rounded-lg bg-white p-10 font-serif text-[13.5px] text-slate-800 shadow-panel">
           <h1>{doc.title}</h1>
           <p className="mb-5 text-center text-[11px] not-italic text-slate-400">{doc.subtitle}</p>
