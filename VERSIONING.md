@@ -17,7 +17,8 @@ production alias (`chargepoint-clm.vercel.app`) to that deployment **instantly, 
 ### Build → deployment map (newest first)
 | Build | What changed | Deployment | Live? |
 |---|---|---|---|
-| **build-7** | execution auto-resolves any open deviations to their recommended disposition, so the executed record + deal summary read cleanly | latest production deployment (`vercel ls` for URL) | ✅ current |
+| **build-8** | UX refinements: persistent left nav (Agent/Dashboard/Playbook, RBAC-gated); agent answers first then user clicks the artifact chip to open the pane (no auto-open); removed the Negotiation lifecycle stage; leaner StageTracker (no Lifecycle/ball-in-court header); Agreements pill only for multi-agreement tickets; right rail defaults to AI Assistant (Comments one click away); starter renames | `chargepoint-6r9h8lv2h-bansal-s-projects.vercel.app` | ✅ current |
+| build-7 | execution auto-resolves any open deviations to their recommended disposition, so the executed record + deal summary read cleanly | prior production deployment | |
 | build-6 | redesigned Deal Summary + signed/executed document (viewable + downloadable, DocuSign completion certificate), filled commercial terms, computed negotiation summary, counterparty history | prior production deployment | |
 | build-5 | visible lifecycle stage tracker + inline approval chain (advance Draft→…→Executed; grant/deny at the Sent-to-Counterparty gate) | prior production deployment | |
 | build-4 | make-it-real: live Claude, real editor, e-sign, approvals/routing/SLA, computed analytics, version diff, RBAC row-scoping | `chargepoint-erwifon3u-bansal-s-projects.vercel.app` | |
