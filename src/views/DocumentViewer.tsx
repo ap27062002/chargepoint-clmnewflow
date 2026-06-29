@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
 import { Bold, Italic, Underline, List, Table, Pilcrow, Check, X, Pencil, Eye, Plus, Sparkles } from 'lucide-react'
 import { useStore } from '@/store'
-import { sendToAgent } from '@/agent/engine'
 import { can } from '@/lib/access'
 import { Chip } from '@/components/ui'
 import { riskMeta } from '@/lib/labels'
@@ -44,7 +43,7 @@ function ClauseEditor({ versionId, clauseId }: { versionId: string; clauseId: st
   )
 }
 
-export function DocumentViewer({ versionId, agreementId, focusClauseId }: { versionId: string; agreementId: string; focusClauseId?: string }) {
+export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi }: { versionId: string; agreementId: string; focusClauseId?: string; onAskAi?: (text: string) => void }) {
   const doc = useStore((s) => s.documents[versionId])
   const devs = useStore((s) => s.deviations).filter((d) => d.agreement_id === agreementId)
   const canEdit = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'disposition'))
@@ -66,7 +65,7 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId }: { vers
   const askAi = () => {
     if (!askBtn) return
     const snippet = askBtn.text.length > 320 ? askBtn.text.slice(0, 320) + '…' : askBtn.text
-    sendToAgent(`Explain this clause and flag any playbook risk:\n\n"${snippet}"`)
+    onAskAi?.(snippet)
     setAskBtn(null)
     window.getSelection()?.removeAllRanges()
   }

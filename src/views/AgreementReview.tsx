@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { clsx } from 'clsx'
-import { ListChecks, FileText, MessageSquare, Sparkles, History, AtSign, CheckCircle2, FileQuestion, Wand2, BookOpen, GitCompareArrows, ArrowRight } from 'lucide-react'
+import { ListChecks, FileText, MessageSquare, Sparkles, History, AtSign, CheckCircle2, FileQuestion, Wand2, BookOpen, GitCompareArrows, ArrowRight, PanelRightClose } from 'lucide-react'
 import { sendToAgent } from '@/agent/engine'
 import { can } from '@/lib/access'
 import type { Version } from '@/types'
@@ -152,7 +152,14 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
   const navigate = useStore((s) => s.navigate)
   const mode = canvas.reviewMode ?? 'issues'
   const [rightTab, setRightTab] = useState<'comments' | 'ai' | null>(null)
+  const [aiSeed, setAiSeed] = useState<{ text: string; nonce: number } | null>(null)
   const [focusClause, setFocusClause] = useState<string | undefined>()
+
+  // "Ask AI" from a document selection routes into the right-hand AI Assistant.
+  const askAiAboutSelection = (text: string) => {
+    setRightTab('ai')
+    setAiSeed((prev) => ({ text, nonce: (prev?.nonce ?? 0) + 1 }))
+  }
 
   const documents = useStore((s) => s.documents)
   const [selVer, setSelVer] = useState<string | undefined>(undefined)
@@ -202,7 +209,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
             : mode === 'issues'
               ? <IssuesView agreementId={agreementId} onViewInDoc={onViewInDoc} />
               : hasDoc
-                ? <DocumentViewer versionId={activeVerId!} agreementId={agreementId} focusClauseId={focusClause} />
+                ? <DocumentViewer versionId={activeVerId!} agreementId={agreementId} focusClauseId={focusClause} onAskAi={askAiAboutSelection} />
                 : <div className="flex h-full flex-col items-center justify-center px-8 text-center text-sm text-slate-400">
                     <FileText size={28} className="mb-2 text-slate-300" />
                     {versions.find((v) => v.id === activeVerId)?.label ?? 'This version'} — clean copy, no tracked changes to display.
@@ -211,36 +218,36 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
         </div>
       </div>
 
-      {/* RIGHT: comments / AI assistant */}
-      <div className="flex w-[340px] shrink-0 flex-col bg-white">
-        <div className="flex shrink-0 gap-1 border-b border-slate-100 px-2 py-2">
-          <button onClick={() => setRightTab('comments')} className={clsx('flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-[12.5px] font-semibold transition', rightTab === 'comments' ? 'bg-slate-100 text-slate-700' : 'text-slate-400 hover:bg-slate-50')}>
-            <MessageSquare size={14} /> Comments
+      {/* RIGHT: collapsed icon strip (frees the document real estate) or an expanded panel */}
+      {rightTab === null ? (
+        <div className="flex w-12 shrink-0 flex-col items-center gap-2 bg-white py-3">
+          <button onClick={() => setRightTab('comments')} title="Comments" className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600">
+            <MessageSquare size={16} />
           </button>
-          <button onClick={() => setRightTab('ai')} className={clsx('flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-[12.5px] font-semibold transition', rightTab === 'ai' ? 'bg-ai-50 text-ai-700' : 'text-slate-400 hover:bg-slate-50')}>
-            <Sparkles size={14} /> AI Assistant
+          <button onClick={() => setRightTab('ai')} title="AI Assistant" className="flex h-9 w-9 items-center justify-center rounded-lg text-ai-600 transition hover:bg-ai-50">
+            <Sparkles size={16} />
           </button>
         </div>
-        <div className="min-h-0 flex-1">
-          {rightTab === 'comments'
-            ? <CommentsPanel ticketId={agreement.ticket_id} agreementId={agreementId} />
-            : rightTab === 'ai'
-              ? <AIPanel agreementTitle={agreement.title} />
-              : (
-                <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-                  <div className="flex gap-2">
-                    <button onClick={() => setRightTab('comments')} className="flex flex-col items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-500 shadow-card transition hover:border-slate-300 hover:bg-slate-50">
-                      <MessageSquare size={18} /><span className="text-[12px] font-semibold">Comments</span>
-                    </button>
-                    <button onClick={() => setRightTab('ai')} className="flex flex-col items-center gap-1.5 rounded-xl border border-ai-200 bg-ai-50/40 px-4 py-3 text-ai-700 shadow-card transition hover:bg-ai-50">
-                      <Sparkles size={18} /><span className="text-[12px] font-semibold">AI Assistant</span>
-                    </button>
-                  </div>
-                  <p className="text-[11.5px] text-slate-400">Pick a panel — provision comments or the AI assistant.</p>
-                </div>
-              )}
+      ) : (
+        <div className="flex w-[340px] shrink-0 flex-col bg-white">
+          <div className="flex shrink-0 items-center gap-1 border-b border-slate-100 px-2 py-2">
+            <button onClick={() => setRightTab('comments')} className={clsx('flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-semibold transition', rightTab === 'comments' ? 'bg-slate-100 text-slate-700' : 'text-slate-400 hover:bg-slate-50')}>
+              <MessageSquare size={14} /> Comments
+            </button>
+            <button onClick={() => setRightTab('ai')} className={clsx('flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-semibold transition', rightTab === 'ai' ? 'bg-ai-50 text-ai-700' : 'text-slate-400 hover:bg-slate-50')}>
+              <Sparkles size={14} /> AI Assistant
+            </button>
+            <button onClick={() => setRightTab(null)} title="Collapse panel" className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600">
+              <PanelRightClose size={15} />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1">
+            {rightTab === 'comments'
+              ? <CommentsPanel ticketId={agreement.ticket_id} agreementId={agreementId} />
+              : <AIPanel agreementTitle={agreement.title} seed={aiSeed} />}
+          </div>
         </div>
-      </div>
+      )}
       </div>
     </div>
   )

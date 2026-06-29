@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Sparkles, Send, BookOpen, Shield, GitCompareArrows, FileEdit, Scale, History } from 'lucide-react'
 import { Markdown } from '@/components/Markdown'
 import { AiTag } from '@/components/ui'
@@ -22,16 +22,27 @@ const ANSWERS: { match: (t: string) => boolean; text: string }[] = [
   { match: (t) => t.includes('risk'), text: `**Top risks in the Vishay redline:**\n1. **Residuals (§1(f))** — red line; guts trade-secret protection.\n2. **Affiliate liability (§6)** — uncapped exposure for Affiliate breaches.\n3. **CI survival cut to 2yr (§8)** — below our 3yr floor.\n4. **Undefined "Restricted Information" (§14)** — unenforceable/ambiguous.\n\nItems 1 and 2 are the ones I'd hold firm on.` },
 ]
 
-export function AIPanel({ agreementTitle }: { agreementTitle: string }) {
+export function AIPanel({ agreementTitle, seed }: { agreementTitle: string; seed?: { text: string; nonce: number } | null }) {
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [input, setInput] = useState('')
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   const ask = (text: string) => {
     if (!text.trim()) return
     const a = ANSWERS.find((x) => x.match(text.toLowerCase()))
-    setMsgs((m) => [...m, { role: 'user', text }, { role: 'ai', text: a?.text ?? `Here's my read on "${text}" for this agreement, grounded in the playbook, the 9 identified deviations, and our prior deals. (Demo: connect a live model for free-form analysis.)` }])
+    setMsgs((m) => [...m, { role: 'user', text }, { role: 'ai', text: a?.text ?? `**Clause analysis.** Checked against the NDA playbook, the identified deviations, and our prior deals — I don't see a red-line trigger in this text. Make sure the defined terms are used consistently ("Confidential Information", not "Proprietary") and that every obligation is **mutual**. Want me to compare it to the matching playbook provision or draft alternative language?` }])
     setInput('')
   }
+
+  // "Ask AI" from a document selection seeds a question here.
+  useEffect(() => {
+    if (seed?.text) ask(`Explain this clause: "${seed.text}"`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seed?.nonce])
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+  }, [msgs.length])
 
   return (
     <div className="flex h-full flex-col">
@@ -46,7 +57,7 @@ export function AIPanel({ agreementTitle }: { agreementTitle: string }) {
         </div>
       </div>
 
-      <div className="flex-1 space-y-3 overflow-y-auto p-3">
+      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3">
         {msgs.length === 0 ? (
           <>
             <div className="text-[12px] text-slate-500">Ask anything about <span className="font-semibold">{agreementTitle}</span>, or pick a capability:</div>

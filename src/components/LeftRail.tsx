@@ -22,7 +22,7 @@ const ITEMS: RailItem[] = [
 export function LeftRail() {
   const open = useStore((s) => s.canvas.open)
   const view = useStore((s) => s.canvas.view)
-  const setView = useStore((s) => s.setView)
+  const openFull = useStore((s) => s.openFull)
   const closeCanvas = useStore((s) => s.closeCanvas)
   const role = useStore((s) => s.users.find((u) => u.id === s.currentUserId)!.role)
 
@@ -30,7 +30,7 @@ export function LeftRail() {
 
   const go = (k: RailKey) => {
     if (k === 'agent') closeCanvas()
-    else setView(k)
+    else openFull(k) // full-width section; the agent collapses and is one click away
   }
 
   const isActive = (k: RailKey) =>

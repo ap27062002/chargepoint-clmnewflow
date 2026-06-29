@@ -30,6 +30,7 @@ function Toast() {
 
 export default function App() {
   const open = useStore((s) => s.canvas.open)
+  const solo = useStore((s) => s.canvas.solo)
   const entered = useStore((s) => s.entered)
   const runSlaCheck = useStore((s) => s.runSlaCheck)
   useEffect(() => { runSlaCheck() }, [runSlaCheck])
@@ -40,14 +41,21 @@ export default function App() {
       <main className="flex min-h-0 flex-1">
         <LeftRail />
         {open ? (
-          <>
-            <aside className="w-[40%] min-w-[440px] max-w-[600px] shrink-0 border-r border-slate-200 bg-white animate-dock-in">
-              <ChatPanel variant="docked" />
-            </aside>
+          solo ? (
+            // Full-width canvas — agent collapsed (one click away via the rail).
             <section className="min-w-0 flex-1 animate-slide-in-right">
               <Canvas />
             </section>
-          </>
+          ) : (
+            <>
+              <aside className="w-[40%] min-w-[440px] max-w-[600px] shrink-0 border-r border-slate-200 bg-white animate-dock-in">
+                <ChatPanel variant="docked" />
+              </aside>
+              <section className="min-w-0 flex-1 animate-slide-in-right">
+                <Canvas />
+              </section>
+            </>
+          )
         ) : (
           <ChatPanel variant="hero" />
         )}

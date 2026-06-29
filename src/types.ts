@@ -345,6 +345,7 @@ export type ViewKey =
 export interface CanvasState {
   view: ViewKey
   open?: boolean
+  solo?: boolean // canvas shown full-width with the agent collapsed (rail-driven navigation)
   ticketId?: string
   agreementId?: string
   agreementTab?: 'deal' | 'review'

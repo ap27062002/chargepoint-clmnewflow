@@ -79,6 +79,7 @@ interface CLMState {
   openTicket: (ticketId: string) => void
   openAgreement: (agreementId: string, tab?: 'deal' | 'review') => void
   setView: (view: ViewKey) => void
+  openFull: (view: ViewKey) => void
   setPersona: (userId: string) => void
   setToast: (t: string | null) => void
 
@@ -137,23 +138,26 @@ export const useStore = create<CLMState>((set, get) => ({
   setCmdkOpen: (v) => set({ cmdkOpen: v }),
 
   navigate: (c) => set((s) => ({ canvas: { ...s.canvas, ...c } })),
-  openCanvas: (c) => set((s) => ({ canvas: { ...s.canvas, open: true, ...c } })),
+  // Agent-driven opens dock the agent beside the canvas (solo: false).
+  openCanvas: (c) => set((s) => ({ canvas: { ...s.canvas, open: true, solo: false, ...c } })),
   closeCanvas: () => set((s) => ({ canvas: { ...s.canvas, open: false } })),
   openTicket: (ticketId) => {
     const t = get().tickets.find((x) => x.id === ticketId)
     if (!t) return
     if (t.type === 'inquiry' || t.agreement_ids.length === 0) {
-      set({ canvas: { view: 'ticket', open: true, ticketId, agreementTab: 'deal' } })
+      set({ canvas: { view: 'ticket', open: true, solo: false, ticketId, agreementTab: 'deal' } })
     } else {
-      set({ canvas: { view: 'ticket', open: true, ticketId, agreementId: t.agreement_ids[0], agreementTab: 'deal' } })
+      set({ canvas: { view: 'ticket', open: true, solo: false, ticketId, agreementId: t.agreement_ids[0], agreementTab: 'deal' } })
     }
   },
   openAgreement: (agreementId, tab = 'review') => {
     const a = get().agreements.find((x) => x.id === agreementId)
     if (!a) return
-    set({ canvas: { view: 'ticket', open: true, ticketId: a.ticket_id, agreementId, agreementTab: tab, reviewMode: 'issues' } })
+    set({ canvas: { view: 'ticket', open: true, solo: false, ticketId: a.ticket_id, agreementId, agreementTab: tab, reviewMode: 'issues' } })
   },
-  setView: (view) => set((s) => ({ canvas: { ...s.canvas, view, open: true } })),
+  setView: (view) => set((s) => ({ canvas: { ...s.canvas, view, open: true, solo: false } })),
+  // Rail-driven full-screen navigation: canvas takes the full width, agent collapses (one click away).
+  openFull: (view) => set({ canvas: { view, open: true, solo: true } }),
   setPersona: (userId) => {
     const u = get().users.find((x) => x.id === userId)
     set((s) => ({
