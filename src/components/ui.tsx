@@ -88,3 +88,31 @@ export function Stat({ label, value, accent }: { label: string; value: ReactNode
     </Card>
   )
 }
+
+// KPI tile — like Stat but with an icon, a sub-line, and optional click-through (deep-link to a filtered list).
+export function Kpi({ label, value, sub, icon, accent, onClick }: {
+  label: ReactNode; value: ReactNode; sub?: ReactNode; icon?: ReactNode; accent?: string; onClick?: () => void
+}) {
+  return (
+    <Card className="p-4" onClick={onClick}>
+      <div className="flex items-center justify-between">
+        <SectionLabel>{label}</SectionLabel>
+        {icon && <span className="text-slate-300">{icon}</span>}
+      </div>
+      <div className={clsx('mt-1 text-2xl font-bold', accent ?? 'text-slate-800')}>{value}</div>
+      {sub && <div className="mt-0.5 text-[11px] font-medium text-slate-400">{sub}</div>}
+    </Card>
+  )
+}
+
+// Horizontal stacked proportion bar (e.g. ball-in-court aging fresh/aging/stalled).
+export function StackBar({ segments }: { segments: { n: number; className: string; label?: string }[] }) {
+  const total = segments.reduce((s, x) => s + x.n, 0) || 1
+  return (
+    <div className="flex h-2 w-full overflow-hidden rounded-full bg-slate-100">
+      {segments.map((s, i) => (s.n > 0 ? (
+        <div key={i} className={s.className} style={{ width: `${(s.n / total) * 100}%` }} title={`${s.label}: ${s.n}`} />
+      ) : null))}
+    </div>
+  )
+}

@@ -5,7 +5,9 @@ import type {
   DispositionStatus, MessageTag, ThreadType, AuditEventType,
   ApprovalRequest, ApprovalType, Envelope, AgreementType,
   AgreementStatus, BallInCourt, ContractStatus,
+  IntakePayload, InferredField, CounterpartyProfile, ContractsFilterPreset,
 } from '@/types'
+import { lookupCounterparty, inferDealContext } from '@/data/counterparties'
 import {
   users, tickets as seedTickets, agreements as seedAgreements,
   versions as seedVersions, deviations as seedDeviations, messages as seedMessages,
@@ -80,6 +82,7 @@ interface CLMState {
   openAgreement: (agreementId: string, tab?: 'deal' | 'review') => void
   setView: (view: ViewKey) => void
   openFull: (view: ViewKey) => void
+  openContracts: (preset?: ContractsFilterPreset, solo?: boolean) => void
   setPersona: (userId: string) => void
   setToast: (t: string | null) => void
 
@@ -92,6 +95,12 @@ interface CLMState {
   markAllNotificationsRead: () => void
   createTicketFromAgent: (t: Partial<Ticket> & { title: string; counterparty_name: string; type: Ticket['type']; agreement_type?: AgreementType }) => Ticket
   audit_push: (e: { event_type: AuditEventType; summary: string; ticket_id?: string; agreement_id?: string; actor_id?: string }) => void
+
+  // agentic NDA intake (Change 1)
+  prepareIntake: (parsed: { query: string; rawPrompt: string; onBehalfOf?: string }) => void
+  updateIntakeField: (key: keyof IntakePayload, value: IntakePayload[keyof IntakePayload]) => void
+  confirmCounterparty: (profile: CounterpartyProfile) => void
+  generateNdaFromIntake: () => Ticket | null
 
   // documents (editable, tracked changes)
   acceptChange: (versionId: string, cid: string) => void
@@ -158,6 +167,9 @@ export const useStore = create<CLMState>((set, get) => ({
   setView: (view) => set((s) => ({ canvas: { ...s.canvas, view, open: true, solo: false } })),
   // Rail-driven full-screen navigation: canvas takes the full width, agent collapses (one click away).
   openFull: (view) => set({ canvas: { view, open: true, solo: true } }),
+  // Contracts list — one click from the dashboard (full-width by default; docked when opened from an agent chip).
+  openContracts: (preset = 'all', solo = true) =>
+    set((s) => ({ canvas: { ...s.canvas, view: 'contracts', open: true, solo, contractsFilter: preset } })),
   setPersona: (userId) => {
     const u = get().users.find((x) => x.id === userId)
     set((s) => ({
@@ -228,6 +240,58 @@ export const useStore = create<CLMState>((set, get) => ({
     const aName = get().users.find((u) => u.id === attorneyId)?.name ?? 'attorney'
     get().audit_push({ event_type: 'ticket_assigned', ticket_id: id, actor_id: 'ai_engine', summary: `Routed to ${aName} (${t.assigned_attorney_id ? 'manual override' : routed.rationale}).` })
     return ticket
+  },
+
+  // ----- agentic NDA intake (Change 1) --------------------------------------
+  prepareIntake: ({ query, rawPrompt, onBehalfOf }) => {
+    const me = get().users.find((u) => u.id === get().currentUserId)!
+    const impersonated = onBehalfOf ? get().users.find((u) => u.name.toLowerCase().includes(onBehalfOf.toLowerCase())) : undefined
+    const requestorId = impersonated?.id ?? me.id
+    const candidates = lookupCounterparty(query)
+    const profile = candidates[0] ?? null
+    const ctx = profile ? inferDealContext(profile) : null
+    const routed = routeAttorney(get().routingStrategy, 'MNDA', get().users, get().tickets)
+    const f = (value: string, source: InferredField['source'], confidence: InferredField['confidence'], note?: string): InferredField => ({ value, source, confidence, note })
+    const payload: IntakePayload = {
+      rawPrompt, counterpartyQuery: query, profile, candidates,
+      confirmed: false, // always confirm the counterparty ("is this the company? → yes")
+      requestorId, onBehalfOf,
+      template: f('ChargePoint Mutual NDA 2025 (North America)', 'playbook', 'high', 'Matched to the active NDA playbook (v3).'),
+      jurisdiction: f(ctx?.jurisdiction ?? 'North America', 'inference', profile ? 'high' : 'low', 'Inferred from counterparty HQ region.'),
+      governingLaw: f(ctx?.governingLaw ?? 'Delaware', 'playbook', 'high', ctx?.foreignNote ?? 'Playbook standard.'),
+      clausePosture: f(ctx?.clausePosture ?? 'Standard mutual NDA posture.', 'inference', 'medium'),
+      purpose: f(ctx?.purpose ?? 'Evaluate a potential business relationship.', 'inference', 'medium'),
+      sfOpportunity: profile?.sf_opportunity
+        ? f(profile.sf_opportunity, 'crm', 'high', 'Auto-populated from Salesforce (connected).')
+        : f('Not linked', 'crm', 'low', 'No matching Salesforce opportunity — optional.'),
+      attorneyId: routed.attorneyId,
+      signerName: '', signerEmail: '',
+    }
+    set((s) => ({ canvas: { ...s.canvas, intakePayload: payload, intakeCp: profile?.legal_name ?? query } }))
+  },
+  updateIntakeField: (key, value) =>
+    set((s) => (s.canvas.intakePayload
+      ? { canvas: { ...s.canvas, intakePayload: { ...s.canvas.intakePayload, [key]: value } } }
+      : {})),
+  confirmCounterparty: (profile) =>
+    set((s) => (s.canvas.intakePayload
+      ? { canvas: { ...s.canvas, intakePayload: { ...s.canvas.intakePayload, profile, confirmed: true, candidates: [profile] }, intakeCp: profile.legal_name } }
+      : {})),
+  generateNdaFromIntake: () => {
+    const p = get().canvas.intakePayload
+    if (!p || !p.profile || !p.confirmed) { get().setToast('Confirm the counterparty before generating.'); return null }
+    const cp = p.profile.legal_name
+    const t = get().createTicketFromAgent({
+      title: `${cp} — Mutual NDA`, counterparty_name: cp, type: 'single_agreement',
+      agreement_type: 'MNDA', assigned_attorney_id: p.attorneyId, priority: 'normal',
+      description: `NDA generated from ${p.template.value} for ${cp} (${p.profile.hq_city}, ${p.profile.hq_country}). `
+        + `Requestor: ${get().users.find((u) => u.id === p.requestorId)?.name ?? ''}${p.onBehalfOf ? ' (filed on their behalf)' : ''}. `
+        + `Jurisdiction ${p.jurisdiction.value}; governing law ${p.governingLaw.value}. Purpose: ${p.purpose.value}. `
+        + `Posture: ${p.clausePosture.value}. Signer: ${p.signerName} <${p.signerEmail}>. SF: ${p.sfOpportunity.value}.`,
+    })
+    get().audit_push({ event_type: 'agreement_added', ticket_id: t.id, actor_id: 'ai_engine', summary: `V1 generated from ${p.template.value}; counterparty resolved via ${p.profile.crm_account ? 'CRM' : 'web'} lookup.` })
+    get().setToast(`Generated ${cp} NDA (V1) and routed to ${get().users.find((u) => u.id === p.attorneyId)?.name.split(' ')[0]}.`)
+    return t
   },
 
   audit_push: (e) => {

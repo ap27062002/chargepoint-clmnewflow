@@ -124,28 +124,28 @@ export const tickets: Ticket[] = [
 export const agreements: Agreement[] = [
   { id: 'AGR-2201', ticket_id: 'TKT-1042', title: 'Vishay Intertechnology Mutual NDA', agreement_type: 'MNDA',
     status: 'redline_received', current_version_id: 'V-2201-3', playbook_id: 'pb_nda', paper_origin: 'cp_paper',
-    ball_in_court: 'cp_legal', red_line_count: 4, created_date: '2026-06-18' },
+    ball_in_court: 'cp_legal', red_line_count: 4, created_date: '2026-06-18', last_activity_date: '2026-06-25', turn_count: 3, contract_value: 0 },
 
   { id: 'AGR-2198', ticket_id: 'TKT-1039', title: 'Airbus Mutual NDA', agreement_type: 'MNDA',
     status: 'redline_received', current_version_id: 'V-2198-2', playbook_id: 'pb_nda', paper_origin: 'cp_paper',
-    ball_in_court: 'cp_legal', red_line_count: 3, created_date: '2026-06-12' },
+    ball_in_court: 'counterparty', red_line_count: 3, created_date: '2026-06-12', last_activity_date: '2026-06-20', turn_count: 4, contract_value: 0 },
 
   { id: 'AGR-2180', ticket_id: 'TKT-1031', title: 'Northwind Master Services Agreement', agreement_type: 'MSA',
     status: 'internal_review', current_version_id: 'V-2180-1', playbook_id: null, paper_origin: 'cp_paper',
-    ball_in_court: 'cp_legal', red_line_count: 0, created_date: '2026-06-05' },
+    ball_in_court: 'cp_legal', red_line_count: 0, created_date: '2026-06-05', last_activity_date: '2026-06-22', turn_count: 1, contract_value: 2400000 },
   { id: 'AGR-2181', ticket_id: 'TKT-1031', title: 'Northwind Data Processing Addendum', agreement_type: 'DPA',
     status: 'draft', current_version_id: 'V-2181-1', playbook_id: null, paper_origin: 'cp_paper',
-    ball_in_court: 'cp_legal', red_line_count: 0, created_date: '2026-06-05' },
+    ball_in_court: 'counterparty', red_line_count: 0, created_date: '2026-06-05', last_activity_date: '2026-06-18', turn_count: 2, contract_value: 0 },
   { id: 'AGR-2182', ticket_id: 'TKT-1031', title: 'Northwind Initial SOW', agreement_type: 'SOW',
     status: 'draft', current_version_id: 'V-2182-1', playbook_id: null, paper_origin: 'cp_paper',
-    ball_in_court: 'cp_legal', red_line_count: 0, created_date: '2026-06-06' },
+    ball_in_court: 'cp_legal', red_line_count: 0, created_date: '2026-06-06', last_activity_date: '2026-06-20', turn_count: 1, contract_value: 850000 },
 
   { id: 'AGR-2150', ticket_id: 'TKT-1009', title: 'Mondelez Mutual NDA', agreement_type: 'MNDA',
     status: 'executed', current_version_id: 'V-2150-4', playbook_id: 'pb_nda', paper_origin: 'cp_paper',
-    ball_in_court: 'cp_legal', red_line_count: 5, created_date: '2026-05-02', executed_date: '2026-05-19' },
+    ball_in_court: 'cp_legal', red_line_count: 5, created_date: '2026-05-02', executed_date: '2026-05-19', last_activity_date: '2026-05-19', turn_count: 3, contract_value: 0 },
   { id: 'AGR-2152', ticket_id: 'TKT-1012', title: 'Clever Devices Mutual NDA', agreement_type: 'MNDA',
     status: 'executed', current_version_id: 'V-2152-3', playbook_id: 'pb_nda', paper_origin: 'counterparty_paper',
-    ball_in_court: 'cp_legal', red_line_count: 6, created_date: '2026-05-08', executed_date: '2026-05-21' },
+    ball_in_court: 'cp_legal', red_line_count: 6, created_date: '2026-05-08', executed_date: '2026-05-21', last_activity_date: '2026-05-21', turn_count: 4, contract_value: 0 },
 ]
 
 // ============================================================================

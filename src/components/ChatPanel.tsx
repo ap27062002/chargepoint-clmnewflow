@@ -3,7 +3,7 @@ import { clsx } from 'clsx'
 import {
   ArrowUp, Sparkles, ArrowUpRight, FileText, LayoutDashboard, BookOpen,
   GitPullRequestArrow, ScrollText, Inbox, Paperclip, X, PanelRightOpen,
-  PenTool, Settings, ShieldCheck, FolderTree,
+  PenTool, Settings, ShieldCheck, FolderTree, Table, Wand2,
 } from 'lucide-react'
 import { useStore } from '@/store'
 import { sendToAgent, openArtifact } from '@/agent/engine'
@@ -17,9 +17,9 @@ const artifactIcon: Record<ArtifactKind, JSX.Element> = {
   redline_review: <GitPullRequestArrow size={13} />, agreement: <FileText size={13} />,
   document: <FileText size={13} />, ticket: <Inbox size={13} />,
   ticket_created: <Inbox size={13} />, deal_summary: <ScrollText size={13} />,
-  tagged_items: <Inbox size={13} />, intake_form: <FileText size={13} />,
+  tagged_items: <Inbox size={13} />, intake_form: <Wand2 size={13} />,
   execution: <PenTool size={13} />, admin: <Settings size={13} />, audit: <ShieldCheck size={13} />,
-  repository: <FolderTree size={13} />,
+  repository: <FolderTree size={13} />, contracts: <Table size={13} />,
   none: <FileText size={13} />,
 }
 

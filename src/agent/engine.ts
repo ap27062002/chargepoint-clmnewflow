@@ -3,6 +3,7 @@ import type { ChatMessage, ChatAction, ArtifactKind, Role } from '@/types'
 import { userById } from '@/data/seed'
 import { can, CAP_LABEL, ROLE_LABEL, ROLE_SCOPE, startersFor, type Capability } from '@/lib/access'
 import { canSeeTicket } from '@/lib/scope'
+import { lookupCounterparty, inferDealContext } from '@/data/counterparties'
 export { GREETING } from '@/agent/greeting'
 
 let _c = 0
@@ -142,7 +143,8 @@ const intents: Intent[] = [
   },
   {
     name: 'generate_response', cap: 'disposition',
-    test: (t) => has(t, 'generate', 'draft our', 'our response', 'redline response', 'counter', 'clean copy', 'clean and redline'),
+    test: (t) => has(t, 'generate', 'draft our', 'our response', 'redline response', 'counter', 'clean copy', 'clean and redline')
+      && !has(t, 'use defaults', 'create an nda', 'new nda', 'create a new nda'),
     reply: () => ({
       text: `I've prepared **ChargePoint's response (V3)** to Vishay based on your dispositions:\n\n- **Removed** §1(f) Residuals (red line).\n- **Countered** Term to **3 years / 3-year CI survival** (Fallback 1); trade-secret carve-out preserved.\n- **Countered** Injunctive Relief — kept mutual, bond "as the court deems appropriate."\n- **Qualified** Affiliate liability to Affiliates receiving Confidential Information.\n- **Corrected** the defined-term inconsistency ("Proprietary" → "Confidential Information") throughout.\n- **Accepted** the legal-hold copy and oral-disclosure window.\n\nOutput is ready as a **clean copy** and a **redline** vs. their Draft 2. Internal CLM comments are kept out of the delivered file.\n\n⚠️ I can't send this externally — that needs your approval and goes out under your signature.`,
       artifact: { kind: 'agreement', refId: 'AGR-2201', title: 'Vishay NDA — V3 (CP response)' },
@@ -217,16 +219,44 @@ const intents: Intent[] = [
   },
   {
     name: 'create_nda', cap: 'intake',
-    test: (t) => has(t, 'create', 'new nda', 'draft nda', 'start an nda', 'new agreement', 'new ticket') && !has(t, 'response'),
+    test: (t) => (has(t, 'create', 'draft', 'start', 'new') && has(t, 'nda', 'agreement', 'mutual'))
+      && !has(t, 'response', 'redline', 'review the', 'use defaults'),
     reply: (t) => {
-      const m = t.match(/(?:for|with)\s+([a-z0-9 .&'-]{2,40})/i)
-      const cp = m?.[1] ? m[1].replace(/\b\w/g, (c) => c.toUpperCase()).trim() : ''
+      // Parse the counterparty from a single natural-language prompt, e.g.
+      // "create an NDA using the ChargePoint template for UnifyApps".
+      const m = t.match(/(?:for|with)\s+(.+)$/i)
+      const query = (m?.[1] ?? '')
+        .replace(/\b(using|from|on the|on)\b.*$/i, '')
+        .replace(/\b(the\s+)?chargepoint\b/gi, '').replace(/\btemplate\b/gi, '')
+        .replace(/['".]+$/, '').trim()
+      const behalf = t.match(/on behalf of\s+([a-z][a-z .'-]{1,30})/i)?.[1]?.trim()
+      if (!query) {
+        return {
+          text: `Happy to draft an NDA. **Who's the counterparty?** Give me a name or website — e.g. *"create an NDA using the ChargePoint template for UnifyApps"* — and I'll resolve the entity, address, jurisdiction and likely posture from CRM and the web, then pre-fill the brief. You only confirm and add the signer.`,
+          artifact: { kind: 'none' },
+          actions: [
+            { label: 'NDA for UnifyApps', prompt: 'create an NDA using the ChargePoint template for UnifyApps', variant: 'primary' },
+            { label: 'NDA for Google', prompt: 'create an NDA for Google' },
+          ],
+        }
+      }
+      const profile = lookupCounterparty(query)[0]
+      const ctx = profile ? inferDealContext(profile) : null
+      const cp = profile?.legal_name ?? query
+      const known = !!profile && !profile.address.toLowerCase().includes('pending')
+      const lines = profile ? [
+        `- **Counterparty:** ${profile.legal_name} · ${profile.website} · ${profile.hq_city}, ${profile.hq_country}${known ? '' : '  _(unverified — confirm in the brief)_'}`,
+        `- **Template:** ChargePoint Mutual NDA 2025 · **law:** ${ctx?.governingLaw}${profile.hq_country !== 'USA' && profile.hq_country !== '—' ? ' _(foreign-counterparty note applied)_' : ''}`,
+        `- **Posture:** ${ctx?.clausePosture}`,
+        profile.sf_opportunity ? `- **Salesforce:** ${profile.sf_opportunity} (auto-linked)` : `- **Salesforce:** no opportunity linked (optional)`,
+      ].join('\n') : ''
       return {
-        text: `Starting a new **Mutual NDA**${cp ? ` for **${cp}**` : ''} on ChargePoint paper. Before I draft, a few quick questions — I'll pull what I can from CRM:\n\n1. **Counterparty entity & address** — ${cp ? `I'll look up ${cp} in CRM first, internet as fallback.` : 'who is the counterparty?'}\n2. **Purpose / business context** — template default (broad) or a specific purpose?\n3. **Assigned attorney** — default to you (Kirsten Sachs)?\n\nOpen the intake form below to fill it in, or say *"use defaults"* and I'll generate V1 from the CP Mutual NDA 2025 template, create the ticket and deal folder, and run a key-field QA check.`,
-        artifact: { kind: 'intake_form', refId: cp, title: cp ? `New NDA — ${cp}` : 'New NDA — intake' },
+        text: `On it. Drafting a **Mutual NDA** on the **ChargePoint template** for **${cp}**${behalf ? `, filed on behalf of **${behalf}**` : ''}.\n\nHere's what I inferred — all editable:\n${lines}\n\nRequestor is auto-filled from your login. **Open the drafting brief** to confirm the counterparty and add the signer — everything else is done.`,
+        artifact: { kind: 'intake_form', refId: cp, title: `Open the drafting brief — ${cp}` },
+        effect: () => useStore.getState().prepareIntake({ query, rawPrompt: t, onBehalfOf: behalf }),
         actions: [
-          { label: 'Use defaults & generate', prompt: `use defaults and generate the NDA${cp ? ` for ${cp}` : ''}`, variant: 'primary' },
-          { label: 'Specific purpose…', prompt: 'let me specify the purpose' },
+          { label: 'Use defaults & generate', prompt: `use defaults and generate the NDA for ${cp}`, variant: 'primary' },
+          { label: 'Different counterparty', prompt: 'create a new NDA' },
         ],
       }
     },
@@ -234,24 +264,39 @@ const intents: Intent[] = [
   {
     name: 'create_confirm', cap: 'intake',
     test: (t) => has(t, 'use defaults') && has(t, 'generate', 'nda'),
-    reply: (t) => {
-      const m = t.match(/for\s+([a-z0-9 .&'-]{2,40})/i)
-      const cp = (m?.[1] || 'New Counterparty').replace(/\b\w/g, (c) => c.toUpperCase()).trim()
-      return {
-        text: `Generated. ✅\n\n- Created ticket and **${cp} Mutual NDA** (V1) from the CP Mutual NDA 2025 template.\n- Populated parties, entity, and address from CRM; ran key-field QA (no issues).\n- Routed to **Kirsten Sachs** (expertise match) and added the deal to the dashboard at **Draft**.\n\nIt's ready for your review whenever you are.`,
-        artifact: { kind: 'ticket_created', title: `${cp} — NDA created` },
-        effect: () => {
-          useStore.getState().createTicketFromAgent({
-            title: `${cp} — Mutual NDA`, counterparty_name: cp, type: 'single_agreement',
-            priority: 'normal', description: `NDA generated from CP Mutual NDA 2025 template for ${cp}.`,
-          })
-        },
-        actions: [
-          { label: 'Show the dashboard', prompt: 'show me the dashboard', variant: 'primary' },
-          { label: 'Create another', prompt: 'create a new NDA' },
-        ],
-      }
-    },
+    reply: (t) => ({
+      text: `Done. ✅ Generated **V1** from the ChargePoint Mutual NDA 2025 template, populated the parties and registered address, ran a key-field QA pass, and created the ticket — routed to the matched attorney. Opening it now; review whenever you're ready.`,
+      artifact: { kind: 'ticket_created', title: 'NDA created' },
+      effect: () => {
+        const st = useStore.getState()
+        let p = st.canvas.intakePayload
+        if (!p || !p.profile) {
+          const m = t.match(/for\s+(.+)$/i)
+          const query = (m?.[1] ?? '').replace(/\b(using|from|on)\b.*$/i, '').replace(/\btemplate\b/gi, '').trim()
+          if (query) { st.prepareIntake({ query, rawPrompt: t }); p = useStore.getState().canvas.intakePayload }
+        }
+        if (p?.profile) {
+          st.confirmCounterparty(p.profile)
+          const ticket = st.generateNdaFromIntake()
+          if (ticket) setTimeout(() => useStore.getState().openTicket(ticket.id), 60)
+        } else {
+          st.setToast('Tell me the counterparty first — e.g. "create an NDA for UnifyApps".')
+        }
+      },
+      actions: [
+        { label: 'Show the dashboard', prompt: 'show me the dashboard', variant: 'primary' },
+        { label: 'Create another', prompt: 'create a new NDA' },
+      ],
+    }),
+  },
+  {
+    name: 'contracts_list', cap: 'pipeline',
+    test: (t) => has(t, 'all contract', 'all the contract', 'list of contract', 'list of agreement', 'contracts list', 'every contract', 'all records', 'all deals', 'all my contract', 'show me all contract'),
+    reply: () => ({
+      text: `Here's the **full contracts list** — every agreement with its stage, whose court it's in and how long it's been waiting, the ChargePoint owner, and the agreement date. Open it below; you can search and filter by stage, turn, or counterparty.`,
+      artifact: { kind: 'contracts', title: 'All contracts' },
+      actions: [{ label: 'Show the dashboard', prompt: 'show me the dashboard' }],
+    }),
   },
   {
     name: 'playbook', cap: 'playbook_view',
@@ -479,6 +524,7 @@ export function openArtifact(a: { kind: ArtifactKind; refId?: string; title?: st
     case 'admin': s.setView('admin'); break
     case 'audit': s.setView('audit'); break
     case 'repository': s.setView('repository'); break
+    case 'contracts': s.openContracts('all', false); break
     case 'ticket_created': s.setView('dashboard'); break
     default: break
   }

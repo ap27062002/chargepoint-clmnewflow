@@ -1,4 +1,5 @@
-import type { Playbook, Deviation, Agreement, Ticket } from '@/types'
+import type { Playbook, Deviation, Agreement, Ticket, Version, AgreementStatus } from '@/types'
+import { slaStatus } from '@/lib/labels'
 
 export interface Rec { provision: string; rate: number; action: 'Revise' | 'Add' | 'Maintain'; detail: string }
 
@@ -62,4 +63,134 @@ export function dealSummaryData(agreement: Agreement, ticket: Ticket | undefined
   }
 
   return { concessions, improvements, deviationCount: deviations.length, lessons, cycleDays }
+}
+
+// ===========================================================================
+// LEADERSHIP DASHBOARD — metrics a contracts leader (CIO/GC) actually wants.
+// Pure functions over the (already RBAC-scoped) tickets/agreements/versions/deviations.
+// ===========================================================================
+export const AS_OF = '2026-06-27' // demo "today" — matches slaStatus default
+
+export function fmtMoney(n: number | undefined): string {
+  if (!n) return '—'
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`
+  if (n >= 1_000) return `$${Math.round(n / 1000)}K`
+  return `$${n}`
+}
+
+export type AgingBand = 'fresh' | 'aging' | 'stalled'
+export function agingBand(days: number): AgingBand {
+  return days <= 3 ? 'fresh' : days <= 7 ? 'aging' : 'stalled'
+}
+export function daysWaiting(a: Agreement, asOf = AS_OF): number {
+  const anchor = a.last_activity_date ?? a.created_date
+  return Math.max(0, Math.round((new Date(asOf).getTime() - new Date(anchor).getTime()) / 86400000))
+}
+
+export interface BallItem {
+  agreementId: string; title: string; counterparty: string
+  days: number; band: AgingBand; attorneyId: string | null; stage: AgreementStatus
+}
+export interface LeaderAttention {
+  kind: 'sla' | 'redline' | 'stalled' | 'unassigned'
+  label: string; detail: string; agreementId?: string; ticketId?: string
+}
+export interface CounterpartyRow {
+  counterparty: string; ticketId: string; openCount: number; stages: AgreementStatus[]
+  redLines: number; ball: 'cp_legal' | 'counterparty' | 'mixed'; oldestDays: number
+  attorneyId: string | null; value: number
+}
+export interface StageCell { stage: string; n: number }
+export interface LeadershipMetrics {
+  openAgreements: number
+  ballCp: BallItem[]
+  ballCounterparty: BallItem[]
+  slaWarning: number; slaBreach: number; slaAtRisk: number
+  avgCycleDays: number | null
+  avgRedlineRounds: number
+  openExposure: number
+  executedCount: number
+  stageFunnel: StageCell[]
+  byCounterparty: CounterpartyRow[]
+  attention: LeaderAttention[]
+}
+
+export const PIPELINE_STAGES = ['Red Line Analysis', 'Internal Review', 'Draft', 'Sent to Counterparty', 'Pending Execution', 'Executed']
+
+export function leadershipMetrics(
+  tickets: Ticket[], agreements: Agreement[], versions: Version[], deviations: Deviation[], asOf = AS_OF,
+): LeadershipMetrics {
+  const ticketById = new Map(tickets.map((t) => [t.id, t]))
+  const cpFor = (a: Agreement) => ticketById.get(a.ticket_id)?.counterparty_name ?? '—'
+  const attorneyFor = (a: Agreement) => ticketById.get(a.ticket_id)?.assigned_attorney_id ?? null
+
+  const open = agreements.filter((a) => a.status !== 'executed')
+  const toBall = (a: Agreement): BallItem => {
+    const d = daysWaiting(a, asOf)
+    return { agreementId: a.id, title: a.title, counterparty: cpFor(a), days: d, band: agingBand(d), attorneyId: attorneyFor(a), stage: a.status }
+  }
+  const ballCp = open.filter((a) => a.ball_in_court === 'cp_legal').map(toBall).sort((x, y) => y.days - x.days)
+  const ballCounterparty = open.filter((a) => a.ball_in_court === 'counterparty').map(toBall).sort((x, y) => y.days - x.days)
+
+  const activeTickets = tickets.filter((t) => t.status !== 'Executed' && t.status !== 'Resolved')
+  let slaWarning = 0, slaBreach = 0
+  for (const t of activeTickets) {
+    const s = slaStatus(t.created_date, t.sla_target_date, asOf)
+    if (s.state === 'breach') slaBreach++
+    else if (s.state === 'warning') slaWarning++
+  }
+
+  const executed = agreements.filter((a) => a.status === 'executed' && a.executed_date)
+  const cycles = executed
+    .map((a) => { const t = ticketById.get(a.ticket_id); return t ? Math.round((new Date(a.executed_date!).getTime() - new Date(t.created_date).getTime()) / 86400000) : null })
+    .filter((x): x is number => x !== null)
+  const avgCycleDays = cycles.length ? Math.round(cycles.reduce((s, x) => s + x, 0) / cycles.length) : null
+
+  const rounds = agreements.map((a) => Math.max(0, versions.filter((v) => v.agreement_id === a.id).length - 1))
+  const avgRedlineRounds = rounds.length ? Math.round((rounds.reduce((s, x) => s + x, 0) / rounds.length) * 10) / 10 : 0
+
+  const openExposure = open.reduce((s, a) => s + (a.contract_value ?? 0), 0)
+  const stageFunnel = PIPELINE_STAGES.map((stage) => ({ stage, n: tickets.filter((t) => t.status === stage).length }))
+
+  const groups = new Map<string, Agreement[]>()
+  for (const a of open) { const cp = cpFor(a); if (!groups.has(cp)) groups.set(cp, []); groups.get(cp)!.push(a) }
+  const byCounterparty: CounterpartyRow[] = [...groups.entries()].map(([cp, ags]) => {
+    const balls = new Set(ags.map((a) => a.ball_in_court))
+    const ball: 'cp_legal' | 'counterparty' | 'mixed' = balls.size > 1 ? 'mixed' : [...balls][0]
+    const t0 = ticketById.get(ags[0].ticket_id)
+    return {
+      counterparty: cp, ticketId: ags[0].ticket_id, openCount: ags.length, stages: ags.map((a) => a.status),
+      redLines: ags.reduce((s, a) => s + a.red_line_count, 0), ball,
+      oldestDays: Math.max(...ags.map((a) => daysWaiting(a, asOf))), attorneyId: t0?.assigned_attorney_id ?? null,
+      value: ags.reduce((s, a) => s + (a.contract_value ?? 0), 0),
+    }
+  }).sort((x, y) => y.oldestDays - x.oldestDays)
+
+  const attention: LeaderAttention[] = []
+  for (const t of activeTickets) {
+    if (slaStatus(t.created_date, t.sla_target_date, asOf).state === 'breach')
+      attention.push({ kind: 'sla', label: `SLA breached — ${t.counterparty_name}`, detail: `${t.title} is past its ${t.sla_target_date} target.`, ticketId: t.id })
+  }
+  const openIds = new Set(open.map((a) => a.id))
+  const redByAg = new Map<string, number>()
+  for (const d of deviations)
+    if (d.risk_category === 'red_line' && d.disposition_status === 'open' && openIds.has(d.agreement_id))
+      redByAg.set(d.agreement_id, (redByAg.get(d.agreement_id) ?? 0) + 1)
+  for (const [agId, n] of redByAg) {
+    const a = agreements.find((x) => x.id === agId)!
+    attention.push({ kind: 'redline', label: `${n} open red line${n > 1 ? 's' : ''} — ${cpFor(a)}`, detail: `${a.title} has unresolved red-line dispositions.`, agreementId: agId })
+  }
+  for (const b of [...ballCp, ...ballCounterparty])
+    if (b.band === 'stalled')
+      attention.push({ kind: 'stalled', label: `Stalled ${b.days}d — ${b.counterparty}`, detail: `${b.title} — no activity for ${b.days} days.`, agreementId: b.agreementId })
+  for (const t of activeTickets)
+    if (!t.assigned_attorney_id)
+      attention.push({ kind: 'unassigned', label: `Unassigned — ${t.counterparty_name}`, detail: `${t.title} has no ChargePoint owner.`, ticketId: t.id })
+
+  return {
+    openAgreements: open.length, ballCp, ballCounterparty,
+    slaWarning, slaBreach, slaAtRisk: slaWarning + slaBreach,
+    avgCycleDays, avgRedlineRounds, openExposure, executedCount: executed.length,
+    stageFunnel, byCounterparty, attention: attention.slice(0, 4),
+  }
 }

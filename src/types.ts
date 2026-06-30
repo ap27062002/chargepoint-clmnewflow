@@ -85,6 +85,10 @@ export interface Agreement {
   red_line_count: number
   created_date: string
   executed_date?: string | null
+  // Leadership-dashboard / contracts-list additive fields (all optional).
+  contract_value?: number       // USD TCV; 0/undefined for NDAs → renders "—"
+  last_activity_date?: string   // ISO; anchor for ball-in-court "days waiting"
+  turn_count?: number           // # of ball-in-court handoffs (Ironclad "No. turns")
 }
 
 // ----- Version --------------------------------------------------------------
@@ -265,6 +269,7 @@ export type ArtifactKind =
   | 'admin'
   | 'audit'
   | 'repository'
+  | 'contracts'
   | 'none'
 
 export interface ChatMessage {
@@ -341,6 +346,7 @@ export type ViewKey =
   | 'intake'
   | 'execution'
   | 'repository'
+  | 'contracts'
 
 export interface CanvasState {
   view: ViewKey
@@ -353,4 +359,50 @@ export interface CanvasState {
   dealSummaryId?: string
   intakeCp?: string
   executionAgreementId?: string
+  intakePayload?: IntakePayload          // Change 1 — agentic NDA intake
+  contractsFilter?: ContractsFilterPreset // Change 3 — contracts list preset
 }
+
+// ----- Intake (agentic NDA drafting, Change 1) ------------------------------
+export type InferredSource = 'logged_in' | 'crm' | 'web' | 'playbook' | 'inference' | 'manual'
+export interface InferredField {
+  value: string
+  source: InferredSource
+  confidence: 'high' | 'medium' | 'low'
+  note?: string
+  edited?: boolean
+}
+export interface CounterpartyProfile {
+  legal_name: string
+  website: string
+  hq_city: string
+  hq_country: string
+  address: string
+  industry: string
+  region: 'North America' | 'EMEA' | 'APAC' | 'India'
+  crm_account?: string
+  sf_opportunity?: string
+  logoSeed: string
+}
+export interface IntakePayload {
+  rawPrompt: string
+  counterpartyQuery: string
+  profile: CounterpartyProfile | null
+  candidates?: CounterpartyProfile[]
+  confirmed: boolean
+  requestorId: string
+  onBehalfOf?: string
+  template: InferredField
+  jurisdiction: InferredField
+  governingLaw: InferredField
+  clausePosture: InferredField
+  purpose: InferredField
+  sfOpportunity: InferredField
+  attorneyId: string
+  signerName: string
+  signerEmail: string
+}
+
+// ----- Contracts list (Change 3) -------------------------------------------
+export type ContractsFilterPreset =
+  | 'all' | 'active' | 'cp_turn' | 'counterparty_turn' | 'sla_risk' | 'executed'
