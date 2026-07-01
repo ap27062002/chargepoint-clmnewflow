@@ -219,23 +219,14 @@ export function PlaybookView() {
   const [filter, setFilter] = useState<ProvisionTier | 'all'>('all')
   const [applied, setApplied] = useState(false)
   const [publishOpen, setPublishOpen] = useState(false)
-  // Chat-driven restructure (Eric §8 — reformat/restructure the playbook UI via chat, like Claude).
-  const [layout, setLayout] = useState<'sections' | 'grouped'>('sections')
+  // R52/R57/R58/R60 — chat-driven restructure performs a REAL transform on the published playbook.
+  const restructurePlaybook = useStore((s) => s.restructurePlaybook)
   const [restructOpen, setRestructOpen] = useState(false)
   const [restructMsgs, setRestructMsgs] = useState<{ role: 'user' | 'agent'; text: string }[]>([])
   const [restructInput, setRestructInput] = useState('')
-  const applyRestructure = (instr: string) => {
-    const t = instr.toLowerCase().trim(); if (!t) return
-    let reply: string
-    if (/(group|categor|by type|by area)/.test(t)) { setLayout('grouped'); reply = 'Regrouped the playbook by cross-cutting category — related provisions now sit under category headers. The backend still uses the same positions to detect deviations, so nothing about redline analysis changes.' }
-    else if (/(flat|list|ungroup|by section|simple)/.test(t)) { setLayout('sections'); reply = 'Switched back to a flat section list.' }
-    else if (/(nest|indemnif|child|sub-|subsection)/.test(t)) { setLayout('sections'); reply = 'Indemnification renders as a parent with nested children (Scope, Exclusions, Limitations, Notice, Control of Defense). Expand it to see the nesting — that keeps a 15-20-item concept usable.' }
-    else reply = 'You can group by category, nest child concepts under a parent, or flatten to a list — just tell me how you want it to read, and I re-render it. (UI-from-chat prototype.)'
-    setRestructMsgs((m) => [...m, { role: 'user', text: instr }, { role: 'agent', text: reply }])
-    setRestructInput('')
-  }
 
   const canEdit = can(role, 'playbook_edit')
+  const canPresentation = can(role, 'playbook_presentation') // R54 — look & feel is admin-only
   const activeId = canvas.playbookId ?? 'pb_nda'
   const pb = playbooks.find((p) => p.id === activeId) ?? playbooks[0]
   const mode = canvas.playbookMode ?? 'inventory'
@@ -248,6 +239,14 @@ export function PlaybookView() {
     setApplied(true)
     auditPush({ event_type: 'playbook_updated', summary: `${pb.name} refinement recommendations applied.` })
     setToast('Refinements applied. Existing agreements keep their original version.')
+  }
+
+  const layout = pb.group_mode === 'category' ? 'grouped' : 'sections'
+  const applyRestructure = (instr: string) => {
+    if (!instr.trim()) return
+    const reply = restructurePlaybook(pb.id, instr.trim()) // real transform on the published playbook
+    setRestructMsgs((m) => [...m, { role: 'user', text: instr }, { role: 'agent', text: reply }])
+    setRestructInput('')
   }
 
   return (
@@ -270,7 +269,8 @@ export function PlaybookView() {
                 <Inbox size={13} /> Suggested {pendingCount > 0 && <span className="rounded-full bg-red-500 px-1.5 text-[10.5px] text-white">{pendingCount}</span>}
               </button>
               {canEdit && <button onClick={() => startDraft('New Playbook', pb.agreement_type, 'Create a playbook from a template + examples')} className={clsx('flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold', mode === 'create' ? 'bg-white text-slate-800' : 'bg-slate-800 text-slate-200 hover:bg-slate-700')}><Plus size={13} /> Create</button>}
-              <div className="relative">
+              {/* R54 — publishing look & feel for different purposes is administrator-only. */}
+              {canPresentation && <div className="relative">
                 <button onClick={() => setPublishOpen((v) => !v)} className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-2.5 py-1.5 text-[12px] font-semibold text-slate-200 hover:bg-slate-700"><Share2 size={13} /> Publish</button>
                 {publishOpen && (
                   <>
@@ -287,7 +287,7 @@ export function PlaybookView() {
                     </div>
                   </>
                 )}
-              </div>
+              </div>}
             </div>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-slate-400">
@@ -338,7 +338,7 @@ export function PlaybookView() {
               <Card className="mb-3 border-ai-200 bg-ai-50/30 p-3">
                 <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-ai-700"><Sparkles size={12} /> Restructure the layout in plain language</div>
                 <div className="mb-2 flex flex-wrap gap-1.5">
-                  {['Group by category', 'Nest indemnification children', 'Flatten to a list'].map((ex) => (
+                  {['Make Governing Law a fallback', 'Nest Marking, Return and Protection Obligations under Confidentiality Mechanics', 'Group by category', 'Flatten to a list'].map((ex) => (
                     <button key={ex} onClick={() => applyRestructure(ex)} className="rounded-full border border-ai-200 bg-white px-2.5 py-0.5 text-[11.5px] font-medium text-ai-700 hover:bg-ai-50">{ex}</button>
                   ))}
                 </div>

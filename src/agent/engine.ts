@@ -192,13 +192,21 @@ const intents: Intent[] = [
   },
   {
     name: 'playbook_restructure', cap: 'playbook_edit',
-    test: (t) => has(t, 'restructure the playbook', 'reorganize the playbook', 'reformat the playbook', 'nest the', 'nest indemnif'),
-    reply: () => ({
-      text: `You can restructure the playbook in natural language — group provisions, **nest child concepts under a parent** (e.g. Indemnification → scope / exclusions / limitations / notice / control-of-defense), or reformat for a different audience. The MSA playbook already shows nesting. The backend keeps using the same positions to detect deviations regardless of how it's rendered.`,
-      artifact: { kind: 'playbook', refId: 'pb_msa', title: 'MSA playbook (nested)' },
-      effect: () => useStore.getState().setPlaybook('pb_msa'),
-      actions: [{ label: 'Open the MSA playbook', prompt: 'show me the MSA playbook', variant: 'primary' }],
-    }),
+    test: (t) => has(t, 'restructure the playbook', 'reorganize the playbook', 'reformat the playbook', 'nest ', 'group by category', 'flatten the playbook', 'make .* a fallback', 're-tier', 'promote .* to a red')
+      && !has(t, 'draft'),
+    reply: (t) => {
+      // R52/R57/R58/R60 — perform the REAL transform on the currently-open published playbook.
+      const s = useStore.getState()
+      const pbId = s.canvas.playbookId ?? 'pb_nda'
+      const pbName = s.playbooks.find((p) => p.id === pbId)?.name ?? 'the playbook'
+      const msg = s.restructurePlaybook(pbId, t)
+      return {
+        text: `${msg}\n\n(Applied to **${pbName}** — the backend still uses the same positions to detect deviations regardless of how it's rendered.)`,
+        artifact: { kind: 'playbook', refId: pbId, title: pbName },
+        effect: () => useStore.getState().setPlaybook(pbId),
+        actions: [{ label: 'Open the playbook', prompt: 'show me the playbook', variant: 'primary' }],
+      }
+    },
   },
   {
     name: 'create_template_project', cap: 'templates',

@@ -21,6 +21,8 @@ import { GREETING, greetingFor } from '@/agent/greeting'
 import { seedDocuments, buildCleanCopy, buildRedlineDoc, summarizeRedline, cleanCopyId, type DocModel, type DocClause } from '@/data/documents'
 import { analyzePlaybook } from '@/lib/playbookAnalysis'
 import { deriveProvisions, comparativeAnalysis, folderAgreements } from '@/data/playbookDerive'
+import { applyPlaybookInstruction } from '@/lib/playbookOps'
+import { can } from '@/lib/access'
 import { executedCorpus } from '@/data/executed'
 import type { PlaybookSourceDefaults, SourceFolder } from '@/types'
 import { routeAttorney, type RoutingStrategy } from '@/lib/routing'
@@ -155,6 +157,7 @@ interface CLMState {
   advancePlaybookDraft: (draftId: string) => void
   publishPlaybookDraft: (draftId: string) => void
   refinePlaybookDraft: (draftId: string, instruction: string) => string // returns the agent's confirmation
+  restructurePlaybook: (playbookId: string, instruction: string) => string // R52/R57/R58/R60 — edit a PUBLISHED playbook by chat
   setDraftExampleRefs: (draftId: string, exampleRefs: string[]) => void  // R48 — folder picker toggles
   // R49 — default source folders per agreement type (persisted)
   playbookSourceDefaults: PlaybookSourceDefaults
@@ -827,6 +830,20 @@ export const useStore = create<CLMState>((set, get) => ({
       return { ...d, provisions }
     }) }))
     return reply
+  },
+
+  // R52/R57/R58/R60 — perform a REAL edit/restructure on a PUBLISHED playbook from chat.
+  restructurePlaybook: (playbookId, instruction) => {
+    const pb = get().playbooks.find((p) => p.id === playbookId)
+    if (!pb) return 'No playbook is open to restructure.'
+    const role = get().users.find((u) => u.id === get().currentUserId)!.role
+    const canPresentation = can(role, 'playbook_presentation')
+    const result = applyPlaybookInstruction(pb, instruction, canPresentation)
+    if (!result.ok || !result.playbook) return result.message
+    const bumped = { ...result.playbook, version: pb.version + 1 }
+    set((s) => ({ playbooks: s.playbooks.map((p) => (p.id === playbookId ? bumped : p)) }))
+    get().audit_push({ event_type: 'playbook_updated', summary: `${pb.name}: ${result.message.replace(/\*\*/g, '')} (v${bumped.version}).` })
+    return result.message
   },
 
   // ----- templates / projects (Eric §9) ---------------------------------------

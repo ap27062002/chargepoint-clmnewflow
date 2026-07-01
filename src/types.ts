@@ -225,6 +225,7 @@ export interface Playbook {
   generated_from: string
   provisions: Provision[]
   created_date: string
+  group_mode?: 'sections' | 'category' // R60 — persisted render layout (chat-driven restructuring)
 }
 
 // ----- Audit ----------------------------------------------------------------

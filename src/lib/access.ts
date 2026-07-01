@@ -15,6 +15,7 @@ export type Capability =
   | 'deal_summary'   // executed deal summaries / analytics
   | 'comment'        // comment on provisions
   | 'playbook_suggest' // suggest a clause be added to the playbook
+  | 'playbook_presentation' // R54 — control the look & feel (layout/nest/render/publish), ADMIN ONLY
   | 'templates'      // template "Projects" workspace
 
 export const ROLE_LABEL: Record<Role, string> = {
@@ -30,7 +31,7 @@ const ACCESS: Record<Role, Capability[]> = {
   attorney:       ['queue', 'notifications', 'intake', 'review', 'disposition', 'comment', 'pipeline', 'playbook_view', 'audit', 'deal_summary', 'templates', 'playbook_suggest'],
   contributor:    ['queue', 'notifications', 'review', 'comment'],
   playbook_owner: ['queue', 'notifications', 'playbook_view', 'playbook_edit', 'pipeline', 'audit', 'deal_summary', 'review', 'templates', 'playbook_suggest'],
-  administrator:  ['queue', 'notifications', 'admin', 'pipeline', 'audit', 'playbook_view', 'playbook_edit', 'deal_summary', 'templates'],
+  administrator:  ['queue', 'notifications', 'admin', 'pipeline', 'audit', 'playbook_view', 'playbook_edit', 'playbook_presentation', 'deal_summary', 'templates'],
 }
 
 export function can(role: Role, cap: Capability): boolean {
@@ -67,6 +68,7 @@ export const CAP_LABEL: Record<Capability, string> = {
   admin: 'the admin console', audit: 'the audit center', deal_summary: 'deal summaries & analytics',
   comment: 'commenting',
   playbook_suggest: 'suggesting playbook additions', templates: 'the template projects workspace',
+  playbook_presentation: 'the playbook look & feel (admin only)',
 }
 
 // One-line summary of what each role CAN do — shown when access is denied.
