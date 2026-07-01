@@ -1,7 +1,7 @@
 # Project state — resume here
 
 **App:** ChargePoint Legal CLM — agent-first, chat-driven CLM prototype (Unify build).
-**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-12` (git tag) · repo clean.
+**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-13` (git tag) · repo clean.
 **Stack:** React + Vite + TS + Tailwind + Zustand. In-memory store; simulated agent with live-Claude fallback (`/api/chat`, needs `ANTHROPIC_API_KEY` in Vercel to activate).
 
 ## Run / deploy / revert
