@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { clsx } from 'clsx'
-import { Sparkles, Wand2, Check, Globe, Building2, PenLine, ChevronDown, Link2 } from 'lucide-react'
+import { Sparkles, Wand2, Check, Globe, Building2, PenLine, ChevronDown, Link2, AlertTriangle, ShieldCheck, TrendingUp } from 'lucide-react'
 import { useStore } from '@/store'
 import { Card, Chip, Avatar, SectionLabel, Button, Empty } from '@/components/ui'
 import type { InferredField, IntakePayload } from '@/types'
@@ -66,6 +66,23 @@ export function IntakeFlow() {
   const setField = (key: InferredKey, value: string) => update(key, { ...payload[key], value, edited: true })
   const onGenerate = () => { const t = generate(); if (!t) return; setGenerated(true); setTimeout(() => openTicket(t.id), 600) }
   const reRun = (q: string, onBehalf?: string) => { if (q.trim()) prepareIntake({ query: q.trim(), rawPrompt: payload.rawPrompt, onBehalfOf: onBehalf }) }
+
+  // What this request implies downstream — the agent surfaces rework risk BEFORE drafting, so a
+  // business user understands the trade-offs of a non-standard ask (Eric: "get the full implications").
+  const posture = payload.clausePosture.value.toLowerCase()
+  const law = payload.governingLaw.value
+  const nonStandardLaw = !/california|delaware|new york/i.test(law)
+  const aggressive = /aggress|custom|non-standard|counterparty|favorable to them|broad|one-sided/.test(posture)
+  const redlineHint = /residual|perpetual|unlimited|no exp|indefinite/.test(posture)
+  const implications: { text: string; sev: 'info' | 'warn' }[] = [
+    { text: `Given the ${profile?.industry ?? 'counterparty'} profile and posture, expect ${aggressive ? '3–5' : '1–2'} likely redline round${aggressive ? 's' : ''} before signature.`, sev: aggressive ? 'warn' : 'info' },
+  ]
+  if (nonStandardLaw) implications.push({ text: `Governing law “${law}” sits outside ChargePoint's standard three (CA / DE / NY) — that usually adds a senior-counsel approval step and lengthens the cycle.`, sev: 'warn' })
+  if (redlineHint) implications.push({ text: `The posture hints at residuals / perpetual terms — those are playbook red lines and will bounce back in review.`, sev: 'warn' })
+  implications.push({ text: `Using the mutual template keeps you inside the playbook — the agent auto-classifies any counterparty deviations, so nothing slips through.`, sev: 'info' })
+  const warnCount = implications.filter((i) => i.sev === 'warn').length
+  const risk = warnCount >= 2 ? 'High' : warnCount === 1 ? 'Medium' : 'Low'
+  const riskMeta = { High: 'bg-red-50 text-red-700 ring-red-500/20', Medium: 'bg-amber-50 text-amber-700 ring-amber-500/20', Low: 'bg-brand-50 text-brand-700 ring-brand-500/20' }[risk]
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -161,7 +178,24 @@ export function IntakeFlow() {
           </div>
         </Card>
 
-        {/* 4 — The only manual fields */}
+        {/* 4 — Implications & rework risk (the agent educates before drafting) */}
+        <Card className="p-4">
+          <div className="mb-2 flex items-center gap-1.5">
+            <TrendingUp size={14} className="text-ai-600" /><SectionLabel className="text-ai-700">Implications & rework risk</SectionLabel>
+            <Chip className={clsx('ml-auto ring-1 ring-inset', riskMeta)}>{risk === 'Low' ? <ShieldCheck size={10} /> : <AlertTriangle size={10} />} {risk} rework risk</Chip>
+          </div>
+          <div className="space-y-1.5">
+            {implications.map((im, i) => (
+              <div key={i} className="flex items-start gap-2 text-[12.5px] leading-snug">
+                <span className={clsx('mt-1 h-1.5 w-1.5 shrink-0 rounded-full', im.sev === 'warn' ? 'bg-amber-400' : 'bg-brand-400')} />
+                <span className={im.sev === 'warn' ? 'text-slate-700' : 'text-slate-500'}>{im.text}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-[11.5px] text-slate-400">You can still proceed — this is guidance, not a blocker. Editing the posture above updates these implications live.</div>
+        </Card>
+
+        {/* 5 — The only manual fields */}
         <Card className="p-4">
           <div className="mb-1 flex items-center gap-1.5"><Building2 size={14} className="text-slate-400" /><SectionLabel>Signer — the only thing I need from you</SectionLabel></div>
           <div className="mt-1.5 grid grid-cols-2 gap-2">

@@ -6,7 +6,7 @@ import type {
   ApprovalRequest, ApprovalType, Envelope, EnvelopeMode, AgreementType,
   AgreementStatus, BallInCourt, ContractStatus,
   IntakePayload, InferredField, CounterpartyProfile, ContractsFilterPreset,
-  SummaryAudience, PlaybookSuggestion, SuggestionKind, PlaybookDraft, Provision,
+  SummaryAudience, PlaybookSuggestion, SuggestionKind, PlaybookDraft, Provision, ProvisionTier,
   TemplateProject, AgreementTemplate, TemplateIteration,
 } from '@/types'
 import { lookupCounterparty, inferDealContext } from '@/data/counterparties'
@@ -112,6 +112,12 @@ interface CLMState {
   confirmCounterparty: (profile: CounterpartyProfile) => void
   generateNdaFromIntake: () => Ticket | null
 
+  // runtime versioning (G4/G5) + free-text edit (G2)
+  receiveCounterpartyRedline: (agreementId: string) => void
+  finalizeVersion: (agreementId: string, versionId: string) => void
+  editClauseText: (versionId: string, clauseId: string, text: string) => void
+  ingestFolderAgreements: (playbookId: string) => void
+
   // documents (editable, tracked changes)
   acceptChange: (versionId: string, cid: string) => void
   rejectChange: (versionId: string, cid: string) => void
@@ -144,6 +150,7 @@ interface CLMState {
   startPlaybookDraft: (name: string, agreement_type: AgreementType, rawPrompt: string, sourceTemplateId?: string) => string
   advancePlaybookDraft: (draftId: string) => void
   publishPlaybookDraft: (draftId: string) => void
+  refinePlaybookDraft: (draftId: string, instruction: string) => string // returns the agent's confirmation
 
   // templates / projects
   createProject: (name: string, goal: string, agreement_type: AgreementType) => string
@@ -396,6 +403,58 @@ export const useStore = create<CLMState>((set, get) => ({
     get().audit_push({ event_type: 'version_created', summary: `ChargePoint ${kind === 'ins' ? 'insertion' : 'deletion'} added (${clauseId}).` })
   },
 
+  // ----- runtime versioning (Eric §3 — counterparty returns further redlines) ----
+  // Auto-detects the incoming draft, creates a new counterparty version + a CP working copy,
+  // and moves the agreement back to Redline Received (the negotiation loop).
+  receiveCounterpartyRedline: (agreementId) => {
+    const a = get().agreements.find((x) => x.id === agreementId); if (!a) return
+    const mine = get().versions.filter((v) => v.agreement_id === agreementId)
+    const nextNum = Math.max(...mine.map((v) => v.version_number)) + 1
+    const cpVer: Version = { id: `${agreementId}-${nextNum}`, agreement_id: agreementId, version_number: nextNum, label: `Draft ${nextNum}`, source: 'counterparty_response', document_ref: `${agreementId}_v${nextNum}_counterparty.docx`, created_by: 'ai_engine', created_date: now(), parent_version_id: a.current_version_id, change_summary: 'Counterparty returned further redlines — auto-ingested.' }
+    const workVer: Version = { id: `${agreementId}-${nextNum + 1}`, agreement_id: agreementId, version_number: nextNum + 1, label: `V${nextNum + 1}`, source: 'cp_redline', document_ref: `${agreementId}_v${nextNum + 1}_cp.docx`, created_by: 'ai_engine', created_date: now(), parent_version_id: cpVer.id, change_summary: 'ChargePoint working copy — auto-created for your comments on the new draft.' }
+    set((s) => {
+      // give the new working copy a real (cloned) tracked-changes doc so the review stays live
+      const src = s.documents[a.current_version_id] ?? s.documents['V-2201-3']
+      const documents = src ? { ...s.documents, [cpVer.id]: { ...src, versionId: cpVer.id, subtitle: `Counterparty Draft ${nextNum}` }, [workVer.id]: { ...src, versionId: workVer.id, subtitle: `ChargePoint working copy (V${nextNum + 1})` } } : s.documents
+      return {
+        versions: [...s.versions, cpVer, workVer],
+        documents,
+        agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, status: 'redline_received', ball_in_court: 'cp_legal', current_version_id: workVer.id, turn_count: (x.turn_count ?? 0) + 1, last_activity_date: '2026-06-27' } : x)),
+        tickets: s.tickets.map((t) => (t.id === a.ticket_id ? { ...t, status: 'Red Line Analysis' } : t)),
+        notifications: [{ id: nextId('N'), event: 'Counterparty redline received', body: `${a.title}: counterparty returned Draft ${nextNum}. Auto-created V${nextNum + 1} for your comments; ${a.red_line_count} items re-analyzed.`, channels: ['in_app', 'email'], ticket_id: a.ticket_id, created_date: now(), read: false, severity: 'warning' }, ...s.notifications],
+      }
+    })
+    get().audit_push({ event_type: 'version_created', agreement_id: agreementId, actor_id: 'ai_engine', summary: `Draft ${nextNum} ingested (counterparty); working copy V${nextNum + 1} auto-created.` })
+    get().audit_push({ event_type: 'status_changed', agreement_id: agreementId, ticket_id: a.ticket_id, summary: `Back to Redline Received — further counterparty redlines.` })
+    get().setToast(`Counterparty Draft ${nextNum} ingested → back to Redline Received (V${nextNum + 1} working copy).`)
+  },
+  // Finalize the version that goes to signature (Eric §3 — "finalize the version… latest by default").
+  finalizeVersion: (agreementId, versionId) => {
+    set((s) => ({ agreements: s.agreements.map((a) => (a.id === agreementId ? { ...a, current_version_id: versionId } : a)) }))
+    const v = get().versions.find((x) => x.id === versionId)
+    get().audit_push({ event_type: 'version_created', agreement_id: agreementId, summary: `${v?.label ?? versionId} finalized as the execution version.` })
+  },
+  // Free-text prose edit of a clause (Eric §2 — "edit the document"). Recorded as a CP tracked change.
+  editClauseText: (versionId, clauseId, text) => {
+    set((s) => {
+      const doc = s.documents[versionId]; if (!doc) return {}
+      const clauses = doc.clauses.map((c) => (c.id === clauseId ? { ...c, runs: [{ text, type: 'ins' as const, party: 'cp' as const, cid: nextId('ed') }] } : c))
+      return { documents: { ...s.documents, [versionId]: { ...doc, clauses } } }
+    })
+    get().audit_push({ event_type: 'version_created', summary: `Clause ${clauseId} edited (ChargePoint).` })
+  },
+  // Agent proactively ingests newly-added folder agreements → suggests playbook changes (Eric §8).
+  ingestFolderAgreements: (playbookId) => {
+    const sug: PlaybookSuggestion = { id: nextId('PS'), playbook_id: playbookId, provision_name: 'Governing Law — neutral NY fallback', kind: 'fallback', proposed_text: 'Fallback: neutral New York law with venue in New York (trending up in recent deals).', rationale: 'Agent ingested 2 newly-added agreements in the folder; both landed on neutral-NY governing law.', source_agreement_id: 'folder', suggested_by: 'ai_engine', created_date: now(), state: 'pending' }
+    const pbName = get().playbooks.find((p) => p.id === playbookId)?.name ?? 'the playbook'
+    set((s) => ({
+      playbookSuggestions: [sug, ...s.playbookSuggestions],
+      notifications: [{ id: nextId('N'), event: 'Agent playbook suggestion', body: `I ingested 2 newly-added agreements in the folder and suggest 1 change to ${pbName} — review in Playbook → Suggested additions.`, channels: ['in_app'], created_date: now(), read: false, severity: 'info' }, ...s.notifications],
+    }))
+    get().audit_push({ event_type: 'playbook_suggested', actor_id: 'ai_engine', summary: 'Agent suggested a playbook change from newly-ingested folder agreements.' })
+    get().setToast('Agent ingested 2 new agreements → 1 playbook suggestion added.')
+  },
+
   // ----- lifecycle: advance an agreement to its next stage (with gates) -----
   advanceAgreementStage: (agreementId) => {
     const a = get().agreements.find((x) => x.id === agreementId)
@@ -578,13 +637,17 @@ export const useStore = create<CLMState>((set, get) => ({
   generateRedline: () => {
     const sb = get().canvas.sendBack; if (!sb) return
     const docs = get().documents
-    const base = docs[sb.baseVersionId]
+    // Cumulative → diff against the ORIGINAL first draft (whole-negotiation delta);
+    // non-cumulative → diff against the counterparty version they last sent (this-round delta only).
+    const firstVer = get().versions.filter((v) => v.agreement_id === sb.agreementId).sort((a, b) => a.version_number - b.version_number).find((v) => docs[v.id])
+    const baseId = sb.cumulative ? (firstVer?.id ?? sb.baseVersionId) : sb.baseVersionId
+    const base = docs[baseId]
     const workingId = cleanCopyId(sb.agreementId) || get().agreements.find((a) => a.id === sb.agreementId)?.current_version_id || ''
     const working = docs[workingId]
     if (!base || !working) { get().setToast('No tracked-changes document available to redline for this agreement.'); return }
     const redline = buildRedlineDoc(base, buildCleanCopy(working), sb.cumulative)
     set((s) => (s.canvas.sendBack ? { canvas: { ...s.canvas, reviewMode: 'redline', sendBack: { ...s.canvas.sendBack, redline } } } : {}))
-    get().audit_push({ event_type: 'version_created', agreement_id: sb.agreementId, summary: `Generated clean copy + redline (${redline.changeCount} changes) vs ${sb.baseVersionId}.` })
+    get().audit_push({ event_type: 'version_created', agreement_id: sb.agreementId, summary: `Generated clean copy + redline (${redline.changeCount} changes) ${sb.cumulative ? `cumulatively vs ${baseId} (original)` : `vs ${baseId}`}.` })
   },
   summarizeChanges: (audience) => {
     const sb = get().canvas.sendBack
@@ -685,6 +748,33 @@ export const useStore = create<CLMState>((set, get) => ({
     }))
     get().audit_push({ event_type: 'playbook_updated', summary: `Published new playbook "${d.name}".` })
     get().setToast(`Published "${d.name}".`)
+  },
+  // Refine a draft playbook's CONTENT in natural language (Eric §8 — "build & refine by instruction").
+  refinePlaybookDraft: (draftId, instruction) => {
+    const t = instruction.toLowerCase().trim()
+    if (!t) return ''
+    let reply = 'I can add, remove, or re-tier provisions in plain language — e.g. "add a Publicity red line", "remove the Injunctive Relief provision", "make Governing Law a fallback".'
+    set((s) => ({ playbookDrafts: s.playbookDrafts.map((d) => {
+      if (d.id !== draftId) return d
+      let provisions = d.provisions
+      if (/\b(remove|delete|drop)\b/.test(t)) {
+        const target = t.replace(/.*\b(remove|delete|drop)\b (?:the )?/, '').replace(/ ?(provision|clause).*/, '').trim()
+        const before = provisions.length
+        provisions = provisions.filter((p) => !(target && p.provision_name.toLowerCase().includes(target)))
+        reply = before !== provisions.length ? `Removed the "${target}" provision. ${provisions.length} provisions remain.` : `I couldn't find a provision matching "${target}".`
+      } else if (/\b(add|include)\b/.test(t)) {
+        const m = t.match(/\b(?:add|include)\b (?:a |an |the )?(.+)/)
+        const raw = (m?.[1] ?? 'New Provision').replace(/\b(as )?(a |an )?(red[ -]?line|fallback|default|baseline|provision|clause)\b/g, '').replace(/\s+/g, ' ').trim()
+        const name = (raw || 'New Provision').replace(/\b\w/g, (c) => c.toUpperCase())
+        const kind: ProvisionTier = /red ?line/.test(t) ? 'red_line' : /fallback/.test(t) ? 'fallback' : 'baseline'
+        provisions = [...provisions, { id: 'pv_' + name.toLowerCase().replace(/[^a-z0-9]+/g, '_'), provision_name: name, standard_position: kind === 'baseline' ? `Standard ChargePoint position on ${name}.` : `See ${kind.replace('_', ' ')}.`, fallback_tiers: kind === 'fallback' ? [`Approved fallback for ${name}.`] : [], red_line: kind === 'red_line' ? `Do not accept adverse ${name} terms.` : 'Deviations flagged for attorney review.', rationale: 'Added via natural-language instruction.', tier: kind }]
+        reply = `Added a ${kind.replace('_', ' ')} provision "${name}". ${provisions.length} provisions now.`
+      } else if (/\b(re-?tier|make .* (a )?(fallback|red ?line|baseline)|change .* to)\b/.test(t)) {
+        reply = 'Adjusted — name the provision and the tier and I\'ll re-classify it.'
+      }
+      return { ...d, provisions }
+    }) }))
+    return reply
   },
 
   // ----- templates / projects (Eric §9) ---------------------------------------

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { clsx } from 'clsx'
-import { BookOpen, ChevronRight, ShieldCheck, TrendingUp, Plus, Sparkles, Check, X, Clock, Filter, Inbox, Wand2, Layers } from 'lucide-react'
+import { BookOpen, ChevronRight, ShieldCheck, TrendingUp, Plus, Sparkles, Check, X, Clock, Filter, Inbox, Wand2, Layers, Share2, FileDown } from 'lucide-react'
 import { useStore } from '@/store'
 import { Card, Chip, Avatar, Button, SectionLabel, Empty } from '@/components/ui'
 import { fmtDate } from '@/lib/labels'
@@ -110,18 +110,40 @@ function SuggestionsPanel({ playbookId }: { playbookId: string }) {
   )
 }
 
+const REFINE_EXAMPLES = ['Add a Publicity red line', 'Add an Insurance fallback provision', 'Remove the Injunctive Relief provision']
+
+// Publish the same playbook for different purposes/audiences (Eric §8).
+const PUBLISH_PURPOSES = [
+  { key: 'attorney', label: 'Negotiation cheat-sheet', sub: 'Attorney-facing — positions, fallbacks & red lines side by side' },
+  { key: 'external', label: 'Counterparty position summary', sub: 'External — our standard positions, red lines redacted' },
+  { key: 'training', label: 'New-hire training guide', sub: 'Plain-language walk-through with rationale for each position' },
+  { key: 'engine', label: 'Machine-readable (JSON)', sub: 'For the deviation engine / downstream systems' },
+]
+
 function PlaybookCreate() {
   const drafts = useStore((s) => s.playbookDrafts)
   const canvas = useStore((s) => s.canvas)
   const advance = useStore((s) => s.advancePlaybookDraft)
   const publish = useStore((s) => s.publishPlaybookDraft)
+  const refine = useStore((s) => s.refinePlaybookDraft)
   const draft = drafts.find((d) => d.id === canvas.playbookDraftId) ?? drafts[0]
+  const [refineInput, setRefineInput] = useState('')
+  const [lastReply, setLastReply] = useState<string | null>(null)
   if (!draft) return <Empty icon={<Wand2 size={28} className="text-ai-400" />} title="Create a playbook in plain language" sub="Ask the agent to “create a playbook”, or start from a template in Projects." />
+  const runRefine = (instr: string) => { if (!instr.trim()) return; const reply = refine(draft.id, instr.trim()); setLastReply(reply); setRefineInput('') }
   return (
     <div className="space-y-3">
       <Card className="p-4">
         <div className="flex items-center gap-2"><Wand2 size={16} className="text-ai-600" /><span className="text-[14px] font-bold text-slate-800">{draft.name}</span><Chip className="bg-ai-50 text-ai-700 ring-ai-500/20">{draft.stage}</Chip></div>
         <p className="mt-1 text-[12px] text-slate-500">“{draft.rawPrompt}”</p>
+        {/* Source path — the template + example agreements the agent learned from (Eric §8). */}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 rounded-lg bg-slate-50 px-3 py-2 text-[11.5px] text-slate-500">
+          <BookOpen size={12} className="text-slate-400" /> Source:
+          <Chip className="bg-white text-slate-600 ring-slate-200">Template: {draft.sourceTemplateId ? 'from Projects' : `${draft.agreement_type} standard`}</Chip>
+          <span className="text-slate-300">+</span>
+          <Chip className="bg-white text-slate-600 ring-slate-200">7 example agreements</Chip>
+          <span className="ml-1 text-slate-400">— the agent compares each example against the template to derive positions.</span>
+        </div>
         <div className="mt-3 space-y-2">
           {[['collecting', 'Point at the template + example agreements', draft.stage !== 'collecting'],
             ['analyzing', 'Analyze the examples vs the template', draft.stage === 'generated'],
@@ -139,10 +161,25 @@ function PlaybookCreate() {
         </div>
       </Card>
       {draft.stage === 'generated' && (
-        <Card className="overflow-hidden">
-          <div className="border-b border-slate-100 px-4 py-2.5"><SectionLabel>Generated provisions ({draft.provisions.length}) — review & refine by chat</SectionLabel></div>
-          {draft.provisions.map((p) => <ProvisionNode key={p.id} p={p} depth={0} />)}
-        </Card>
+        <>
+          <Card className="overflow-hidden">
+            <div className="border-b border-slate-100 px-4 py-2.5"><SectionLabel>Generated provisions ({draft.provisions.length}) — review & refine by chat</SectionLabel></div>
+            {draft.provisions.map((p) => <ProvisionNode key={p.id} p={p} depth={0} />)}
+          </Card>
+          {/* NL content refinement — add / remove / re-tier provisions in plain language (Eric §8). */}
+          <Card className="p-4">
+            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-ai-700"><Sparkles size={12} /> Refine the provisions in plain language</div>
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {REFINE_EXAMPLES.map((ex) => <button key={ex} onClick={() => runRefine(ex)} className="rounded-full border border-ai-200 bg-white px-2.5 py-0.5 text-[11.5px] font-medium text-ai-700 hover:bg-ai-50">{ex}</button>)}
+            </div>
+            {lastReply && <div className="mb-2 rounded-lg bg-ai-50/60 px-3 py-2 text-[12px] text-ai-800 ring-1 ring-ai-100"><Sparkles size={11} className="mr-1 inline" />{lastReply}</div>}
+            <div className="flex items-center gap-2 rounded-lg border border-slate-300 px-2.5 py-1.5 focus-within:border-ai-400">
+              <input value={refineInput} onChange={(e) => setRefineInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') runRefine(refineInput) }}
+                placeholder="e.g. “add a Data Breach Notification red line”, “remove the Residuals provision”" className="flex-1 bg-transparent text-[12.5px] outline-none placeholder:text-slate-400" />
+              <button onClick={() => runRefine(refineInput)} className="text-ai-600 hover:text-ai-700"><Sparkles size={15} /></button>
+            </div>
+          </Card>
+        </>
       )}
     </div>
   )
@@ -161,6 +198,7 @@ export function PlaybookView() {
   const startDraft = useStore((s) => s.startPlaybookDraft)
   const [filter, setFilter] = useState<ProvisionTier | 'all'>('all')
   const [applied, setApplied] = useState(false)
+  const [publishOpen, setPublishOpen] = useState(false)
   // Chat-driven restructure (Eric §8 — reformat/restructure the playbook UI via chat, like Claude).
   const [layout, setLayout] = useState<'sections' | 'grouped'>('sections')
   const [restructOpen, setRestructOpen] = useState(false)
@@ -212,6 +250,24 @@ export function PlaybookView() {
                 <Inbox size={13} /> Suggested {pendingCount > 0 && <span className="rounded-full bg-red-500 px-1.5 text-[10.5px] text-white">{pendingCount}</span>}
               </button>
               {canEdit && <button onClick={() => startDraft('New Playbook', pb.agreement_type, 'Create a playbook from a template + examples')} className={clsx('flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold', mode === 'create' ? 'bg-white text-slate-800' : 'bg-slate-800 text-slate-200 hover:bg-slate-700')}><Plus size={13} /> Create</button>}
+              <div className="relative">
+                <button onClick={() => setPublishOpen((v) => !v)} className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-2.5 py-1.5 text-[12px] font-semibold text-slate-200 hover:bg-slate-700"><Share2 size={13} /> Publish</button>
+                {publishOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setPublishOpen(false)} />
+                    <div className="absolute right-0 z-20 mt-1 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 text-left shadow-lg">
+                      <div className="px-2.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">Publish this playbook for…</div>
+                      {PUBLISH_PURPOSES.map((p) => (
+                        <button key={p.key} onClick={() => { setPublishOpen(false); auditPush({ event_type: 'playbook_updated', summary: `Published “${pb.name}” as ${p.label}.` }); setToast(`Published “${pb.name}” → ${p.label}. (Prototype — export staged.)`) }}
+                          className="flex w-full items-start gap-2 rounded-lg px-2.5 py-1.5 hover:bg-slate-50">
+                          <FileDown size={13} className="mt-0.5 shrink-0 text-slate-400" />
+                          <div><div className="text-[12.5px] font-semibold text-slate-700">{p.label}</div><div className="text-[11px] text-slate-400">{p.sub}</div></div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-slate-400">

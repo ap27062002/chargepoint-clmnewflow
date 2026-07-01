@@ -13,16 +13,19 @@ import { ReviewDirective } from '@/views/ReviewDirective'
 import { RedlineDocView } from '@/views/RedlineDocView'
 import { StageTracker } from '@/views/StageTracker'
 import { Chip, Avatar, Button, Card } from '@/components/ui'
+import { MentionComposer } from '@/components/MentionComposer'
 import { sourceLabel, fmtDateTime } from '@/lib/labels'
 import { diffVersions, clauseIdForDeviation } from '@/data/documents'
 import { userById } from '@/data/seed'
 
-function CommentsPanel({ ticketId, agreementId }: { ticketId: string; agreementId: string }) {
+function CommentsPanel({ ticketId, agreementId, provisionOptions = [] }: { ticketId: string; agreementId: string; provisionOptions?: string[] }) {
   const messages = useStore((s) => s.messages).filter((m) => m.thread_type === 'agreement_level' && m.agreement_id === agreementId)
   const postMessage = useStore((s) => s.postMessage)
   const resolveMention = useStore((s) => s.resolveMention)
+  const users = useStore((s) => s.users)
+  const currentUserId = useStore((s) => s.currentUserId)
   const canComment = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'comment'))
-  const [body, setBody] = useState('')
+  const taggable = users.filter((u) => u.id !== currentUserId)
   return (
     <div className="flex h-full flex-col">
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
@@ -53,12 +56,12 @@ function CommentsPanel({ ticketId, agreementId }: { ticketId: string; agreementI
       </div>
       <div className="border-t border-slate-100 p-2.5">
         {canComment ? (
-          <>
-            <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={2} placeholder="Comment on a provision… use @ to tag for sign-off" className="w-full resize-none rounded-lg border border-slate-300 px-2.5 py-1.5 text-[12.5px] outline-none focus:border-brand-400" />
-            <div className="flex justify-end">
-              <Button size="sm" onClick={() => { if (body.trim()) { postMessage({ thread_type: 'agreement_level', ticket_id: ticketId, agreement_id: agreementId, body: body.trim(), tag: 'question' }); setBody('') } }}>Post comment</Button>
-            </div>
-          </>
+          <MentionComposer
+            people={taggable}
+            provisionOptions={provisionOptions}
+            onPost={({ body, mentions, provision_reference }) =>
+              postMessage({ thread_type: 'agreement_level', ticket_id: ticketId, agreement_id: agreementId, body: body || `Requesting sign-off from ${mentions.length} contributor(s).`, tag: 'question', mentions, provision_reference })}
+          />
         ) : (
           <div className="rounded-lg bg-slate-50 px-3 py-2 text-center text-[11.5px] text-slate-400">Read-only access — you can view this thread but not comment.</div>
         )}
@@ -163,12 +166,13 @@ function SendBackPanel({ agreementId, workingVerId }: { agreementId: string; wor
           <div className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-800 text-[11px] text-white">2</span> Redline</div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[12px] text-slate-500">Compare against</span>
-            <select value={sendBack.baseVersionId} onChange={(e) => setBase(e.target.value)} className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[12.5px] font-semibold text-slate-700 outline-none">
+            <select value={sendBack.baseVersionId} onChange={(e) => setBase(e.target.value)} disabled={sendBack.cumulative} className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[12.5px] font-semibold text-slate-700 outline-none disabled:opacity-50">
               {baseOptions.map((v) => <option key={v.id} value={v.id}>{v.label} · {sourceLabel[v.source]}</option>)}
             </select>
-            <label className="flex items-center gap-1.5 text-[12px] text-slate-600"><input type="checkbox" checked={sendBack.cumulative} onChange={(e) => setCumulative(e.target.checked)} className="accent-brand-500" /><Layers size={12} /> Cumulative</label>
+            <label title="Cumulative diffs against the original first draft (every change since the start). Off = just this round's changes vs their last version." className="flex items-center gap-1.5 text-[12px] text-slate-600"><input type="checkbox" checked={sendBack.cumulative} onChange={(e) => setCumulative(e.target.checked)} className="accent-brand-500" /><Layers size={12} /> Cumulative</label>
             <Button size="sm" variant="ai" icon={<GitCompareArrows size={13} />} onClick={generate} className="ml-auto">Generate redline</Button>
           </div>
+          <div className="mt-1.5 text-[11px] text-slate-400">{sendBack.cumulative ? 'Cumulative — redlines the whole negotiation vs the original draft (all changes since day one).' : 'This round only — redlines your clean copy vs the version they last sent.'}</div>
           {sendBack.redline && (
             <button onClick={() => navigate({ reviewMode: 'redline' })} className="mt-2 flex w-full items-center justify-between rounded-lg bg-brand-50/60 px-3 py-2 text-left ring-1 ring-brand-100 hover:bg-brand-50">
               <span className="text-[12.5px] font-semibold text-brand-700"><GitCompareArrows size={12} className="mr-1 inline" /> Redline ready — {sendBack.redline.changeCount} changes</span>
@@ -306,7 +310,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
                 <div className="min-h-0 flex-1">
                   {rightTab === 'directive' ? <ReviewDirective agreementId={agreementId} onFocus={focusDeviation} />
                     : rightTab === 'ai' ? <AIPanel agreementTitle={agreement.title} seed={aiSeed} />
-                    : <CommentsPanel ticketId={agreement.ticket_id} agreementId={agreementId} />}
+                    : <CommentsPanel ticketId={agreement.ticket_id} agreementId={agreementId} provisionOptions={(activeDoc?.clauses ?? []).map((c) => c.heading).filter(Boolean)} />}
                 </div>
               </div>
             )}

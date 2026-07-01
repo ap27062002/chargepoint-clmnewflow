@@ -52,8 +52,12 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
   const canSuggest = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'playbook_suggest'))
   const currentUserId = useStore((s) => s.currentUserId)
   const messages = useStore((s) => s.messages)
+  const editClauseText = useStore((s) => s.editClauseText)
   const [edit, setEdit] = useState(false)
+  const [proseEdit, setProseEdit] = useState(false) // Eric §2: type directly into the document
   const [collabMode, setCollabMode] = useState<'live' | 'locked'>('live')
+  const fmt = (cmd: string) => document.execCommand(cmd)
+  const cleanText = (r: DocRun[]) => r.filter((x) => x.type !== 'del').map((x) => x.text).join('')
   // Contributors on this document (from the agreement's threads + tags) — mock presence.
   const collaborators = Array.from(new Set(
     messages.filter((m) => m.agreement_id === agreementId).flatMap((m) => [m.author_id, ...(m.mentions ?? [])]),
@@ -101,9 +105,14 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
   return (
     <div className="flex h-full flex-col bg-slate-100">
       <div className="flex shrink-0 items-center gap-1 border-b border-slate-200 bg-white px-3 py-1.5 text-slate-400">
-        {[Bold, Italic, Underline].map((Icon, i) => <button key={i} className="rounded p-1.5 hover:bg-slate-100"><Icon size={14} /></button>)}
+        {([['bold', Bold], ['italic', Italic], ['underline', Underline]] as const).map(([cmd, Icon]) => (
+          <button key={cmd} onMouseDown={(e) => { e.preventDefault(); fmt(cmd) }} disabled={!(edit && proseEdit)} title={cmd} className="rounded p-1.5 enabled:hover:bg-slate-100 disabled:opacity-40"><Icon size={14} /></button>
+        ))}
         <div className="mx-1 h-4 w-px bg-slate-200" />
-        {[List, Table, Pilcrow].map((Icon, i) => <button key={i} className="rounded p-1.5 hover:bg-slate-100"><Icon size={14} /></button>)}
+        {([['insertUnorderedList', List], ['insertParagraph', Pilcrow]] as const).map(([cmd, Icon]) => (
+          <button key={cmd} onMouseDown={(e) => { e.preventDefault(); fmt(cmd) }} disabled={!(edit && proseEdit)} className="rounded p-1.5 enabled:hover:bg-slate-100 disabled:opacity-40"><Icon size={14} /></button>
+        ))}
+        <button disabled className="rounded p-1.5 opacity-40"><Table size={14} /></button>
         <div className="mx-1 h-4 w-px bg-slate-200" />
         <div className="flex items-center gap-2 pl-1 text-[11px]">
           <span className="tc-ins-cp font-semibold">insertion</span>
@@ -111,9 +120,17 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
           <span className="text-slate-400">· counterparty blue · CP green</span>
         </div>
         {canEdit && (
-          <button onClick={() => setEdit((v) => !v)} className={clsx('ml-auto inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] font-semibold transition', edit ? 'bg-ai-600 text-white' : 'text-ai-700 hover:bg-ai-50')}>
-            {edit ? <><Pencil size={13} /> Editing — hover a change to accept/reject</> : <><Eye size={13} /> Reviewing — enable editing</>}
-          </button>
+          <div className="ml-auto flex items-center gap-1.5">
+            {edit && (
+              <div className="flex rounded-lg border border-slate-200 p-0.5">
+                <button onClick={() => setProseEdit(false)} className={clsx('rounded-md px-2 py-0.5 text-[11.5px] font-semibold', !proseEdit ? 'bg-ai-600 text-white' : 'text-slate-500')}>Track changes</button>
+                <button onClick={() => setProseEdit(true)} className={clsx('rounded-md px-2 py-0.5 text-[11.5px] font-semibold', proseEdit ? 'bg-ai-600 text-white' : 'text-slate-500')}>Edit directly</button>
+              </div>
+            )}
+            <button onClick={() => setEdit((v) => !v)} className={clsx('inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] font-semibold transition', edit ? 'bg-ai-600 text-white' : 'text-ai-700 hover:bg-ai-50')}>
+              {edit ? (proseEdit ? <><Pencil size={13} /> Editing text — type in the document</> : <><Pencil size={13} /> Reviewing changes — hover to accept/reject</>) : <><Eye size={13} /> Reviewing — enable editing</>}
+            </button>
+          </div>
         )}
       </div>
 
@@ -169,8 +186,17 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
                     {dev && <Chip className={clsx('ring-1 ring-inset', riskMeta[dev.risk_category].chip)}><span className={clsx('h-1.5 w-1.5 rounded-full', riskMeta[dev.risk_category].dot)} />{riskMeta[dev.risk_category].label}</Chip>}
                   </div>
                 )}
-                <p>{c.runs.map((r, i) => <ChangeRun key={i} run={r} versionId={versionId} editable={canEdit && edit} />)}</p>
-                {canEdit && edit && c.heading && <ClauseEditor versionId={versionId} clauseId={c.id} />}
+                {canEdit && edit && proseEdit ? (
+                  <p
+                    contentEditable
+                    suppressContentEditableWarning
+                    onBlur={(e) => { const t = e.currentTarget.textContent?.trim() ?? ''; if (t && t !== cleanText(c.runs).trim()) editClauseText(versionId, c.id, t) }}
+                    className="cursor-text rounded ring-1 ring-dashed ring-ai-200 focus:outline-none focus:ring-ai-400"
+                  >{cleanText(c.runs)}</p>
+                ) : (
+                  <p>{c.runs.map((r, i) => <ChangeRun key={i} run={r} versionId={versionId} editable={canEdit && edit} />)}</p>
+                )}
+                {canEdit && edit && !proseEdit && c.heading && <ClauseEditor versionId={versionId} clauseId={c.id} />}
               </div>
             )
           })}

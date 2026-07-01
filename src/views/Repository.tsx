@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { clsx } from 'clsx'
-import { ChevronRight, Folder, FolderOpen, FileText, History, FileSignature } from 'lucide-react'
+import { ChevronRight, Folder, FolderOpen, FileText, History, FileSignature, FolderPlus, Sparkles } from 'lucide-react'
 import { useStore } from '@/store'
-import { Chip } from '@/components/ui'
+import { Chip, Button } from '@/components/ui'
+import { can } from '@/lib/access'
 import { agreementStatusMeta, sourceLabel, fmtDate } from '@/lib/labels'
 import type { Agreement } from '@/types'
 
@@ -55,6 +56,10 @@ export function Repository() {
   const agreements = useStore((s) => s.agreements)
   const tickets = useStore((s) => s.tickets)
   const versionCount = useStore((s) => s.versions).length
+  const playbooks = useStore((s) => s.playbooks)
+  const ingestFolder = useStore((s) => s.ingestFolderAgreements)
+  const canSuggest = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'playbook_suggest'))
+  const ndaPlaybook = playbooks.find((p) => p.agreement_type === 'MNDA' || p.agreement_type === 'NDA') ?? playbooks[0]
 
   // Group agreements into counterparty "folders".
   const folders = Array.from(
@@ -68,12 +73,25 @@ export function Repository() {
 
   return (
     <div className="h-full overflow-y-auto p-6">
-      <div className="mb-4">
-        <h1 className="text-[17px] font-bold text-slate-800">Agreements repository</h1>
-        <p className="mt-0.5 text-[12.5px] text-slate-500">
-          {agreements.length} agreements across {folders.length} counterparties · {versionCount} total versions. Expand a counterparty, then an agreement, to see every version.
-        </p>
+      <div className="mb-4 flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[17px] font-bold text-slate-800">Agreements repository</h1>
+          <p className="mt-0.5 text-[12.5px] text-slate-500">
+            {agreements.length} agreements across {folders.length} counterparties · {versionCount} total versions. Expand a counterparty, then an agreement, to see every version.
+          </p>
+        </div>
+        {canSuggest && ndaPlaybook && (
+          <Button size="sm" variant="ai" icon={<FolderPlus size={13} />} onClick={() => ingestFolder(ndaPlaybook.id)}>
+            Add agreements to folder
+          </Button>
+        )}
       </div>
+      {canSuggest && ndaPlaybook && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-ai-200 bg-ai-50/40 px-4 py-2.5">
+          <Sparkles size={15} className="shrink-0 text-ai-600" />
+          <span className="text-[12.5px] text-slate-600">Drop new agreements into a folder and the agent learns from them — comparing against your <b>{ndaPlaybook.name}</b> and proposing updates in <b>Playbook → Suggested additions</b>.</span>
+        </div>
+      )}
       <div className="space-y-2.5">
         {folders.map(([cp, ags]) => <CounterpartyFolder key={cp} name={cp} agreements={ags} />)}
       </div>

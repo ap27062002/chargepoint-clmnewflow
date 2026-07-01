@@ -153,6 +153,26 @@ const intents: Intent[] = [
     }),
   },
   {
+    // Refine an in-progress playbook DRAFT in natural language (add/remove/re-tier provisions).
+    // Guarded to only fire while a generated draft is open, so it never shadows create/restructure.
+    name: 'refine_playbook_draft', cap: 'playbook_edit',
+    test: (t) => {
+      const s = useStore.getState()
+      const d = s.playbookDrafts.find((x) => x.id === s.canvas.playbookDraftId) ?? s.playbookDrafts[0]
+      return !!d && d.stage === 'generated' && (has(t, 'add a', 'add an', 'include a', 'remove the', 'delete the', 'drop the', 're-tier', 'retier') && has(t, 'provision', 'clause', 'red line', 'redline', 'fallback', 'baseline'))
+    },
+    reply: (t) => {
+      const s = useStore.getState()
+      const d = s.playbookDrafts.find((x) => x.id === s.canvas.playbookDraftId) ?? s.playbookDrafts[0]
+      const confirm = s.refinePlaybookDraft(d.id, t)
+      return {
+        text: `${confirm}\n\nReview the updated provisions in the builder, then **Publish** when it's ready.`,
+        artifact: { kind: 'playbook_create', title: 'Refine playbook draft' },
+        actions: [{ label: 'Publish playbook', prompt: 'publish the playbook', variant: 'primary' }],
+      }
+    },
+  },
+  {
     name: 'create_playbook', cap: 'playbook_edit',
     test: (t) => has(t, 'create a playbook', 'create my playbook', 'new playbook', 'build a playbook', 'create playbook', 'make a playbook'),
     reply: () => ({
@@ -196,10 +216,29 @@ const intents: Intent[] = [
     reply: () => {
       const s = useStore.getState()
       const uid = s.currentUserId
+      const role = s.users.find((u) => u.id === uid)!.role
+      const first = userById(uid)?.name.split(' ')[0]
       const mentions = s.messages.filter((m) => m.mentions?.includes(uid) && !m.resolved)
       const myTickets = s.tickets.filter((t) => t.assigned_attorney_id === uid && t.status !== 'Executed' && t.status !== 'Resolved')
+      const agTitle = (id?: string | null) => s.agreements.find((a) => a.id === id)?.title ?? 'a deal'
+      const onVishay = mentions.some((m) => m.agreement_id === 'AGR-2201')
+      const mentionLines = mentions.slice(0, 4).map((m) => `• **${agTitle(m.agreement_id)}**${m.provision_reference ? ` — ${m.provision_reference}` : ''}: “${m.body.length > 90 ? m.body.slice(0, 90) + '…' : m.body}” _(from ${userById(m.author_id)?.name.split(' ')[0]})_`).join('\n')
+
+      // Contributors (InfoSec, Finance, …) don't own tickets — their plate is the sign-off requests they're tagged on.
+      if (role === 'contributor' || (mentions.length > 0 && myTickets.length === 0)) {
+        return {
+          text: mentions.length
+            ? `Here's what's waiting on you, ${first}. You've been tagged for **sign-off on ${mentions.length} provision${mentions.length === 1 ? '' : 's'}**:\n\n${mentionLines}\n\nOpen the document to weigh in, then the attorney can mark your sign-off received.`
+            : `Nothing is waiting on your sign-off right now, ${first}. When an attorney @-tags you on a provision, it'll show up here with a one-click link to the clause.`,
+          artifact: { kind: 'tagged_items', title: 'My sign-off requests' },
+          actions: mentions.length
+            ? [onVishay ? { label: 'Open the flagged document', prompt: 'review the Vishay redline', variant: 'primary' as const } : { label: 'Show the dashboard', prompt: 'show me the dashboard', variant: 'primary' as const }]
+            : [{ label: 'Show the dashboard', prompt: 'show me the dashboard', variant: 'primary' as const }],
+        }
+      }
+      // Attorneys / owners: assigned tickets + the provisions others have asked them to weigh in on.
       return {
-        text: `Here's everything currently on your plate, ${userById(uid)?.name.split(' ')[0]}.\n\n**${mentions.length} provision sign-off${mentions.length === 1 ? '' : 's'} awaiting you** and **${myTickets.length} active ticket${myTickets.length === 1 ? '' : 's'}** assigned to you. The Airbus NDA (TKT-1039) is at **80% of its SLA window** — I'd take that first.`,
+        text: `Here's everything currently on your plate, ${first}.\n\n**${mentions.length} provision sign-off${mentions.length === 1 ? '' : 's'} awaiting you** and **${myTickets.length} active ticket${myTickets.length === 1 ? '' : 's'}** assigned to you.${mentions.length ? `\n\n${mentionLines}` : ''}\n\nThe Airbus NDA (TKT-1039) is at **80% of its SLA window** — I'd take that first.`,
         artifact: { kind: 'tagged_items', title: 'My queue & tagged items' },
         actions: [
           { label: 'Open Airbus (SLA risk)', prompt: 'open ticket TKT-1039', variant: 'primary' },
@@ -692,7 +731,8 @@ export function sendToAgent(text: string) {
   const { reply, matched } = route(text)
 
   if (matched) {
-    const delay = 600 + Math.min(text.length * 7, 600)
+    // Brief, snappy "thinking" beat (R12 — was 600–1200ms; the agent should feel fast at scale).
+    const delay = 220 + Math.min(text.length * 3, 260)
     setTimeout(() => pushAgent(reply), delay)
     return
   }

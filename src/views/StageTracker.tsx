@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { clsx } from 'clsx'
-import { Check, ChevronRight, ArrowRight, ShieldCheck, Lock } from 'lucide-react'
+import { Check, ChevronRight, ArrowRight, ShieldCheck, Lock, Undo2 } from 'lucide-react'
 import { useStore, AGREEMENT_LIFECYCLE } from '@/store'
 import { can } from '@/lib/access'
 import { Chip, Avatar } from '@/components/ui'
@@ -12,6 +12,7 @@ export function StageTracker({ agreementId }: { agreementId: string }) {
   const approvals = useStore((s) => s.approvals).filter((ap) => ap.agreement_id === agreementId)
   const advance = useStore((s) => s.advanceAgreementStage)
   const openSendBack = useStore((s) => s.openSendBack)
+  const receiveRedline = useStore((s) => s.receiveCounterpartyRedline)
   const decideApproval = useStore((s) => s.decideApproval)
   const uid = useStore((s) => s.currentUserId)
   const canAdvance = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'disposition'))
@@ -49,6 +50,13 @@ export function StageTracker({ agreementId }: { agreementId: string }) {
             )
           })}
         </div>
+        {/* Negotiation loop: the counterparty can return further redlines instead of accepting (Eric §3). */}
+        {agreement.status === 'negotiation' && canAdvance && (
+          <button onClick={() => receiveRedline(agreementId)} title="Simulate the counterparty returning the document with further changes — reopens Redline Received with a new version."
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-[12.5px] font-semibold text-amber-700 transition hover:bg-amber-100">
+            <Undo2 size={13} /> Counterparty sent further redlines
+          </button>
+        )}
         {agreement.status !== 'executed' && next && (
           canAdvance ? (
             <button onClick={() => (next === 'negotiation' ? openSendBack(agreementId) : advance(agreementId))}
