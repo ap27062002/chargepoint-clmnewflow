@@ -216,7 +216,8 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
   const [focusClause, setFocusClause] = useState<string | undefined>()
   const [selVer, setSelVer] = useState<string | undefined>(undefined)
 
-  const reviewVersion = versions.find((v) => v.source === 'counterparty_response') ?? versions[versions.length - 1]
+  // Eric §2: the attorney works on V3 (their working copy), not the counterparty's V2.
+  const reviewVersion = versions.find((v) => v.source === 'cp_redline' && documents[v.id]) ?? versions.find((v) => v.source === 'counterparty_response') ?? versions[versions.length - 1]
   const activeVerId = (selVer && versions.some((v) => v.id === selVer)) ? selVer : reviewVersion?.id
   const activeDoc = documents[activeVerId ?? '']
   const hasDoc = !!activeDoc

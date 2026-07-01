@@ -161,6 +161,21 @@ export function PlaybookView() {
   const startDraft = useStore((s) => s.startPlaybookDraft)
   const [filter, setFilter] = useState<ProvisionTier | 'all'>('all')
   const [applied, setApplied] = useState(false)
+  // Chat-driven restructure (Eric §8 — reformat/restructure the playbook UI via chat, like Claude).
+  const [layout, setLayout] = useState<'sections' | 'grouped'>('sections')
+  const [restructOpen, setRestructOpen] = useState(false)
+  const [restructMsgs, setRestructMsgs] = useState<{ role: 'user' | 'agent'; text: string }[]>([])
+  const [restructInput, setRestructInput] = useState('')
+  const applyRestructure = (instr: string) => {
+    const t = instr.toLowerCase().trim(); if (!t) return
+    let reply: string
+    if (/(group|categor|by type|by area)/.test(t)) { setLayout('grouped'); reply = 'Regrouped the playbook by cross-cutting category — related provisions now sit under category headers. The backend still uses the same positions to detect deviations, so nothing about redline analysis changes.' }
+    else if (/(flat|list|ungroup|by section|simple)/.test(t)) { setLayout('sections'); reply = 'Switched back to a flat section list.' }
+    else if (/(nest|indemnif|child|sub-|subsection)/.test(t)) { setLayout('sections'); reply = 'Indemnification renders as a parent with nested children (Scope, Exclusions, Limitations, Notice, Control of Defense). Expand it to see the nesting — that keeps a 15-20-item concept usable.' }
+    else reply = 'You can group by category, nest child concepts under a parent, or flatten to a list — just tell me how you want it to read, and I re-render it. (UI-from-chat prototype.)'
+    setRestructMsgs((m) => [...m, { role: 'user', text: instr }, { role: 'agent', text: reply }])
+    setRestructInput('')
+  }
 
   const canEdit = can(role, 'playbook_edit')
   const activeId = canvas.playbookId ?? 'pb_nda'
@@ -239,23 +254,56 @@ export function PlaybookView() {
                   </button>
                 )
               })}
-              {canEdit && <button onClick={() => sendRestructureHint(setToast)} className="ml-auto flex items-center gap-1 text-[11.5px] font-semibold text-ai-600 hover:underline"><Wand2 size={12} /> Restructure via chat</button>}
+              {canEdit && <button onClick={() => setRestructOpen((v) => !v)} className={clsx('ml-auto flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-semibold', restructOpen ? 'bg-ai-50 text-ai-700' : 'text-ai-600 hover:bg-ai-50')}><Wand2 size={12} /> Restructure via chat</button>}
             </div>
 
-            <Card className="overflow-hidden">
-              <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
-                <SectionLabel>Provisions ({shown.length}{filter !== 'all' ? ` of ${pb.provisions.length}` : ''})</SectionLabel>
-                <span className="text-[11px] text-slate-400">Existing agreements retain their original version</span>
+            {/* Chat-driven restructure — tell the agent how to render the playbook (Eric §8) */}
+            {restructOpen && canEdit && (
+              <Card className="mb-3 border-ai-200 bg-ai-50/30 p-3">
+                <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-ai-700"><Sparkles size={12} /> Restructure the layout in plain language</div>
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {['Group by category', 'Nest indemnification children', 'Flatten to a list'].map((ex) => (
+                    <button key={ex} onClick={() => applyRestructure(ex)} className="rounded-full border border-ai-200 bg-white px-2.5 py-0.5 text-[11.5px] font-medium text-ai-700 hover:bg-ai-50">{ex}</button>
+                  ))}
+                </div>
+                {restructMsgs.length > 0 && (
+                  <div className="mb-2 space-y-1.5">
+                    {restructMsgs.map((m, i) => (
+                      <div key={i} className={clsx('text-[12px]', m.role === 'user' ? 'text-right' : '')}>
+                        <span className={clsx('inline-block rounded-2xl px-3 py-1.5', m.role === 'user' ? 'bg-slate-800 text-white' : 'border border-slate-200 bg-white text-slate-700 shadow-card')}>{m.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 focus-within:border-ai-400">
+                  <input value={restructInput} onChange={(e) => setRestructInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') applyRestructure(restructInput) }}
+                    placeholder="e.g. group related provisions by category…" className="flex-1 text-[12.5px] outline-none placeholder:text-slate-400" />
+                  <button onClick={() => applyRestructure(restructInput)} className="text-ai-600 hover:text-ai-700"><Sparkles size={15} /></button>
+                </div>
+              </Card>
+            )}
+
+            {layout === 'grouped' ? (
+              <div className="space-y-3">
+                {Array.from(shown.reduce((map, p) => { const k = p.cross_cutting_category ?? 'other'; if (!map.has(k)) map.set(k, []); map.get(k)!.push(p); return map }, new Map<string, Provision[]>())).map(([cat, provs]) => (
+                  <Card key={cat} className="overflow-hidden">
+                    <div className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-[12px] font-bold text-slate-600">{ccLabel[cat] ?? 'Other'} · {provs.length}</div>
+                    {provs.map((p) => <ProvisionNode key={p.id} p={p} depth={0} />)}
+                  </Card>
+                ))}
               </div>
-              {shown.map((p) => <ProvisionNode key={p.id} p={p} depth={0} />)}
-              {shown.length === 0 && <div className="py-8 text-center text-[12px] text-slate-400">No provisions in this category.</div>}
-            </Card>
+            ) : (
+              <Card className="overflow-hidden">
+                <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
+                  <SectionLabel>Provisions ({shown.length}{filter !== 'all' ? ` of ${pb.provisions.length}` : ''})</SectionLabel>
+                  <span className="text-[11px] text-slate-400">Existing agreements retain their original version</span>
+                </div>
+                {shown.map((p) => <ProvisionNode key={p.id} p={p} depth={0} />)}
+                {shown.length === 0 && <div className="py-8 text-center text-[12px] text-slate-400">No provisions in this category.</div>}
+              </Card>
+            )}
           </>
         )}
     </div>
   )
-}
-
-function sendRestructureHint(setToast: (t: string) => void) {
-  setToast('Ask the agent to “restructure the playbook” — e.g. nest child concepts under a parent. UI-from-chat is in preview.')
 }

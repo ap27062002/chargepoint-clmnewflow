@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
-import { Bold, Italic, Underline, List, Table, Pilcrow, Check, X, Pencil, Eye, Plus, Sparkles, BookOpen } from 'lucide-react'
+import { Bold, Italic, Underline, List, Table, Pilcrow, Check, X, Pencil, Eye, Plus, Sparkles, BookOpen, Users, Lock } from 'lucide-react'
 import { useStore } from '@/store'
 import { sendToAgent } from '@/agent/engine'
 import { can } from '@/lib/access'
-import { Chip } from '@/components/ui'
+import { Chip, Avatar } from '@/components/ui'
 import { riskMeta } from '@/lib/labels'
+import { userById } from '@/data/seed'
 import type { DocRun } from '@/data/documents'
 
 function ChangeRun({ run, versionId, editable }: { run: DocRun; versionId: string; editable: boolean }) {
@@ -49,7 +50,14 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
   const devs = useStore((s) => s.deviations).filter((d) => d.agreement_id === agreementId)
   const canEdit = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'disposition'))
   const canSuggest = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'playbook_suggest'))
+  const currentUserId = useStore((s) => s.currentUserId)
+  const messages = useStore((s) => s.messages)
   const [edit, setEdit] = useState(false)
+  const [collabMode, setCollabMode] = useState<'live' | 'locked'>('live')
+  // Contributors on this document (from the agreement's threads + tags) — mock presence.
+  const collaborators = Array.from(new Set(
+    messages.filter((m) => m.agreement_id === agreementId).flatMap((m) => [m.author_id, ...(m.mentions ?? [])]),
+  )).filter((id) => id !== currentUserId).slice(0, 3)
   const containerRef = useRef<HTMLDivElement>(null)
   const [askBtn, setAskBtn] = useState<{ text: string; x: number; y: number } | null>(null)
 
@@ -107,6 +115,27 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
             {edit ? <><Pencil size={13} /> Editing — hover a change to accept/reject</> : <><Eye size={13} /> Reviewing — enable editing</>}
           </button>
         )}
+      </div>
+
+      {/* Multi-party collaboration presence + integrity mode (Eric §4) */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 bg-white px-3 py-1.5">
+        <div className="flex items-center -space-x-1.5">
+          <span title="You — editing" className="relative rounded-full ring-2 ring-brand-400"><Avatar userId={currentUserId} size={22} /></span>
+          {collaborators.map((id) => <span key={id} title={`${userById(id)?.name} — viewing`} className="rounded-full ring-2 ring-white"><Avatar userId={id} size={22} /></span>)}
+        </div>
+        <span className="text-[11px] text-slate-400">{collaborators.length ? `${collaborators.length + 1} on this document` : 'You are the only one here'}</span>
+        {collabMode === 'live' && collaborators[0] && (
+          <span className="flex items-center gap-1 text-[11px] font-medium text-amber-600"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" /> {userById(collaborators[0])?.name.split(' ')[0]} is viewing §1(f)</span>
+        )}
+        <div className="ml-auto flex rounded-lg border border-slate-200 p-0.5">
+          <button onClick={() => setCollabMode('live')} className={clsx('flex items-center gap-1 rounded-md px-2 py-0.5 text-[11.5px] font-semibold', collabMode === 'live' ? 'bg-brand-500 text-white' : 'text-slate-500')}><Users size={12} /> Live co-editing</button>
+          <button onClick={() => setCollabMode('locked')} className={clsx('flex items-center gap-1 rounded-md px-2 py-0.5 text-[11.5px] font-semibold', collabMode === 'locked' ? 'bg-slate-800 text-white' : 'text-slate-500')}><Lock size={12} /> Locked to me</button>
+        </div>
+      </div>
+      <div className={clsx('shrink-0 px-3 py-1 text-[11px]', collabMode === 'live' ? 'bg-brand-50/60 text-brand-700' : 'bg-amber-50 text-amber-700')}>
+        {collabMode === 'live'
+          ? 'Live co-editing (recommended) — everyone can view and comment; edits are per-paragraph locked so two people never overwrite the same clause. Integrity preserved, no one is shut out.'
+          : 'Locked to you — others have read-only access until you release the document. Guarantees integrity by allowing only one editor at a time.'}
       </div>
 
       <div ref={containerRef} onMouseUp={onSelect} onScroll={() => setAskBtn(null)} className="flex-1 overflow-y-auto py-6">

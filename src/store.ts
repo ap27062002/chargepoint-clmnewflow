@@ -612,7 +612,13 @@ export const useStore = create<CLMState>((set, get) => ({
       proposed_text: sug.proposed_text, rationale: sug.rationale ?? '', source_agreement_id: sug.source_agreement_id, source_section: sug.source_section,
       suggested_by: get().currentUserId, created_date: now(), state: 'pending',
     }
-    set((s) => ({ playbookSuggestions: [suggestion, ...s.playbookSuggestions] }))
+    const who = get().users.find((u) => u.id === get().currentUserId)?.name ?? 'An attorney'
+    const pbName = get().playbooks.find((p) => p.id === sug.playbook_id)?.name ?? 'the playbook'
+    set((s) => ({
+      playbookSuggestions: [suggestion, ...s.playbookSuggestions],
+      // Notify the playbook owner / administrator (Eric §7 — "notify an administrator").
+      notifications: [{ id: nextId('N'), event: 'Playbook suggestion', body: `${who} suggested a ${sug.kind.replace('_', ' ')} for ${pbName} — awaiting your approval in Playbook → Suggested additions.`, channels: ['in_app'], created_date: now(), read: false, severity: 'info' }, ...s.notifications],
+    }))
     get().audit_push({ event_type: 'playbook_suggested', summary: `Suggested "${sug.provision_name}" (${sug.kind}) for the playbook.` })
     get().setToast('Sent to the playbook owner for approval.')
   },

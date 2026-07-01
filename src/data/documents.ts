@@ -108,36 +108,13 @@ const vishayV1 = (): DocModel => ({
   ],
 })
 
-// ---- V3: ChargePoint response (CP-attributed counters applied) ---------------
-const insCpOurs = (text: string, cid: string): DocRun => ({ text, type: 'ins', party: 'cp', cid })
-const delCpOurs = (text: string, cid: string): DocRun => ({ text, type: 'del', party: 'cp', cid })
+// ---- V3: the ChargePoint WORKING COPY (Eric §2/§3 — the attorney reviews V3, not V2) ----
+// Auto-created on Draft 2 intake; carries the counterparty's tracked changes for the attorney to
+// accept/reject/edit, then becomes the basis for the send-back clean copy + redline.
 const vishayV3 = (): DocModel => ({
+  ...vishayDraft2(),
   versionId: 'V-2201-3',
-  title: TITLE,
-  subtitle: 'ChargePoint, Inc. and Vishay Intertechnology, Inc. — V3 (ChargePoint Response, 2026-06-25)',
-  clauses: [
-    { id: 'c1f', ref: '§1(f)', heading: '1(f). Residuals', deviationId: 'D-02', runs: [
-      delCpOurs('[Residuals clause struck in full — playbook red line]', 'r-1f'),
-    ] },
-    { id: 'c2', ref: '§2', heading: '2. Designation', deviationId: 'D-04', runs: [
-      n('Oral disclosures confirmed within 30 days. '),
-      delCpOurs('Proprietary Information', 'r-2del'), insCpOurs('Confidential Information', 'r-2ins'),
-      n(' shall be protected as set forth herein (defined-term consistency corrected).'),
-    ] },
-    { id: 'c6', ref: '§6', heading: '6. Affiliates', deviationId: 'D-05', runs: [
-      n('Each Party is responsible for breaches by its representatives'),
-      insCpOurs(' and by Affiliates that receive Confidential Information under this Agreement', 'r-6'),
-      n('.'),
-    ] },
-    { id: 'c8', ref: '§8', heading: '8. Term & Termination', deviationId: 'D-01', runs: [
-      n('Term '), insCpOurs('three (3) years', 'r-8t'), n('; confidentiality survival '),
-      delCpOurs('two (2) years', 'r-8s-del'), insCpOurs('three (3) years', 'r-8s-ins'),
-      n('; trade secrets indefinite (Fallback 1).'),
-    ] },
-    { id: 'c9', ref: '§9', heading: '9. Injunctive Relief', deviationId: 'D-03', runs: [
-      n('Mutual injunctive relief; bond '), insCpOurs('as the court deems appropriate', 'r-9'), n(' (Fallback 1).'),
-    ] },
-  ],
+  subtitle: 'ChargePoint working copy (V3) — accept / reject the counterparty\'s changes, edit, then send back',
 })
 
 // ---- V3 CLEAN: full clean working copy (all counters accepted → no tracked changes) ----
