@@ -75,7 +75,7 @@ export const ndaPlaybook: Playbook = {
     { id: 'pv9', provision_name: 'Residuals', cross_cutting_category: 'confidentiality', tier: 'red_line', counterparty_introduced: true,
       standard_position: 'No residuals clause. ChargePoint does not grant any right to use information "retained in unaided memory."',
       fallback_tiers: [], red_line: 'Any clause permitting use of residuals / information retained in the unaided memory of the recipient\'s personnel.',
-      rationale: 'Strict red line — guts trade-secret protection. Counterparties introduced it in 3 recent deals (Vishay, Subaru, Microchip); rejected in 100% of them. Promoted to a named red-line provision per the refinement loop. InfoSec concurrence required to ever vary.', negotiated_pct: 6 },
+      rationale: 'Strict red line — guts trade-secret protection. Introduced on the live Vishay deal (§1(f)); no executed ChargePoint agreement in the corpus contains it, so it has no accepted precedent. Promoted to a named red-line provision per the refinement loop. InfoSec concurrence required to ever vary.', negotiated_pct: 6 },
     { id: 'pv10', provision_name: 'Permitted Purpose & Scope of Use', cross_cutting_category: 'confidentiality', tier: 'deferred', deferred_to: 'Requesting business owner',
       standard_position: 'Scope the permitted purpose narrowly to the specific evaluation/transaction named by the deal team.',
       fallback_tiers: [], red_line: 'Open-ended "any business purpose" use, or purpose broad enough to cover competing products.',
@@ -378,7 +378,7 @@ export const notificationSeed: AppNotification[] = [
 export const playbookSuggestions: PlaybookSuggestion[] = [
   { id: 'PS-01', playbook_id: 'pb_nda', provision_name: 'Residuals', target_provision_id: 'pv9', kind: 'red_line',
     proposed_text: 'No residuals clause permitted in any form, including use of information retained in unaided memory.',
-    rationale: 'Counterparties keep reintroducing residuals (Vishay, Subaru). Make the red line explicit so the agent always flags it.',
+    rationale: 'Counterparties keep reintroducing residuals (Vishay — live). Make the red line explicit so the agent always flags it.',
     source_agreement_id: 'AGR-2201', source_section: '§1(f)', suggested_by: 'u_kirsten', created_date: '2026-06-26T08:40:00', state: 'pending' },
   { id: 'PS-02', playbook_id: 'pb_nda', provision_name: 'Term & Termination', target_provision_id: 'pv5', kind: 'fallback',
     proposed_text: 'Fallback: 3-year term with 3-year confidentiality survival (trade secrets indefinite).',

@@ -4,6 +4,7 @@ import { userById } from '@/data/seed'
 import { can, CAP_LABEL, ROLE_LABEL, ROLE_SCOPE, startersFor, type Capability } from '@/lib/access'
 import { canSeeTicket } from '@/lib/scope'
 import { lookupCounterparty, inferDealContext } from '@/data/counterparties'
+import { precedentAnswer, precedentDigest, searchPrecedent } from '@/lib/precedent'
 export { GREETING } from '@/agent/greeting'
 
 let _c = 0
@@ -258,8 +259,13 @@ const intents: Intent[] = [
       const red = devs.filter((d) => d.risk_category === 'red_line').length
       const neg = devs.filter((d) => d.risk_category === 'negotiate').length
       const acc = devs.filter((d) => d.risk_category === 'accept').length
+      const qa = devs.length - red - neg - acc
+      // Lead issue is DERIVED from the computed set (highest-risk open item), not hardcoded.
+      const rank: Record<string, number> = { red_line: 0, negotiate: 1, missing: 2, enhancement: 3, new: 4, accept: 5 }
+      const top = [...devs].sort((a, b) => (rank[a.risk_category] ?? 9) - (rank[b.risk_category] ?? 9))[0]
+      const lead = top ? `The one that matters most: **${top.provision_name} (${top.section_reference})** — ${top.recommended_response}` : 'No deviations detected.'
       return {
-        text: `I analyzed **Vishay Intertechnology's Draft 2 redline** against the NDA playbook. **${devs.length} deviations** — ${red} red line, ${neg} negotiate, ${acc} accept, and a couple of QA flags.\n\nThe one that matters most: counterparty added a **Residuals clause (§1(f))** — that's an explicit playbook **red line**, and InfoSec agrees it has to come out. Term was stretched to 3 years and CI survival cut to 2 — both land on approved fallbacks.\n\n${open} are still open. **Open the Issues View** (below, sorted by risk) to step through them — Apply / Skip / Reject each, or I can apply all recommended dispositions.`,
+        text: `I diffed **Vishay's Draft 2** against the prior version, mapped each change to the NDA playbook, and classified it. That analysis produced **${devs.length} issues** — ${red} red line, ${neg} negotiate, ${acc} accept${qa > 0 ? `, ${qa} QA flag${qa === 1 ? '' : 's'}` : ''}.\n\n${lead}\n\n${open} are still open. **Open the Issues View** (below, sorted by risk) to step through them — Apply / Skip / Reject each, or I can apply all recommended dispositions.`,
         artifact: { kind: 'redline_review', refId: 'AGR-2201', title: 'Open the Issues View — Vishay redline' },
         actions: [
           { label: 'Apply all recommended', prompt: 'apply all recommended dispositions to Vishay', variant: 'primary' },
@@ -272,13 +278,30 @@ const intents: Intent[] = [
   {
     name: 'residuals_explain', cap: 'review',
     test: (t) => has(t, 'residual') && has(t, 'why', 'red line', 'explain', 'exposure', 'guidance'),
-    reply: () => ({
-      text: `**Residuals — playbook red line (do not accept).**\n\nA residuals clause lets the other side freely use anything their people "retain in unaided memory" — ideas, know-how, techniques — for any purpose. In practice it **guts trade-secret protection**: an engineer who saw our battery-evaluation data could reuse it and argue it was just "in their memory."\n\n- **Playbook position:** §4 exclusions are the five standard ones only. Residuals is listed as a strict red line.\n- **Precedent:** rejected in every deal in the sample set where it was introduced (Subaru, Microchip).\n- **InfoSec (Priya Anand):** has separately flagged it as a hard no on this deal.\n\n**Recommendation:** reject §1(f) in full in our response. I've marked it accordingly in the Issues View.`,
+    reply: () => {
+      // Precedent line is COMPUTED from the real corpus (R44) — no fabricated deals.
+      const prec = searchPrecedent('residuals')
+      const precLine = prec.length
+        ? prec.map((p) => `${p.counterparty} (${p.section}, ${p.disposition})`).join('; ')
+        : 'no executed ChargePoint agreement contains a residuals clause — there is no accepted precedent for it (Vishay §1(f) is the only introduction, and it is live).'
+      return {
+      text: `**Residuals — playbook red line (do not accept).**\n\nA residuals clause lets the other side freely use anything their people "retain in unaided memory" — ideas, know-how, techniques — for any purpose. In practice it **guts trade-secret protection**: an engineer who saw our battery-evaluation data could reuse it and argue it was just "in their memory."\n\n- **Playbook position:** §4 exclusions are the five standard ones only. Residuals is listed as a strict red line.\n- **Precedent:** ${precLine}\n- **InfoSec (Priya Anand):** has separately flagged it as a hard no on this deal.\n\n**Recommendation:** reject §1(f) in full in our response. I've marked it accordingly in the Issues View.`,
       artifact: { kind: 'redline_review', refId: 'AGR-2201', title: 'Vishay NDA — Residuals (§1(f))' },
       actions: [
         { label: 'Reject §1(f) residuals', prompt: 'reject the residuals deviation', variant: 'primary' },
         { label: 'Show the playbook clause', prompt: 'show me the NDA playbook' },
       ],
+      }
+    },
+  },
+  {
+    // R44 — chat against executed precedent. Answer is COMPUTED from the real corpus (no fabrication).
+    name: 'precedent_lookup', cap: 'review',
+    test: (t) => has(t, 'precedent', 'have we done', 'has this been done', 'what did we do on', 'prior deal', 'previously executed', 'on the mondelez', 'on the clever', 'accepted before', 'ever accepted', 'ever rejected', "what's our history"),
+    reply: (t) => ({
+      text: precedentAnswer(t) + `\n\n_Grounded in ChargePoint's executed-agreement corpus. Open the contracts list to verify any citation._`,
+      artifact: { kind: 'contracts', title: 'Executed precedent' },
+      actions: [{ label: 'Open executed contracts', prompt: 'show me all contracts', variant: 'primary' }],
     }),
   },
   {
@@ -655,6 +678,8 @@ function buildContext(): string {
   lines.push(`Playbook "${pb.name}" provisions: ${pb.provisions.map((p) => `${p.provision_name} (negotiated ${p.negotiated_pct ?? 0}%, ${p.fallback_tiers.length} fallback(s); red line: ${p.red_line})`).join('; ')}.`)
   lines.push(`Vishay deviations: ${devs.map((d) => `${d.provision_name} ${d.section_reference} [${d.risk_category}] — template: ${d.template_position} | counterparty: ${d.counterparty_position} | recommended: ${d.recommended_response} (disposition: ${d.disposition_status})`).join(' || ')}.`)
   lines.push(`Other deals: Airbus NDA (in negotiation, SLA risk), Northwind CaaS (MSA/DPA/SOW, no playbook), Mondelez & Clever Devices (executed).`)
+  // R44 — carry the executed-precedent corpus so the assistant reasons over real prior deals (never fabricated).
+  lines.push(`Executed precedent corpus:\n${precedentDigest()}`)
   return lines.join('\n')
 }
 

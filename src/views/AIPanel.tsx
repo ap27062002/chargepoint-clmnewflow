@@ -3,6 +3,7 @@ import { Sparkles, Send, BookOpen, GitCompareArrows, FileEdit } from 'lucide-rea
 import { Markdown } from '@/components/Markdown'
 import { AiTag } from '@/components/ui'
 import { sendToAgent } from '@/agent/engine'
+import { precedentAnswer } from '@/lib/precedent'
 
 interface Msg { role: 'user' | 'ai'; text: string }
 
@@ -10,14 +11,16 @@ interface Msg { role: 'user' | 'ai'; text: string }
 const CAPS = [
   { icon: <BookOpen size={13} />, label: 'Playbook guidance', prompt: 'What does the playbook say about this clause?' },
   { icon: <FileEdit size={13} />, label: 'Suggest revisions favorable to us', prompt: 'Suggest revisions favorable to ChargePoint for this clause' },
-  { icon: <GitCompareArrows size={13} />, label: 'Previous deal comparison', prompt: 'How did we handle this with Subaru?' },
+  { icon: <GitCompareArrows size={13} />, label: 'Precedent — prior executed deals', prompt: 'What is our precedent on residuals and indemnity?' },
 ]
+
+// Precedent questions route to the REAL executed-contract corpus (R44) — no fabricated deals.
+const isPrecedentQ = (t: string) => /precedent|previous deal|prior deal|have we done|how did we handle|on the mondelez|on the clever|executed|history/.test(t)
 
 const ANSWERS: { match: (t: string) => boolean; text: string }[] = [
   { match: (t) => t.includes('favorable') || t.includes('suggest revision'), text: `**Suggested revisions favorable to ChargePoint.** For this provision, tighten to our standard position, cap our exposure, and keep obligations mutual. If it's a term/survival clause → 3yr/3yr with trade secrets indefinite; if liability → mutual cap at 12 months' fees with consequentials waived; if indemnity → scope to third-party IP only with our standard exclusions. Want me to draft the exact language?` },
-  { match: (t) => t.includes('residual'), text: `**Playbook — Residuals (red line).** The NDA playbook lists residuals as a strict red line under §4 Exclusions: *"Any clause permitting use of information retained in unaided memory."* It erodes trade-secret protection and was rejected in 100% of sampled deals (Subaru, Microchip). Recommend striking §1(f) entirely.` },
+  { match: (t) => t.includes('residual'), text: `**Playbook — Residuals (red line).** The NDA playbook lists residuals as a strict red line under §4 Exclusions: *"Any clause permitting use of information retained in unaided memory."* It erodes trade-secret protection. No executed ChargePoint agreement in the corpus contains a residuals clause, so there is no accepted precedent for it — Vishay §1(f) is the only (live) introduction. Recommend striking §1(f) entirely.` },
   { match: (t) => t.includes('injunctive') || t.includes('alternative language'), text: `**Alternative language — §9 Injunctive Relief (Fallback 1):**\n\n> "Each Party acknowledges that a breach may cause irreparable harm and that the non-breaching Party shall be entitled to seek injunctive relief, **without limiting other remedies and as the court deems appropriate with respect to any bond**."\n\nThis keeps relief mutual and avoids a mandatory bond on ChargePoint while giving the court discretion — within our approved fallback range.` },
-  { match: (t) => t.includes('subaru') || t.includes('previous') || t.includes('compare'), text: `**Previous deal — Subaru MNDA (executed Feb 2026).** Subaru also introduced residuals and a 3-year term. Outcome: residuals **rejected**; term settled at **3yr / 3yr CI survival** (our Fallback 1). Same counter we're recommending here — Subaru accepted within one round.` },
   { match: (t) => t.includes('term') || t.includes('§8') || t.includes('revise'), text: `**§8 revised to Fallback 1:** Term **3 years**; confidentiality survival **3 years** from disclosure; trade secrets protected **indefinitely**. This accepts their 3-year term but restores CI survival from their proposed 2 years to our approved 3, and re-affirms the indefinite trade-secret carve-out.` },
   { match: (t) => t.includes('risk'), text: `**Top risks in the Vishay redline:**\n1. **Residuals (§1(f))** — red line; guts trade-secret protection.\n2. **Affiliate liability (§6)** — uncapped exposure for Affiliate breaches.\n3. **CI survival cut to 2yr (§8)** — below our 3yr floor.\n4. **Undefined "Restricted Information" (§14)** — unenforceable/ambiguous.\n\nItems 1 and 2 are the ones I'd hold firm on.` },
 ]
@@ -30,8 +33,12 @@ export function AIPanel({ agreementTitle, seed }: { agreementTitle: string; seed
 
   const ask = (text: string) => {
     if (!text.trim()) return
-    const a = ANSWERS.find((x) => x.match(text.toLowerCase()))
-    setMsgs((m) => [...m, { role: 'user', text }, { role: 'ai', text: a?.text ?? `**Clause analysis.** Checked against the NDA playbook, the identified deviations, and our prior deals — I don't see a red-line trigger in this text. Make sure the defined terms are used consistently ("Confidential Information", not "Proprietary") and that every obligation is **mutual**. Want me to compare it to the matching playbook provision or draft alternative language?` }])
+    const lc = text.toLowerCase()
+    // Precedent questions are answered from the real executed-contract corpus (R44).
+    const answer = isPrecedentQ(lc)
+      ? precedentAnswer(text)
+      : (ANSWERS.find((x) => x.match(lc))?.text ?? `**Clause analysis.** Checked against the NDA playbook, the identified deviations, and our prior deals — I don't see a red-line trigger in this text. Make sure the defined terms are used consistently ("Confidential Information", not "Proprietary") and that every obligation is **mutual**. Want me to compare it to the matching playbook provision or draft alternative language?`)
+    setMsgs((m) => [...m, { role: 'user', text }, { role: 'ai', text: answer }])
     setInput('')
   }
 

@@ -1,4 +1,4 @@
-import type { Agreement, Ticket, Envelope } from '@/types'
+import type { Agreement, Ticket, Envelope, RiskCategory, DispositionStatus } from '@/types'
 
 // ---- The signed / executed document content (final negotiated clean copy) ----
 export interface ExecutedClause { ref: string; heading: string; text: string }
@@ -54,6 +54,17 @@ const EXECUTED: Record<string, ExecutedDoc> = {
 export function executedDoc(agreementId: string): ExecutedDoc | null {
   return EXECUTED[agreementId] ?? null
 }
+
+// R44 — real precedent corpus accessor: every executed agreement + its clause bodies.
+// Consumed by lib/precedent.ts to ground the AI assistant in actual precedent (no fabrication).
+export interface ExecutedRecord { agreementId: string; counterparty: string; effectiveDate: string; clauses: ExecutedClause[] }
+export function precedentClauses(): ExecutedRecord[] {
+  return Object.entries(EXECUTED).map(([agreementId, doc]) => ({
+    agreementId, counterparty: doc.parties.counterparty, effectiveDate: doc.effectiveDate, clauses: doc.clauses,
+  }))
+}
+// re-export for consumers that want to weigh precedent outcomes against a live deviation's category
+export type { RiskCategory, DispositionStatus }
 
 // ---- DocuSign-style completion certificate / execution details ---------------
 export interface SignerRecord { name: string; org: string; email: string; signedAt: string; ip: string }

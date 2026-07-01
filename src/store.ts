@@ -13,12 +13,13 @@ import { lookupCounterparty, inferDealContext } from '@/data/counterparties'
 import {
   users, tickets as seedTickets, agreements as seedAgreements,
   versions as seedVersions, deviations as seedDeviations, messages as seedMessages,
-  playbooks as seedPlaybooks, auditSeed, notificationSeed, CURRENT_USER_ID,
+  playbooks as seedPlaybooks, auditSeed, notificationSeed, CURRENT_USER_ID, ndaPlaybook,
   playbookSuggestions as seedSuggestions, templateProjects as seedProjects,
   agreementTemplates as seedTemplates, defaultProjectSources, buildSectionsFor, GENERATED_MSA_PROVISIONS, GENERATED_NDA_PROVISIONS,
 } from '@/data/seed'
 import { GREETING, greetingFor } from '@/agent/greeting'
-import { seedDocuments, buildCleanCopy, buildRedlineDoc, summarizeRedline, cleanCopyId, type DocModel } from '@/data/documents'
+import { seedDocuments, buildCleanCopy, buildRedlineDoc, summarizeRedline, cleanCopyId, type DocModel, type DocClause } from '@/data/documents'
+import { analyzePlaybook } from '@/lib/playbookAnalysis'
 import { routeAttorney, type RoutingStrategy } from '@/lib/routing'
 import { slaStatus } from '@/lib/labels'
 
@@ -165,13 +166,25 @@ interface CLMState {
   setAgentThinking: (v: boolean) => void
 }
 
+// R43 — the Vishay issues list is COMPUTED by a real playbook analysis of V1 → V2 (not hand-seeded).
+// Every row's counterparty_position is the actual §-clause text; editing a clause changes the issue.
+const _initDocs = seedDocuments()
+const _computedVishay = analyzePlaybook(_initDocs['V-2201-1'], _initDocs['V-2201-2'], ndaPlaybook, 'AGR-2201', 'V-2201-2')
+const initialDeviations: Deviation[] = [
+  ..._computedVishay,
+  // keep any curated Vishay issue the analyzer didn't reproduce (e.g. the untagged §2 oral-disclosure accept)
+  ...seedDeviations.filter((d) => d.agreement_id === 'AGR-2201' && !_computedVishay.some((c) => c.id === d.id)),
+  // other agreements (executed Mondelez, live Northwind) keep their curated deviations
+  ...seedDeviations.filter((d) => d.agreement_id !== 'AGR-2201'),
+]
+
 export const useStore = create<CLMState>((set, get) => ({
   users,
   currentUserId: CURRENT_USER_ID,
   tickets: seedTickets,
   agreements: seedAgreements,
   versions: seedVersions,
-  deviations: seedDeviations,
+  deviations: initialDeviations,
   messages: seedMessages,
   playbooks: seedPlaybooks,
   audit: buildAudit(),
@@ -412,21 +425,26 @@ export const useStore = create<CLMState>((set, get) => ({
     const nextNum = Math.max(...mine.map((v) => v.version_number)) + 1
     const cpVer: Version = { id: `${agreementId}-${nextNum}`, agreement_id: agreementId, version_number: nextNum, label: `Draft ${nextNum}`, source: 'counterparty_response', document_ref: `${agreementId}_v${nextNum}_counterparty.docx`, created_by: 'ai_engine', created_date: now(), parent_version_id: a.current_version_id, change_summary: 'Counterparty returned further redlines — auto-ingested.' }
     const workVer: Version = { id: `${agreementId}-${nextNum + 1}`, agreement_id: agreementId, version_number: nextNum + 1, label: `V${nextNum + 1}`, source: 'cp_redline', document_ref: `${agreementId}_v${nextNum + 1}_cp.docx`, created_by: 'ai_engine', created_date: now(), parent_version_id: cpVer.id, change_summary: 'ChargePoint working copy — auto-created for your comments on the new draft.' }
-    set((s) => {
-      // give the new working copy a real (cloned) tracked-changes doc so the review stays live
-      const src = s.documents[a.current_version_id] ?? s.documents['V-2201-3']
-      const documents = src ? { ...s.documents, [cpVer.id]: { ...src, versionId: cpVer.id, subtitle: `Counterparty Draft ${nextNum}` }, [workVer.id]: { ...src, versionId: workVer.id, subtitle: `ChargePoint working copy (V${nextNum + 1})` } } : s.documents
-      return {
-        versions: [...s.versions, cpVer, workVer],
-        documents,
-        agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, status: 'redline_received', ball_in_court: 'cp_legal', current_version_id: workVer.id, turn_count: (x.turn_count ?? 0) + 1, last_activity_date: '2026-06-27' } : x)),
-        tickets: s.tickets.map((t) => (t.id === a.ticket_id ? { ...t, status: 'Red Line Analysis' } : t)),
-        notifications: [{ id: nextId('N'), event: 'Counterparty redline received', body: `${a.title}: counterparty returned Draft ${nextNum}. Auto-created V${nextNum + 1} for your comments; ${a.red_line_count} items re-analyzed.`, channels: ['in_app', 'email'], ticket_id: a.ticket_id, created_date: now(), read: false, severity: 'warning' }, ...s.notifications],
-      }
-    })
+    // R43 — run a REAL playbook analysis of the counterparty's new push and emit the issues from it.
+    const priorDoc = get().documents[a.current_version_id] ?? get().documents['V-2201-3']
+    // The counterparty's fresh redline this round (a genuine, detectable change the analysis will flag).
+    const roundClause: DocClause = { id: `c-r${nextNum}`, ref: '§7', heading: '7. Publicity', runs: [{ text: 'Either Party may publicize the existence of this Agreement and reference the other Party by name in marketing materials and press releases.', type: 'ins', party: 'counterparty', cid: `ch-r${nextNum}` }] }
+    const cpDoc: DocModel = { versionId: cpVer.id, title: priorDoc?.title ?? a.title, subtitle: `Counterparty Draft ${nextNum}`, clauses: [...(priorDoc?.clauses ?? []), roundClause] }
+    const workDoc: DocModel = { ...cpDoc, versionId: workVer.id, subtitle: `ChargePoint working copy (V${nextNum + 1})` }
+    const newDevs = analyzePlaybook(priorDoc, cpDoc, ndaPlaybook, agreementId, workVer.id)
+    const redCount = newDevs.filter((d) => d.risk_category === 'red_line').length
+    set((s) => ({
+      versions: [...s.versions, cpVer, workVer],
+      documents: { ...s.documents, [cpVer.id]: cpDoc, [workVer.id]: workDoc },
+      deviations: [...s.deviations, ...newDevs],
+      agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, status: 'redline_received', ball_in_court: 'cp_legal', current_version_id: workVer.id, red_line_count: redCount, turn_count: (x.turn_count ?? 0) + 1, last_activity_date: '2026-06-27' } : x)),
+      tickets: s.tickets.map((t) => (t.id === a.ticket_id ? { ...t, status: 'Red Line Analysis' } : t)),
+      notifications: [{ id: nextId('N'), event: 'Counterparty redline received', body: `${a.title}: counterparty returned Draft ${nextNum}. Auto-created V${nextNum + 1}; playbook analysis found ${newDevs.length} new issue${newDevs.length === 1 ? '' : 's'} in their changes.`, channels: ['in_app', 'email'], ticket_id: a.ticket_id, created_date: now(), read: false, severity: 'warning' }, ...s.notifications],
+    }))
     get().audit_push({ event_type: 'version_created', agreement_id: agreementId, actor_id: 'ai_engine', summary: `Draft ${nextNum} ingested (counterparty); working copy V${nextNum + 1} auto-created.` })
+    get().audit_push({ event_type: 'deviation_identified', agreement_id: agreementId, actor_id: 'ai_engine', summary: `Playbook analysis of Draft ${nextNum} identified ${newDevs.length} issue${newDevs.length === 1 ? '' : 's'} in the counterparty's changes.` })
     get().audit_push({ event_type: 'status_changed', agreement_id: agreementId, ticket_id: a.ticket_id, summary: `Back to Redline Received — further counterparty redlines.` })
-    get().setToast(`Counterparty Draft ${nextNum} ingested → back to Redline Received (V${nextNum + 1} working copy).`)
+    get().setToast(`Counterparty Draft ${nextNum} ingested → playbook analysis found ${newDevs.length} new issue${newDevs.length === 1 ? '' : 's'} (V${nextNum + 1} working copy).`)
   },
   // Finalize the version that goes to signature (Eric §3 — "finalize the version… latest by default").
   finalizeVersion: (agreementId, versionId) => {

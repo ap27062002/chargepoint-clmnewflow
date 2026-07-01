@@ -153,6 +153,8 @@ export interface Deviation {
   disposition_status: DispositionStatus
   disposition_by?: string | null
   disposition_date?: string | null
+  source_clause_id?: string      // R43 — links a computed issue back to the exact clause
+  matched_provision_id?: string  // R43 — which playbook provision it was classified against
 }
 
 // ----- Collaboration --------------------------------------------------------
