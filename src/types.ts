@@ -225,7 +225,9 @@ export interface Playbook {
   generated_from: string
   provisions: Provision[]
   created_date: string
-  group_mode?: 'sections' | 'category' // R60 — persisted render layout (chat-driven restructuring)
+  group_mode?: 'sections' | 'category'          // R60 — persisted render layout (chat-driven restructuring)
+  render_purpose?: 'standard' | 'external' | 'training' // R57/R60 — persisted audience rendering
+  accent?: string                                // R54 — admin-controlled visual look & feel (accent color)
 }
 
 // ----- Audit ----------------------------------------------------------------

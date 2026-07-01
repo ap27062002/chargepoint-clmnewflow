@@ -34,11 +34,12 @@ function parseTier(t: string): ProvisionTier | undefined {
   return undefined
 }
 
-export type OpKind = 'retier' | 'add' | 'remove' | 'nest' | 'group' | 'flatten' | 'reorder' | 'render' | 'unknown'
+export type OpKind = 'retier' | 'add' | 'remove' | 'nest' | 'group' | 'flatten' | 'reorder' | 'render' | 'theme' | 'unknown'
 export interface OpResult { ok: boolean; message: string; op: OpKind; presentation: boolean; playbook?: Playbook }
 
-// Presentation ops = look & feel (admin-only per R54). Content ops = owner-allowed.
-const PRESENTATION_OPS: OpKind[] = ['group', 'flatten', 'nest', 'reorder', 'render']
+// Only VISUAL BRANDING (theme/color) is admin-exclusive (R54). Structural restructure — nest, group,
+// flatten, reorder, re-tier, render-for-audience — is available to the playbook OWNER (Eric), per R57/R58/R60.
+const PRESENTATION_OPS: OpKind[] = ['theme']
 
 function removeFromTree(provisions: Provision[], target: Provision): Provision[] {
   return provisions.filter((p) => p !== target).map((p) => (p.children ? { ...p, children: removeFromTree(p.children, target) } : p))
@@ -46,16 +47,19 @@ function removeFromTree(provisions: Provision[], target: Provision): Provision[]
 
 export function classifyInstruction(instr: string): OpKind {
   const t = lc(instr)
+  if (/\b(theme|brand|accent|colou?r|logo|font|visual)\b/.test(t)) return 'theme'
   if (/\b(nest|reparent|group .* under|move .* under|put .* under)\b/.test(t)) return 'nest'
+  if (/\b(reorder|move .* (first|last|before|after)|put .* first|order .* first)\b/.test(t)) return 'reorder'
+  if (/\b(render|reformat|format .* as|counterparty-facing|counterparty facing|external|training|audience|cheat.?sheet)\b/.test(t)) return 'render'
   if (/\b(group|by category|by risk|categor)\b/.test(t)) return 'group'
   if (/\b(flatten|ungroup|flat list|by section|simple list)\b/.test(t)) return 'flatten'
   if (/\b(re-?tier|make .* (a |an )?(baseline|fallback|red ?line|deferred)|promote .* to|demote)\b/.test(t)) return 'retier'
   if (/\b(remove|delete|drop)\b/.test(t)) return 'remove'
   if (/\b(add|include)\b/.test(t)) return 'add'
-  if (/\b(reorder|move .* (first|last|before|after)|put .* first)\b/.test(t)) return 'reorder'
-  if (/\b(render|reformat|format .* as|counterparty-facing|training|audience)\b/.test(t)) return 'render'
   return 'unknown'
 }
+
+const ACCENTS: Record<string, string> = { blue: '#2563eb', green: '#1f8c3f', violet: '#7559e8', purple: '#7559e8', red: '#dc2626', amber: '#d97706', orange: '#d97706', slate: '#334155', teal: '#0d9488' }
 
 // The single entry point: transform `pb` per `instr`. Pure — returns a new playbook.
 export function applyPlaybookInstruction(pb: Playbook, instr: string, canPresentation: boolean): OpResult {
@@ -109,10 +113,30 @@ export function applyPlaybookInstruction(pb: Playbook, instr: string, canPresent
     return { ok: true, op, presentation: true, message: `Nested ${children.length} provisions (${children.map((c) => c.provision_name).join(', ')}) under a new parent **${parentName}**.`, playbook: { ...pb, provisions: [...tree, parent] } }
   }
 
-  if (op === 'render') return { ok: true, op, presentation: true, message: 'You can publish the playbook for a specific audience (attorney cheat-sheet, counterparty-facing summary, training guide, or machine-readable) from the Publish menu — that renders the same tree for that purpose.', playbook: pb }
-  if (op === 'reorder') return { ok: true, op, presentation: true, message: 'Reordering by priority — tell me which provisions to move first (e.g. "put Residuals and Term first") and I\'ll reorder them.', playbook: pb }
+  if (op === 'render') {
+    // R57/R60 — actually re-render the playbook for an audience (persisted, changes the display).
+    const purpose: NonNullable<Playbook['render_purpose']> = /counterparty|external|summary/.test(t) ? 'external' : /training|new.?hire|onboard/.test(t) ? 'training' : 'standard'
+    const label = purpose === 'external' ? 'a counterparty-facing summary (red-line internals hidden)' : purpose === 'training' ? 'a new-hire training view (rationale shown inline)' : 'the standard attorney view'
+    return { ok: true, op, presentation: false, message: `Re-rendered the playbook as **${label}**. Same underlying positions — only the presentation changed.`, playbook: { ...pb, render_purpose: purpose } }
+  }
 
-  return { ok: false, op: 'unknown', presentation: false, message: 'I can add, remove, re-tier, nest, group, flatten, or reorder provisions — just tell me what you want (e.g. "make Governing Law a fallback", "nest Marking and Return under Confidentiality Mechanics", "group by category").' }
+  if (op === 'reorder') {
+    // "put X and Y first" — move the named provisions to the front of the list.
+    const namesPart = t.replace(/^.*\b(reorder|put|move|order)\b/, '').replace(/\b(first|to the top|before .*|after .*|and|the|provisions?)\b/g, ',')
+    const names = namesPart.split(',').map((s) => s.trim()).filter((s) => s.length > 2)
+    const targets = names.map((nm) => fuzzyFindProvision(pb.provisions, nm)).filter((p): p is Provision => !!p)
+    if (!targets.length) return { ok: false, op, presentation: false, message: 'Tell me which provisions to move first, e.g. "put Residuals and Term first".' }
+    const rest = pb.provisions.filter((p) => !targets.includes(p))
+    return { ok: true, op, presentation: false, message: `Moved **${targets.map((p) => p.provision_name).join(', ')}** to the top.`, playbook: { ...pb, provisions: [...targets, ...rest] } }
+  }
+
+  if (op === 'theme') {
+    const colour = Object.keys(ACCENTS).find((c) => t.includes(c))
+    if (!colour) return { ok: false, op, presentation: true, message: 'Name a colour for the playbook accent (e.g. "set the theme to teal").' }
+    return { ok: true, op, presentation: true, message: `Set the playbook accent colour to **${colour}** — the look & feel now reflects it.`, playbook: { ...pb, accent: ACCENTS[colour] } }
+  }
+
+  return { ok: false, op: 'unknown', presentation: false, message: 'I can add, remove, re-tier, nest, group, flatten, reorder, or re-render provisions (and admins can set the visual theme) — just tell me what you want (e.g. "make Governing Law a fallback", "nest Marking and Return under Confidentiality Mechanics", "render as a counterparty-facing summary", "put Residuals first").' }
 }
 
 function retierProvision(provisions: Provision[], target: Provision, tier: ProvisionTier): Provision[] {

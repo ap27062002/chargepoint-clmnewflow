@@ -24,8 +24,10 @@ const ccLabel: Record<string, string> = {
 }
 
 // Recursive provision node — supports nesting (Eric §8: Indemnification parent + children).
-function ProvisionNode({ p, depth }: { p: Provision; depth: number }) {
+function ProvisionNode({ p, depth, renderPurpose = 'standard' }: { p: Provision; depth: number; renderPurpose?: 'standard' | 'external' | 'training' }) {
   const tier = tierOf(p)
+  const external = renderPurpose === 'external' // counterparty-facing: hide red-line internals
+  const training = renderPurpose === 'training'
   const hasKids = !!p.children?.length
   const [open, setOpen] = useState(depth === 0 && (tier === 'red_line' || tier === 'deferred' || hasKids || (p.negotiated_pct ?? 0) >= 40))
   return (
@@ -57,12 +59,13 @@ function ProvisionNode({ p, depth }: { p: Provision; depth: number }) {
             <div key={i}><div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-amber-600">Fallback {i + 1}</div>
               <div className="rounded-lg bg-amber-50/50 px-3 py-2 text-[12.5px] leading-snug text-slate-700 ring-1 ring-amber-100">{f}</div></div>
           ))}
-          {p.red_line && (
+          {p.red_line && !external && (
             <div><div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-red-600">Red line (do not accept)</div>
               <div className="rounded-lg bg-red-50/50 px-3 py-2 text-[12.5px] leading-snug text-slate-700 ring-1 ring-red-100">{p.red_line}</div></div>
           )}
-          {p.rationale && <div className="text-[11.5px] italic text-slate-400">Rationale: {p.rationale}</div>}
-          {p.children?.map((c) => <div key={c.id} className="mt-1 rounded-lg border border-slate-100"><ProvisionNode p={c} depth={depth + 1} /></div>)}
+          {external && <div className="text-[11px] italic text-slate-400">Internal red-line guidance hidden in the counterparty-facing view.</div>}
+          {p.rationale && (external ? null : <div className={clsx('text-[11.5px]', training ? 'rounded-lg bg-ai-50/50 px-3 py-2 text-ai-800 ring-1 ring-ai-100' : 'italic text-slate-400')}>{training && <b>Why this position: </b>}{!training && 'Rationale: '}{p.rationale}</div>)}
+          {p.children?.map((c) => <div key={c.id} className="mt-1 rounded-lg border border-slate-100"><ProvisionNode p={c} depth={depth + 1} renderPurpose={renderPurpose} /></div>)}
         </div>
       )}
     </div>
@@ -252,11 +255,11 @@ export function PlaybookView() {
   return (
     <div className="h-full overflow-y-auto p-6">
       {/* Header — playbook picker + mode + owner actions */}
-      <Card className="mb-4 overflow-hidden">
+      <Card className="mb-4 overflow-hidden" style={pb.accent ? { borderTop: `3px solid ${pb.accent}` } : undefined}>
         <div className="bg-slate-900 px-5 py-4 text-white">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <BookOpen size={20} className="text-brand-400" />
+              <BookOpen size={20} style={pb.accent ? { color: pb.accent } : undefined} className={pb.accent ? '' : 'text-brand-400'} />
               <div>
                 <select value={pb.id} onChange={(e) => setPlaybook(e.target.value)} className="rounded-md bg-slate-800 px-2 py-1 text-[15px] font-bold text-white outline-none">
                   {playbooks.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -338,7 +341,7 @@ export function PlaybookView() {
               <Card className="mb-3 border-ai-200 bg-ai-50/30 p-3">
                 <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-ai-700"><Sparkles size={12} /> Restructure the layout in plain language</div>
                 <div className="mb-2 flex flex-wrap gap-1.5">
-                  {['Make Governing Law a fallback', 'Nest Marking, Return and Protection Obligations under Confidentiality Mechanics', 'Group by category', 'Flatten to a list'].map((ex) => (
+                  {['Make Governing Law a fallback', 'Nest Marking, Return and Protection Obligations under Confidentiality Mechanics', 'Put Residuals and Term first', 'Render as a counterparty-facing summary', 'Group by category', ...(canPresentation ? ['Set the theme to teal'] : [])].map((ex) => (
                     <button key={ex} onClick={() => applyRestructure(ex)} className="rounded-full border border-ai-200 bg-white px-2.5 py-0.5 text-[11.5px] font-medium text-ai-700 hover:bg-ai-50">{ex}</button>
                   ))}
                 </div>
@@ -359,12 +362,20 @@ export function PlaybookView() {
               </Card>
             )}
 
+            {/* R57/R60 — audience render mode (persisted) visibly changes the display */}
+            {pb.render_purpose && pb.render_purpose !== 'standard' && (
+              <div className="mb-3 flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] ring-1" style={{ background: (pb.accent ?? '#7559e8') + '14', color: pb.accent ?? '#7559e8', borderColor: (pb.accent ?? '#7559e8') + '33' }}>
+                <Sparkles size={13} />
+                {pb.render_purpose === 'external' ? 'Counterparty-facing view — internal red-line guidance is hidden.' : 'New-hire training view — the rationale for each position is shown inline.'}
+                <button onClick={() => restructurePlaybook(pb.id, 'render as the standard attorney view')} className="ml-auto font-semibold hover:underline">Back to standard view</button>
+              </div>
+            )}
             {layout === 'grouped' ? (
               <div className="space-y-3">
                 {Array.from(shown.reduce((map, p) => { const k = p.cross_cutting_category ?? 'other'; if (!map.has(k)) map.set(k, []); map.get(k)!.push(p); return map }, new Map<string, Provision[]>())).map(([cat, provs]) => (
                   <Card key={cat} className="overflow-hidden">
                     <div className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-[12px] font-bold text-slate-600">{ccLabel[cat] ?? 'Other'} · {provs.length}</div>
-                    {provs.map((p) => <ProvisionNode key={p.id} p={p} depth={0} />)}
+                    {provs.map((p) => <ProvisionNode key={p.id} p={p} depth={0} renderPurpose={pb.render_purpose} />)}
                   </Card>
                 ))}
               </div>
@@ -374,7 +385,7 @@ export function PlaybookView() {
                   <SectionLabel>Provisions ({shown.length}{filter !== 'all' ? ` of ${pb.provisions.length}` : ''})</SectionLabel>
                   <span className="text-[11px] text-slate-400">Existing agreements retain their original version</span>
                 </div>
-                {shown.map((p) => <ProvisionNode key={p.id} p={p} depth={0} />)}
+                {shown.map((p) => <ProvisionNode key={p.id} p={p} depth={0} renderPurpose={pb.render_purpose} />)}
                 {shown.length === 0 && <div className="py-8 text-center text-[12px] text-slate-400">No provisions in this category.</div>}
               </Card>
             )}

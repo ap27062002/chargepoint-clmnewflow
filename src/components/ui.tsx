@@ -1,5 +1,5 @@
 import { clsx } from 'clsx'
-import type { ReactNode } from 'react'
+import type { ReactNode, CSSProperties } from 'react'
 import { userById, AI_ENGINE } from '@/data/seed'
 
 export function Chip({ children, className }: { children: ReactNode; className?: string }) {
@@ -10,10 +10,11 @@ export function Chip({ children, className }: { children: ReactNode; className?:
   )
 }
 
-export function Card({ children, className, onClick }: { children: ReactNode; className?: string; onClick?: () => void }) {
+export function Card({ children, className, onClick, style }: { children: ReactNode; className?: string; onClick?: () => void; style?: CSSProperties }) {
   return (
     <div
       onClick={onClick}
+      style={style}
       className={clsx('rounded-xl border border-slate-200 bg-white shadow-card', onClick && 'cursor-pointer transition hover:border-slate-300 hover:shadow-panel', className)}
     >
       {children}

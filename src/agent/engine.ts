@@ -175,7 +175,8 @@ const intents: Intent[] = [
   },
   {
     name: 'create_playbook', cap: 'playbook_edit',
-    test: (t) => has(t, 'create a playbook', 'create my playbook', 'new playbook', 'build a playbook', 'create playbook', 'make a playbook'),
+    test: (t) => has(t, 'create a playbook', 'create my playbook', 'create the playbook', 'new playbook', 'build a playbook', 'build the playbook', 'build my playbook', 'create playbook', 'make a playbook', 'make the playbook')
+      && !has(t, 'restructure', 'refine', 'suggestion'),
     reply: (t) => {
       // R48/R49 — infer the agreement type + resolve the default source folder for it (no path needed).
       const type: 'MSA' | 'MNDA' = has(t, 'msa', 'master service', 'services agreement') ? 'MSA' : 'MNDA'
@@ -192,8 +193,9 @@ const intents: Intent[] = [
   },
   {
     name: 'playbook_restructure', cap: 'playbook_edit',
-    test: (t) => has(t, 'restructure the playbook', 'reorganize the playbook', 'reformat the playbook', 'nest ', 'group by category', 'flatten the playbook', 'make .* a fallback', 're-tier', 'promote .* to a red')
-      && !has(t, 'draft'),
+    test: (t) => (has(t, 'restructure the playbook', 'reorganize the playbook', 'reformat the playbook', 'nest ', 'group by category', 'flatten the playbook', 're-tier', 'render the playbook', 'render as', 'render this as', 'counterparty-facing', 'counterparty facing', 'training view', 'reorder', 'set the theme', 'accent colo')
+      || /make .* (a |an )?(fallback|red ?line|baseline)/.test(t) || /promote .* to a red/.test(t) || /put .* first/.test(t))
+      && !has(t, 'draft', 'create a playbook', 'create the playbook'),
     reply: (t) => {
       // R52/R57/R58/R60 — perform the REAL transform on the currently-open published playbook.
       const s = useStore.getState()
