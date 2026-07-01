@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
-import { Bold, Italic, Underline, List, Table, Pilcrow, Check, X, Pencil, Eye, Plus, Sparkles } from 'lucide-react'
+import { Bold, Italic, Underline, List, Table, Pilcrow, Check, X, Pencil, Eye, Plus, Sparkles, BookOpen } from 'lucide-react'
 import { useStore } from '@/store'
+import { sendToAgent } from '@/agent/engine'
 import { can } from '@/lib/access'
 import { Chip } from '@/components/ui'
 import { riskMeta } from '@/lib/labels'
@@ -47,6 +48,7 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
   const doc = useStore((s) => s.documents[versionId])
   const devs = useStore((s) => s.deviations).filter((d) => d.agreement_id === agreementId)
   const canEdit = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'disposition'))
+  const canSuggest = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'playbook_suggest'))
   const [edit, setEdit] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const [askBtn, setAskBtn] = useState<{ text: string; x: number; y: number } | null>(null)
@@ -62,10 +64,16 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
     const rect = sel.getRangeAt(0).getBoundingClientRect()
     setAskBtn({ text, x: rect.left + rect.width / 2, y: rect.top })
   }
+  const snippetOf = (t: string) => (t.length > 320 ? t.slice(0, 320) + '…' : t)
   const askAi = () => {
     if (!askBtn) return
-    const snippet = askBtn.text.length > 320 ? askBtn.text.slice(0, 320) + '…' : askBtn.text
-    onAskAi?.(snippet)
+    onAskAi?.(snippetOf(askBtn.text))
+    setAskBtn(null)
+    window.getSelection()?.removeAllRanges()
+  }
+  const suggestToPlaybook = () => {
+    if (!askBtn) return
+    sendToAgent(`Suggest to add to playbook as a fallback: "${snippetOf(askBtn.text)}"`)
     setAskBtn(null)
     window.getSelection()?.removeAllRanges()
   }
@@ -103,14 +111,20 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
 
       <div ref={containerRef} onMouseUp={onSelect} onScroll={() => setAskBtn(null)} className="flex-1 overflow-y-auto py-6">
         {askBtn && createPortal(
-          <button
+          <div
             style={{ position: 'fixed', left: askBtn.x, top: askBtn.y - 10, transform: 'translate(-50%, -100%)', zIndex: 60 }}
             onMouseDown={(e) => e.preventDefault()}
-            onClick={askAi}
-            className="flex items-center gap-1.5 rounded-lg bg-ai-600 px-2.5 py-1.5 text-[12px] font-semibold text-white shadow-pop transition hover:bg-ai-700"
+            className="flex items-center gap-0.5 rounded-lg bg-slate-900 p-0.5 shadow-pop"
           >
-            <Sparkles size={13} /> Ask AI
-          </button>,
+            <button onClick={askAi} className="flex items-center gap-1.5 rounded-md bg-ai-600 px-2.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-ai-700">
+              <Sparkles size={13} /> Ask AI
+            </button>
+            {canSuggest && (
+              <button onClick={suggestToPlaybook} title="Suggest this clause for the playbook" className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-semibold text-slate-200 transition hover:bg-white/10">
+                <BookOpen size={13} /> Suggest to playbook
+              </button>
+            )}
+          </div>,
           document.body,
         )}
         <div className="doc-prose mx-auto max-w-2xl rounded-lg bg-white p-10 font-serif text-[13.5px] text-slate-800 shadow-panel">

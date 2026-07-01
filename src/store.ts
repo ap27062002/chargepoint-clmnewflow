@@ -3,18 +3,22 @@ import type {
   Ticket, Agreement, Version, Deviation, Message, Playbook,
   AuditEvent, AppNotification, ChatMessage, CanvasState, ViewKey,
   DispositionStatus, MessageTag, ThreadType, AuditEventType,
-  ApprovalRequest, ApprovalType, Envelope, AgreementType,
+  ApprovalRequest, ApprovalType, Envelope, EnvelopeMode, AgreementType,
   AgreementStatus, BallInCourt, ContractStatus,
   IntakePayload, InferredField, CounterpartyProfile, ContractsFilterPreset,
+  SummaryAudience, PlaybookSuggestion, SuggestionKind, PlaybookDraft, Provision,
+  TemplateProject, AgreementTemplate, TemplateIteration,
 } from '@/types'
 import { lookupCounterparty, inferDealContext } from '@/data/counterparties'
 import {
   users, tickets as seedTickets, agreements as seedAgreements,
   versions as seedVersions, deviations as seedDeviations, messages as seedMessages,
   playbooks as seedPlaybooks, auditSeed, notificationSeed, CURRENT_USER_ID,
+  playbookSuggestions as seedSuggestions, templateProjects as seedProjects,
+  agreementTemplates as seedTemplates, defaultProjectSources, buildSectionsFor, GENERATED_MSA_PROVISIONS, GENERATED_NDA_PROVISIONS,
 } from '@/data/seed'
 import { GREETING, greetingFor } from '@/agent/greeting'
-import { seedDocuments, type DocModel } from '@/data/documents'
+import { seedDocuments, buildCleanCopy, buildRedlineDoc, summarizeRedline, cleanCopyId, type DocModel } from '@/data/documents'
 import { routeAttorney, type RoutingStrategy } from '@/lib/routing'
 import { slaStatus } from '@/lib/labels'
 
@@ -40,13 +44,13 @@ function buildAudit(): AuditEvent[] {
 
 // ----- Agreement lifecycle -------------------------------------------------
 export const AGREEMENT_LIFECYCLE: AgreementStatus[] = [
-  'draft', 'internal_review', 'sent_to_counterparty', 'redline_received', 'pending_execution', 'executed',
+  'draft', 'internal_review', 'sent_to_counterparty', 'redline_received', 'negotiation', 'pending_execution', 'executed',
 ]
-const ballForStatus = (s: AgreementStatus): BallInCourt => (s === 'sent_to_counterparty' ? 'counterparty' : 'cp_legal')
+const ballForStatus = (s: AgreementStatus): BallInCourt => (s === 'sent_to_counterparty' || s === 'negotiation' ? 'counterparty' : 'cp_legal')
 const ticketStatusForStatus = (s: AgreementStatus): ContractStatus => ({
   draft: 'Draft', internal_review: 'Internal Review', sent_to_counterparty: 'Sent to Counterparty',
-  redline_received: 'Red Line Analysis', negotiation: 'Red Line Analysis',
-  pending_execution: 'Pending Execution', executed: 'Executed',
+  redline_received: 'Red Line Analysis', negotiation: 'In Negotiation',
+  pending_execution: 'Ready to Sign', executed: 'Executed',
 } as Record<AgreementStatus, ContractStatus>)[s]
 
 interface CLMState {
@@ -63,6 +67,10 @@ interface CLMState {
   documents: Record<string, DocModel>
   approvals: ApprovalRequest[]
   envelopes: Envelope[]
+  playbookSuggestions: PlaybookSuggestion[]
+  playbookDrafts: PlaybookDraft[]
+  projects: TemplateProject[]
+  templates: AgreementTemplate[]
   routingStrategy: RoutingStrategy
   canvas: CanvasState
   chat: ChatMessage[]
@@ -83,6 +91,8 @@ interface CLMState {
   setView: (view: ViewKey) => void
   openFull: (view: ViewKey) => void
   openContracts: (preset?: ContractsFilterPreset, solo?: boolean) => void
+  openProjects: (projectId?: string, solo?: boolean) => void
+  openDealExecution: (ticketId: string, agreementIds?: string[]) => void
   setPersona: (userId: string) => void
   setToast: (t: string | null) => void
 
@@ -114,7 +124,34 @@ interface CLMState {
   decideApproval: (approvalId: string, approverId: string, grant: boolean) => void
   startEnvelope: (agreementId: string) => Envelope
   advanceEnvelope: (envelopeId: string) => void
+  startEnvelopesForTicket: (ticketId: string, agreementIds: string[], mode: EnvelopeMode) => void
   runSlaCheck: () => void
+
+  // versioning — track-changes hygiene + send-back (clean copy + redline)
+  acceptAllChanges: (versionId: string) => void
+  rejectAllChanges: (versionId: string) => void
+  openSendBack: (agreementId: string) => void
+  setSendBackBase: (baseVersionId: string) => void
+  setSendBackCumulative: (cumulative: boolean) => void
+  generateRedline: () => void
+  summarizeChanges: (audience: SummaryAudience) => void
+  sendRedline: (agreementId: string) => void
+
+  // playbook — suggestions, NL creation, restructure
+  setPlaybook: (playbookId: string) => void
+  suggestToPlaybook: (s: { playbook_id: string; provision_name: string; kind: SuggestionKind; proposed_text: string; rationale?: string; source_agreement_id?: string; source_section?: string }) => void
+  decidePlaybookSuggestion: (id: string, approve: boolean) => void
+  startPlaybookDraft: (name: string, agreement_type: AgreementType, rawPrompt: string, sourceTemplateId?: string) => string
+  advancePlaybookDraft: (draftId: string) => void
+  publishPlaybookDraft: (draftId: string) => void
+
+  // templates / projects
+  createProject: (name: string, goal: string, agreement_type: AgreementType) => string
+  toggleProjectSource: (projectId: string, sourceId: string) => void
+  generateTemplateDraft: (projectId: string) => void
+  iterateTemplate: (projectId: string, instruction: string) => void
+  saveTemplate: (projectId: string) => void
+  buildPlaybookFromTemplate: (templateId: string) => void
 
   // chat
   pushChat: (m: ChatMessage) => void
@@ -135,6 +172,10 @@ export const useStore = create<CLMState>((set, get) => ({
   documents: seedDocuments(),
   approvals: [],
   envelopes: [],
+  playbookSuggestions: seedSuggestions,
+  playbookDrafts: [],
+  projects: seedProjects,
+  templates: seedTemplates,
   routingStrategy: 'hybrid',
   canvas: { view: 'dashboard', open: false },
   chat: [GREETING],
@@ -155,14 +196,18 @@ export const useStore = create<CLMState>((set, get) => ({
     if (!t) return
     if (t.type === 'inquiry' || t.agreement_ids.length === 0) {
       set({ canvas: { view: 'ticket', open: true, solo: false, ticketId, agreementTab: 'deal' } })
+    } else if (t.type === 'multi_agreement') {
+      // Multi-agreement deals land on the deal overview (all documents visible).
+      set({ canvas: { view: 'ticket', open: true, solo: false, ticketId, agreementId: t.agreement_ids[0], agreementTab: 'overview' } })
     } else {
       set({ canvas: { view: 'ticket', open: true, solo: false, ticketId, agreementId: t.agreement_ids[0], agreementTab: 'deal' } })
     }
   },
+  // Document review owns the frame (Eric §2): agent collapses (solo), lands on the doc+issues directive split.
   openAgreement: (agreementId, tab = 'review') => {
     const a = get().agreements.find((x) => x.id === agreementId)
     if (!a) return
-    set({ canvas: { view: 'ticket', open: true, solo: false, ticketId: a.ticket_id, agreementId, agreementTab: tab, reviewMode: 'issues' } })
+    set({ canvas: { view: 'ticket', open: true, solo: true, ticketId: a.ticket_id, agreementId, agreementTab: tab, reviewMode: 'directive', reviewFocusDeviationId: undefined } })
   },
   setView: (view) => set((s) => ({ canvas: { ...s.canvas, view, open: true, solo: false } })),
   // Rail-driven full-screen navigation: canvas takes the full width, agent collapses (one click away).
@@ -170,6 +215,13 @@ export const useStore = create<CLMState>((set, get) => ({
   // Contracts list — one click from the dashboard (full-width by default; docked when opened from an agent chip).
   openContracts: (preset = 'all', solo = true) =>
     set((s) => ({ canvas: { ...s.canvas, view: 'contracts', open: true, solo, contractsFilter: preset } })),
+  openProjects: (projectId, solo = true) =>
+    set((s) => ({ canvas: { ...s.canvas, view: 'projects', open: true, solo, projectId, templateId: undefined } })),
+  openDealExecution: (ticketId, agreementIds) => {
+    const t = get().tickets.find((x) => x.id === ticketId)
+    const ids = agreementIds ?? (t ? get().agreements.filter((a) => a.ticket_id === ticketId && a.status !== 'executed').map((a) => a.id) : [])
+    set((s) => ({ canvas: { ...s.canvas, view: 'execution', open: true, solo: false, executionTicketId: ticketId, executionSelection: ids } }))
+  },
   setPersona: (userId) => {
     const u = get().users.find((x) => x.id === userId)
     set((s) => ({
@@ -361,7 +413,7 @@ export const useStore = create<CLMState>((set, get) => ({
     }
     // Gate 2 — execution happens through the e-sign flow, not a direct status flip.
     if (next === 'executed') {
-      get().openCanvas({ view: 'execution', executionAgreementId: agreementId })
+      get().openCanvas({ view: 'execution', executionAgreementId: agreementId, executionTicketId: undefined })
       get().setToast('Opening the execution & e-signature flow.')
       return
     }
@@ -490,9 +542,201 @@ export const useStore = create<CLMState>((set, get) => ({
     set((s) => ({ notifications: [...fresh, ...s.notifications], slaChecked: true }))
   },
 
+  startEnvelopesForTicket: (ticketId, agreementIds, mode) => {
+    const groupId = 'grp_' + Math.abs([...(ticketId + mode)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)).toString(16)
+    for (const id of agreementIds) get().startEnvelope(id)
+    set((s) => ({ envelopes: s.envelopes.map((e) => (agreementIds.includes(e.agreement_id) && !e.envelope_group_id ? { ...e, envelope_group_id: groupId, mode } : e)) }))
+    get().audit_push({ event_type: 'signature_requested', ticket_id: ticketId, summary: `${agreementIds.length} document(s) routed for signature (${mode === 'combined' ? 'together' : 'individually'}).` })
+  },
+
+  // ----- versioning: track-changes hygiene + send-back (Eric §3) --------------
+  acceptAllChanges: (versionId) => {
+    set((s) => {
+      const doc = s.documents[versionId]; if (!doc) return {}
+      const clauses = doc.clauses.map((c) => ({ ...c, runs: c.runs.filter((r) => r.type !== 'del').map((r) => ({ text: r.text, type: 'normal' as const })) }))
+      return { documents: { ...s.documents, [versionId]: { ...doc, clauses } } }
+    })
+    get().audit_push({ event_type: 'version_created', summary: 'All tracked changes accepted → clean copy.' })
+    get().setToast('Accepted all changes — this is now a clean copy.')
+  },
+  rejectAllChanges: (versionId) => {
+    set((s) => {
+      const doc = s.documents[versionId]; if (!doc) return {}
+      const clauses = doc.clauses.map((c) => ({ ...c, runs: c.runs.filter((r) => r.type !== 'ins').map((r) => ({ text: r.text, type: 'normal' as const })) }))
+      return { documents: { ...s.documents, [versionId]: { ...doc, clauses } } }
+    })
+    get().audit_push({ event_type: 'version_created', summary: 'All tracked changes rejected.' })
+  },
+  openSendBack: (agreementId) => {
+    const versions = get().versions.filter((v) => v.agreement_id === agreementId)
+    const cpLast = [...versions].reverse().find((v) => v.source === 'counterparty_response' || v.source === 'counterparty_draft')
+    const base = cpLast?.id ?? versions[0]?.id ?? ''
+    set((s) => ({ canvas: { ...s.canvas, view: 'ticket', open: true, solo: true, ticketId: get().agreements.find((a) => a.id === agreementId)?.ticket_id, agreementId, agreementTab: 'review', reviewMode: 'sendback', sendBack: { agreementId, baseVersionId: base, cumulative: false, staged: false } } }))
+  },
+  setSendBackBase: (baseVersionId) => set((s) => (s.canvas.sendBack ? { canvas: { ...s.canvas, sendBack: { ...s.canvas.sendBack, baseVersionId, redline: undefined } } } : {})),
+  setSendBackCumulative: (cumulative) => set((s) => (s.canvas.sendBack ? { canvas: { ...s.canvas, sendBack: { ...s.canvas.sendBack, cumulative, redline: undefined } } } : {})),
+  generateRedline: () => {
+    const sb = get().canvas.sendBack; if (!sb) return
+    const docs = get().documents
+    const base = docs[sb.baseVersionId]
+    const workingId = cleanCopyId(sb.agreementId) || get().agreements.find((a) => a.id === sb.agreementId)?.current_version_id || ''
+    const working = docs[workingId]
+    if (!base || !working) { get().setToast('No tracked-changes document available to redline for this agreement.'); return }
+    const redline = buildRedlineDoc(base, buildCleanCopy(working), sb.cumulative)
+    set((s) => (s.canvas.sendBack ? { canvas: { ...s.canvas, reviewMode: 'redline', sendBack: { ...s.canvas.sendBack, redline } } } : {}))
+    get().audit_push({ event_type: 'version_created', agreement_id: sb.agreementId, summary: `Generated clean copy + redline (${redline.changeCount} changes) vs ${sb.baseVersionId}.` })
+  },
+  summarizeChanges: (audience) => {
+    const sb = get().canvas.sendBack
+    if (!sb?.redline) { get().setToast('Generate the redline first.'); return }
+    const devs = get().deviations.filter((d) => d.agreement_id === sb.agreementId)
+    const summary = summarizeRedline(sb.redline, devs, audience)
+    set((s) => (s.canvas.sendBack ? { canvas: { ...s.canvas, sendBack: { ...s.canvas.sendBack, summary } } } : {}))
+  },
+  sendRedline: (agreementId) => {
+    const a = get().agreements.find((x) => x.id === agreementId); if (!a) return
+    set((s) => ({
+      agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, status: 'negotiation', ball_in_court: 'counterparty' } : x)),
+      tickets: s.tickets.map((t) => (t.id === a.ticket_id ? { ...t, status: 'In Negotiation' } : t)),
+      canvas: { ...s.canvas, sendBack: s.canvas.sendBack ? { ...s.canvas.sendBack, staged: true } : undefined },
+    }))
+    get().audit_push({ event_type: 'document_sent', agreement_id: agreementId, ticket_id: a.ticket_id, summary: 'Clean copy + redline sent to counterparty; ball in their court (In Negotiation).' })
+    get().setToast('Clean copy + redline staged for the counterparty. Status → In Negotiation.')
+  },
+
+  // ----- playbook: suggestions, NL creation (Eric §7,§8) ----------------------
+  setPlaybook: (playbookId) => set((s) => ({ canvas: { ...s.canvas, playbookId, playbookMode: 'inventory' } })),
+  suggestToPlaybook: (sug) => {
+    const suggestion: PlaybookSuggestion = {
+      id: nextId('PS'), playbook_id: sug.playbook_id, provision_name: sug.provision_name, kind: sug.kind,
+      proposed_text: sug.proposed_text, rationale: sug.rationale ?? '', source_agreement_id: sug.source_agreement_id, source_section: sug.source_section,
+      suggested_by: get().currentUserId, created_date: now(), state: 'pending',
+    }
+    set((s) => ({ playbookSuggestions: [suggestion, ...s.playbookSuggestions] }))
+    get().audit_push({ event_type: 'playbook_suggested', summary: `Suggested "${sug.provision_name}" (${sug.kind}) for the playbook.` })
+    get().setToast('Sent to the playbook owner for approval.')
+  },
+  decidePlaybookSuggestion: (id, approve) => {
+    const uid = get().currentUserId
+    const sug = get().playbookSuggestions.find((x) => x.id === id)
+    set((s) => ({ playbookSuggestions: s.playbookSuggestions.map((x) => (x.id === id ? { ...x, state: approve ? 'approved' : 'rejected', decided_by: uid, decided_date: now() } : x)) }))
+    if (approve && sug) {
+      set((s) => ({ playbooks: s.playbooks.map((pb) => {
+        if (pb.id !== sug.playbook_id) return pb
+        let changed = false
+        const applyTo = (list: Provision[]): Provision[] => list.map((p) => {
+          if (sug.target_provision_id && p.id === sug.target_provision_id) {
+            changed = true
+            if (sug.kind === 'fallback') return { ...p, fallback_tiers: [...p.fallback_tiers, sug.proposed_text] }
+            if (sug.kind === 'red_line') return { ...p, red_line: sug.proposed_text }
+            return { ...p, standard_position: sug.proposed_text }
+          }
+          return p.children ? { ...p, children: applyTo(p.children) } : p
+        })
+        let provisions = applyTo(pb.provisions)
+        // No existing target (a runtime suggestion) → add it as a NEW named provision.
+        if (!changed) {
+          provisions = [...provisions, {
+            id: 'pv_' + sug.id.toLowerCase(), provision_name: sug.provision_name,
+            standard_position: sug.kind === 'default' ? sug.proposed_text : `Per the added ${sug.kind.replace('_', ' ')}.`,
+            fallback_tiers: sug.kind === 'fallback' ? [sug.proposed_text] : [],
+            red_line: sug.kind === 'red_line' ? sug.proposed_text : 'Deviations flagged for attorney review.',
+            rationale: sug.rationale || 'Added from an attorney suggestion.',
+            tier: sug.kind === 'red_line' ? 'red_line' : sug.kind === 'fallback' ? 'fallback' : 'baseline',
+          }]
+        }
+        return { ...pb, provisions, version: pb.version + 1 }
+      }) }))
+      get().audit_push({ event_type: 'playbook_updated', summary: `Applied suggestion "${sug.provision_name}" to the playbook.` })
+    }
+    get().audit_push({ event_type: 'playbook_suggestion_decided', summary: `Suggestion ${approve ? 'approved & applied' : 'rejected'}.` })
+    get().setToast(approve ? 'Approved — added to the playbook.' : 'Suggestion rejected.')
+  },
+  startPlaybookDraft: (name, agreement_type, rawPrompt, sourceTemplateId) => {
+    const id = nextId('PD')
+    const draft: PlaybookDraft = { id, name, agreement_type, templateRef: 'ChargePoint template', sourceTemplateId, exampleRefs: [], stage: 'collecting', provisions: [], rawPrompt, created_date: now() }
+    set((s) => ({ playbookDrafts: [draft, ...s.playbookDrafts], canvas: { ...s.canvas, view: 'playbook', open: true, playbookMode: 'create', playbookDraftId: id } }))
+    return id
+  },
+  advancePlaybookDraft: (draftId) => {
+    set((s) => ({ playbookDrafts: s.playbookDrafts.map((d) => {
+      if (d.id !== draftId) return d
+      if (d.stage === 'collecting') return { ...d, stage: 'analyzing' }
+      if (d.stage === 'analyzing') return { ...d, stage: 'generated', provisions: d.agreement_type === 'MNDA' || d.agreement_type === 'NDA' ? GENERATED_NDA_PROVISIONS : GENERATED_MSA_PROVISIONS }
+      return d
+    }) }))
+  },
+  publishPlaybookDraft: (draftId) => {
+    const d = get().playbookDrafts.find((x) => x.id === draftId)
+    if (!d || d.stage !== 'generated') return
+    const pbId = 'pb_new_' + d.id.replace(/[^0-9]/g, '')
+    const pb: Playbook = { id: pbId, agreement_type: d.agreement_type, name: d.name, version: 1, owner_id: get().currentUserId, generated_from: d.rawPrompt || 'Generated from template + examples', provisions: d.provisions, created_date: now() }
+    set((s) => ({
+      playbooks: [...s.playbooks, pb],
+      // Close the template→playbook loop when this draft came from a saved template.
+      templates: d.sourceTemplateId ? s.templates.map((t) => (t.id === d.sourceTemplateId ? { ...t, playbook_id: pbId } : t)) : s.templates,
+      canvas: { ...s.canvas, view: 'playbook', playbookId: pbId, playbookMode: 'inventory', playbookDraftId: undefined },
+    }))
+    get().audit_push({ event_type: 'playbook_updated', summary: `Published new playbook "${d.name}".` })
+    get().setToast(`Published "${d.name}".`)
+  },
+
+  // ----- templates / projects (Eric §9) ---------------------------------------
+  createProject: (name, goal, agreement_type) => {
+    const id = nextId('PRJ')
+    const proj: TemplateProject = { id, name, goal, agreement_type, status: 'building', owner_id: get().currentUserId, created_date: now(), sources: defaultProjectSources(), iterations: [], draftTemplateId: null }
+    set((s) => ({ projects: [proj, ...s.projects], canvas: { ...s.canvas, view: 'projects', open: true, projectId: id, templateId: undefined } }))
+    return id
+  },
+  toggleProjectSource: (projectId, sourceId) => set((s) => ({ projects: s.projects.map((p) => (p.id === projectId ? { ...p, sources: p.sources.map((src) => (src.id === sourceId ? { ...src, selected: !src.selected } : src)) } : p)) })),
+  generateTemplateDraft: (projectId) => {
+    const proj = get().projects.find((p) => p.id === projectId); if (!proj) return
+    const tplId = nextId('TPL')
+    const selected = proj.sources.filter((sc) => sc.selected)
+    const tpl: AgreementTemplate = {
+      id: tplId, name: proj.name, agreement_type: proj.agreement_type, origin: 'generated', status: 'draft', project_id: projectId,
+      version: 1, owner_id: get().currentUserId, created_date: now(), sections: buildSectionsFor(proj.agreement_type),
+      source_summary: `Generated from ${selected.length} sources (${selected.map((sc) => sc.name).join('; ')}).`, playbook_id: null,
+    }
+    const it: TemplateIteration = { id: nextId('it'), role: 'agent', text: `Analyzed ${selected.length} sources and generated a ${tpl.sections.length}-section ${proj.agreement_type} template; flagged the ChargePoint-specific sections.`, ts: now(), changeNote: 'Initial generation' }
+    set((s) => ({ templates: [tpl, ...s.templates], projects: s.projects.map((p) => (p.id === projectId ? { ...p, status: 'iterating', draftTemplateId: tplId, iterations: [...p.iterations, it] } : p)), canvas: { ...s.canvas, templateId: tplId } }))
+    get().setToast('Template draft generated — refine it in the chat.')
+  },
+  iterateTemplate: (projectId, instruction) => {
+    const uIt: TemplateIteration = { id: nextId('it'), role: 'user', text: instruction, ts: now() }
+    const aIt: TemplateIteration = { id: nextId('it'), role: 'agent', text: `Applied: ${instruction}`, ts: now(), changeNote: instruction.length > 48 ? instruction.slice(0, 48) + '…' : instruction }
+    set((s) => ({ projects: s.projects.map((p) => (p.id === projectId ? { ...p, iterations: [...p.iterations, uIt, aIt] } : p)) }))
+  },
+  saveTemplate: (projectId) => {
+    const proj = get().projects.find((p) => p.id === projectId); if (!proj?.draftTemplateId) return
+    set((s) => ({ templates: s.templates.map((t) => (t.id === proj.draftTemplateId ? { ...t, status: 'published' } : t)), projects: s.projects.map((p) => (p.id === projectId ? { ...p, status: 'template_ready' } : p)) }))
+    get().audit_push({ event_type: 'playbook_updated', summary: `Template "${proj.name}" saved to the library.` })
+    get().setToast('Template saved to the library.')
+  },
+  buildPlaybookFromTemplate: (templateId) => {
+    const tpl = get().templates.find((t) => t.id === templateId); if (!tpl) return
+    get().startPlaybookDraft(`${tpl.name} — Playbook`, tpl.agreement_type, `Build a playbook from the ${tpl.name} template`, templateId)
+    get().setToast(`Building a playbook from "${tpl.name}"…`)
+  },
+
   pushChat: (m) => set((s) => ({ chat: [...s.chat, m] })),
   setAgentThinking: (v) => set({ agentThinking: v }),
 }))
+
+// Deal rollup for many-to-one tickets (pure helper — call in component body, never in a selector).
+export const dealRollup = (s: CLMState, ticketId: string) => {
+  const ags = s.agreements.filter((a) => a.ticket_id === ticketId)
+  const open = ags.filter((a) => a.status !== 'executed')
+  return {
+    agreements: ags, total: ags.length, open: open.length,
+    executed: ags.filter((a) => a.status === 'executed').length,
+    cpCourt: open.filter((a) => a.ball_in_court === 'cp_legal').length,
+    counterpartyCourt: open.filter((a) => a.ball_in_court === 'counterparty').length,
+    readyToSign: ags.filter((a) => a.status === 'pending_execution').length,
+    redLines: ags.reduce((n, a) => n + a.red_line_count, 0),
+    value: ags.reduce((n, a) => n + (a.contract_value ?? 0), 0),
+  }
+}
 
 // selectors / helpers
 export const useCurrentUser = () => useStore((s) => s.users.find((u) => u.id === s.currentUserId)!)

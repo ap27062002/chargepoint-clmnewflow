@@ -12,21 +12,33 @@ import { MyQueue } from '@/views/MyQueue'
 import { DealSummary } from '@/views/DealSummary'
 import { IntakeFlow } from '@/views/IntakeFlow'
 import { ExecutionView } from '@/views/ExecutionView'
+import { DealExecutionView } from '@/views/DealExecutionView'
 import { Repository } from '@/views/Repository'
 import { ContractsList } from '@/views/ContractsList'
+import { ProjectsView } from '@/views/ProjectsView'
 
 function useBreadcrumb(): string {
   const canvas = useStore((s) => s.canvas)
   const tickets = useStore((s) => s.tickets)
+  const playbooks = useStore((s) => s.playbooks)
   const labels: Record<string, string> = {
-    dashboard: 'Pipeline overview', playbook: 'NDA Negotiation Playbook', admin: 'Admin console',
+    dashboard: 'Leadership overview', admin: 'Admin console',
     audit: 'Audit center', notifications: 'Notification center', queue: 'My queue',
-    deal_summary: 'Deal summary', intake: 'NDA drafting brief', execution: 'Execution & e-signature',
-    repository: 'Agreements repository', contracts: 'All contracts',
+    deal_summary: 'Deal summary', intake: 'NDA drafting brief',
+    repository: 'Agreements repository', contracts: 'All contracts', projects: 'Template projects',
   }
   if (canvas.view === 'ticket' || canvas.view === 'agreement') {
     const t = tickets.find((x) => x.id === canvas.ticketId)
     return t ? t.title : 'Ticket workspace'
+  }
+  if (canvas.view === 'playbook') {
+    const pb = playbooks.find((p) => p.id === (canvas.playbookId ?? playbooks[0].id)) ?? playbooks[0]
+    const suffix = canvas.playbookMode === 'create' ? ' · Create' : canvas.playbookMode === 'suggestions' ? ' · Suggested additions' : ''
+    return pb.name + suffix
+  }
+  if (canvas.view === 'execution') {
+    const t = tickets.find((x) => x.id === canvas.executionTicketId)
+    return t ? `Execute — ${t.title}` : 'Execution & e-signature'
   }
   return labels[canvas.view] ?? 'Workspace'
 }
@@ -51,6 +63,7 @@ function AccessDenied({ view }: { view: ReturnType<typeof useStore.getState>['ca
 
 export function Canvas() {
   const view = useStore((s) => s.canvas.view)
+  const execTicketId = useStore((s) => s.canvas.executionTicketId)
   const role = useStore((s) => s.users.find((u) => u.id === s.currentUserId)!.role)
   const closeCanvas = useStore((s) => s.closeCanvas)
   const crumb = useBreadcrumb()
@@ -82,9 +95,10 @@ export function Canvas() {
             {view === 'queue' && <MyQueue />}
             {view === 'deal_summary' && <DealSummary />}
             {view === 'intake' && <IntakeFlow />}
-            {view === 'execution' && <ExecutionView />}
+            {view === 'execution' && (execTicketId ? <DealExecutionView /> : <ExecutionView />)}
             {view === 'repository' && <Repository />}
             {view === 'contracts' && <ContractsList />}
+            {view === 'projects' && <ProjectsView />}
           </>
         )}
       </div>

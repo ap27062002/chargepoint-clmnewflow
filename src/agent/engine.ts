@@ -66,6 +66,130 @@ const intents: Intent[] = [
       }
     },
   },
+  // ===== build-12: Eric's use-case feedback =====
+  {
+    name: 'send_back', cap: 'disposition',
+    test: (t) => has(t, 'send back', 'send the clean copy', 'clean copy and redline', 'send our redline', 'send the redline back', 'send it back to the counterparty', 'return to counterparty'),
+    reply: () => ({
+      text: `Opening the **send-back** panel for the Vishay NDA. I'll assemble a **clean copy** (your working copy with changes accepted) plus a **redline vs their Draft 2** (non-cumulative), and can draft an internal or external **summary of the changes**. Nothing goes out until you send it — status then moves to **In Negotiation**.`,
+      artifact: { kind: 'send_back', refId: 'AGR-2201', title: 'Vishay NDA — send back (clean copy + redline)' },
+      actions: [],
+    }),
+  },
+  {
+    name: 'generate_redline', cap: 'disposition',
+    test: (t) => has(t, 'generate the redline', 'generate a redline', 'produce a redline', 'redline document', 'clean copy plus redline'),
+    reply: () => ({
+      text: `Generating the **redline document** — your clean copy vs the counterparty's last version, word-level. Open it below; you can switch the comparison version or make it cumulative (e.g. V-latest vs V1), then send a clean copy + redline.`,
+      artifact: { kind: 'redline_doc', refId: 'AGR-2201', title: 'Vishay NDA — redline document' },
+      actions: [],
+    }),
+  },
+  {
+    name: 'summarize_changes', cap: 'disposition',
+    test: (t) => (has(t, 'summarize the changes', 'summary of changes', 'summarize my changes', 'summarize our changes', 'change summary', 'draft a summary of the changes')) && !has(t, 'deal summary', 'mondelez'),
+    reply: () => ({
+      text: `I can draft a **summary of the changes** — an **internal** version (for a sales rep or contributor) or an **external** version (for the counterparty). Open the send-back panel below, generate the redline, and pick the audience.`,
+      artifact: { kind: 'send_back', refId: 'AGR-2201', title: 'Vishay NDA — change summary' },
+      actions: [],
+    }),
+  },
+  {
+    name: 'accept_all_clean', cap: 'disposition',
+    test: (t) => (has(t, 'accept all', 'accept everything', 'make a clean copy', 'accept the changes')) && !has(t, 'recommended'),
+    reply: () => ({
+      text: `Accepted all tracked changes on the working copy — it's now a **clean copy**. Attorneys can't carry cumulative track-changes across versions; once accepted, the doc is clean and I redline it against the counterparty's version. Open it below, then assemble the clean copy + redline.`,
+      artifact: { kind: 'document', refId: 'AGR-2201', title: 'Vishay NDA — clean copy' },
+      effect: () => useStore.getState().acceptAllChanges('V-2201-2'),
+      actions: [{ label: 'Assemble clean copy + redline', prompt: 'send the clean copy and redline back to the counterparty', variant: 'primary' }],
+    }),
+  },
+  {
+    name: 'execute_deal', cap: 'disposition',
+    test: (t) => has(t, 'execute the deal', 'sign all', 'execute all', 'sign the deal', 'send all for signature', 'sign multiple', 'execute the northwind', 'sign the northwind'),
+    reply: () => ({
+      text: `Opening **deal execution** for Northwind — this ticket has multiple documents (MSA, DPA, SOW). Select which to sign and route them **all together** or **individually** (the SOW is ready to sign now; the MSA is still in redline). I can't sign — each DocuSign envelope is yours to advance.`,
+      artifact: { kind: 'deal_execution', refId: 'TKT-1031', title: 'Northwind — execute & sign' },
+      actions: [],
+    }),
+  },
+  {
+    name: 'deal_overview', cap: 'review',
+    test: (t) => has(t, 'deal overview', 'documents on this ticket', 'all the documents', 'the whole deal', 'multiple documents', 'northwind deal', 'all agreements on', 'open the northwind'),
+    reply: () => ({
+      text: `Opening the **Northwind deal** — all three agreements (MSA, DPA, SOW) on one ticket, each with its stage and whose court it's in, plus deal-level discussion. Open any document, or execute the ones that are ready.`,
+      artifact: { kind: 'ticket', refId: 'TKT-1031', title: 'Northwind Energy — deal' },
+      actions: [{ label: 'Execute & sign', prompt: 'execute the northwind deal', variant: 'primary' }],
+    }),
+  },
+  {
+    name: 'suggest_to_playbook', cap: 'playbook_suggest',
+    test: (t) => has(t, 'suggest') && has(t, 'playbook')
+      && !has(t, 'review', 'suggestions', 'suggested addition', 'suggestion queue', 'creating a playbook', 'a playbook for', 'create a playbook'),
+    reply: (t) => {
+      const kind = has(t, 'red line', 'red-line', 'redline') ? 'red_line' as const : has(t, 'default', 'standard') ? 'default' as const : 'fallback' as const
+      const m = t.match(/(?:add to playbook(?: as [a-z ]+)?:?|to the playbook:?)\s*(.{2,140})/i)
+      const text = (m?.[1] || 'the highlighted clause language').trim()
+      // Derive the target playbook + source from the agreement currently open (not hardcoded to Vishay/NDA).
+      const st = useStore.getState()
+      const ag = st.agreements.find((a) => a.id === st.canvas.agreementId)
+      const pbId = ag?.playbook_id ?? 'pb_nda'
+      const pbName = st.playbooks.find((p) => p.id === pbId)?.name ?? 'the playbook'
+      return {
+        text: `Sent to the **playbook owner** for approval — proposed as a **${kind.replace('_', ' ')}** for *${pbName}*. It lands in Playbook → **Suggested additions**; once approved it's added and the agent flags it automatically from then on.`,
+        artifact: { kind: 'playbook_suggestions', title: 'Playbook — suggested additions' },
+        effect: () => { const s = useStore.getState(); const a = s.agreements.find((x) => x.id === s.canvas.agreementId); s.suggestToPlaybook({ playbook_id: a?.playbook_id ?? 'pb_nda', provision_name: 'Suggested clause', kind, proposed_text: text, source_agreement_id: a?.id ?? 'AGR-2201' }) },
+        actions: [{ label: 'Review the suggestion queue', prompt: 'review playbook suggestions', variant: 'primary' }],
+      }
+    },
+  },
+  {
+    name: 'playbook_suggestions_view', cap: 'playbook_view',
+    test: (t) => has(t, 'playbook suggestions', 'suggested additions', 'suggested changes to the playbook', 'review playbook', 'suggestion queue', 'new changes in playbook', 'review 2 new changes'),
+    reply: () => ({
+      text: `Opening the **Suggested additions** queue — clauses attorneys have proposed for the playbook, each with the source deal and rationale. As owner you can **approve** (adds it to the playbook) or **reject**.`,
+      artifact: { kind: 'playbook_suggestions', title: 'Playbook — suggested additions' },
+      actions: [],
+    }),
+  },
+  {
+    name: 'create_playbook', cap: 'playbook_edit',
+    test: (t) => has(t, 'create a playbook', 'create my playbook', 'new playbook', 'build a playbook', 'create playbook', 'make a playbook'),
+    reply: () => ({
+      text: `Let's build a playbook in plain language. I'll start from a **template** + example agreements, analyze them, and draft the provisions — you review, refine by chat, and publish. No file editing. Open the builder below.`,
+      artifact: { kind: 'playbook_create', title: 'Create a playbook' },
+      effect: () => useStore.getState().startPlaybookDraft('New MSA Playbook', 'MSA', 'Create a playbook from the CP MSA template + recent examples'),
+      actions: [],
+    }),
+  },
+  {
+    name: 'playbook_restructure', cap: 'playbook_edit',
+    test: (t) => has(t, 'restructure the playbook', 'reorganize the playbook', 'reformat the playbook', 'nest the', 'nest indemnif'),
+    reply: () => ({
+      text: `You can restructure the playbook in natural language — group provisions, **nest child concepts under a parent** (e.g. Indemnification → scope / exclusions / limitations / notice / control-of-defense), or reformat for a different audience. The MSA playbook already shows nesting. The backend keeps using the same positions to detect deviations regardless of how it's rendered.`,
+      artifact: { kind: 'playbook', refId: 'pb_msa', title: 'MSA playbook (nested)' },
+      effect: () => useStore.getState().setPlaybook('pb_msa'),
+      actions: [{ label: 'Open the MSA playbook', prompt: 'show me the MSA playbook', variant: 'primary' }],
+    }),
+  },
+  {
+    name: 'create_template_project', cap: 'templates',
+    test: (t) => has(t, 'create a template', 'new template', 'build a template', 'build a new template', 'create a new template', 'template project'),
+    reply: () => ({
+      text: `Opening **Projects** to build a new form template. Point me at **precedent** ChargePoint agreements + **third-party standards**, and I'll generate a template modeled on the standards but carrying our concepts — you iterate with me, save it to the library, and can build a playbook from it. Your Claude Projects flow, made enterprise.`,
+      artifact: { kind: 'projects', title: 'Template projects' },
+      actions: [],
+    }),
+  },
+  {
+    name: 'templates_folder', cap: 'templates',
+    test: (t) => has(t, 'template projects', 'open projects', 'templates folder', 'projects workspace', 'my templates', 'template library', 'open the projects'),
+    reply: () => ({
+      text: `Opening **Projects** — your template-building workspace and the library of saved templates (the NDA and MSA templates that seed the playbooks). Start a new project to build a form agreement from precedent.`,
+      artifact: { kind: 'projects', title: 'Template projects' },
+      actions: [],
+    }),
+  },
   {
     name: 'tagged',
     test: (t) => has(t, 'tagged', 'assigned to me', 'my plate', "what's on me", 'waiting on me', 'sign-off', 'sign off'),
@@ -193,7 +317,7 @@ const intents: Intent[] = [
     name: 'lifecycle', cap: 'review',
     test: (t) => has(t, 'lifecycle', 'what stage', 'which stage', 'stage of', 'approval chain', 'approvals', 'how does it move', 'how will it move', 'next step', 'move from redlin', 'how an agreement'),
     reply: () => ({
-      text: `Each agreement moves through this lifecycle:\n\n**Draft → Internal Review → Sent to Counterparty → Redline Received → Pending Execution → Executed**\n\nSending to the counterparty is **gated by an approval chain** (senior counsel + privacy), and execution runs through DocuSign. Open the Vishay NDA below — the **lifecycle bar at the top** shows the current stage, the "Advance to next stage" button, and any pending approvals inline.`,
+      text: `Each agreement moves through this lifecycle:\n\n**Draft → Internal Review → Sent to Counterparty → Redline Received → In Negotiation → Ready to Sign → Executed**\n\nSending the counterparty our redline puts the ball back in their court (In Negotiation); when terms are final it moves to **Ready to Sign** and executes through DocuSign. Open the Vishay NDA below — the **lifecycle bar at the top** shows the current stage, the "Advance" / "Send back to counterparty" action, and any pending approvals inline.`,
       artifact: { kind: 'redline_review', refId: 'AGR-2201', title: 'Vishay NDA — lifecycle & approvals' },
       actions: [{ label: 'Advance to the next stage', prompt: 'advance the Vishay NDA to the next stage', variant: 'primary' }],
     }),
@@ -300,9 +424,17 @@ const intents: Intent[] = [
   },
   {
     name: 'playbook', cap: 'playbook_view',
-    test: (t) => has(t, 'playbook'),
+    test: (t) => has(t, 'playbook') && !has(t, 'flag', 'no playbook', 'future playbook', 'guidance'),
     reply: (t) => {
-      if (has(t, 'add', 'residual', 'new provision', 'fallback', 'edit', 'create')) {
+      if (has(t, 'msa', 'master services', 'indemnif', 'nesting', 'nested')) {
+        return {
+          text: `The **ChargePoint MSA 2025** playbook — a complex contract, so it uses **nested provisions**: e.g. **Indemnification** is a parent with children (Scope, Exclusions, Limitations, Notification, Control of Defense), and **Limitation of Liability** is a mutual-cap red line. Open it below; expand a parent to see its sub-provisions.`,
+          artifact: { kind: 'playbook', refId: 'pb_msa', title: 'MSA Playbook (nested)' },
+          effect: () => useStore.getState().setPlaybook('pb_msa'),
+          actions: [{ label: 'Review playbook suggestions', prompt: 'review playbook suggestions' }],
+        }
+      }
+      if (has(t, 'add', 'residual', 'new provision', 'fallback', 'edit')) {
         return {
           text: `I can extend the **NDA playbook** in natural language. You mentioned **residuals** — right now it lives only as a strict *red line* under §4 Exclusions. I can add it as a **named provision** with its own positions so the system flags it consistently.\n\nProposed entry:\n- **Standard position:** No residuals clause.\n- **Fallback 1:** *(none — not negotiable)*\n- **Red line:** Any clause permitting use of information retained in memory.\n- **Rationale:** Erodes trade-secret protection; rejected in 100% of sampled deals.\n\nPlaybook changes require **Playbook Owner** approval (Eric Batill). Want me to draft this as a change request for his sign-off?`,
           artifact: { kind: 'playbook', title: 'NDA playbook — add provision' },
@@ -515,12 +647,19 @@ export function openArtifact(a: { kind: ArtifactKind; refId?: string; title?: st
       s.navigate({ reviewMode: 'document' })
       break
     case 'ticket': s.openTicket(a.refId ?? 'TKT-1042'); break
-    case 'playbook': s.setView('playbook'); break
+    case 'playbook': s.setView('playbook'); s.navigate({ playbookMode: 'inventory' }); break
+    case 'playbook_create': s.openCanvas({ view: 'playbook', playbookMode: 'create' }); break
+    case 'playbook_suggestions': s.openCanvas({ view: 'playbook', playbookMode: 'suggestions' }); break
+    case 'redline_doc': s.openSendBack(a.refId ?? 'AGR-2201'); s.navigate({ reviewMode: 'redline' }); break
+    case 'send_back': s.openSendBack(a.refId ?? 'AGR-2201'); break
+    case 'deal_execution': s.openDealExecution(a.refId ?? 'TKT-1031'); break
+    case 'projects': s.openProjects(a.refId || undefined, false); break
+    case 'template': { const tpl = s.templates.find((x) => x.id === a.refId); s.openProjects(tpl?.project_id || undefined, false); if (a.refId) s.navigate({ templateId: a.refId }); break }
     case 'dashboard': s.setView('dashboard'); break
     case 'deal_summary': s.openCanvas({ view: 'deal_summary', dealSummaryId: a.refId ?? 'AGR-2150' }); break
     case 'tagged_items': s.openCanvas({ view: 'queue' }); break
     case 'intake_form': s.openCanvas({ view: 'intake', intakeCp: a.refId || undefined }); break
-    case 'execution': s.openCanvas({ view: 'execution', executionAgreementId: a.refId ?? 'AGR-2201' }); break
+    case 'execution': s.openCanvas({ view: 'execution', executionAgreementId: a.refId ?? 'AGR-2201', executionTicketId: undefined }); break
     case 'admin': s.setView('admin'); break
     case 'audit': s.setView('audit'); break
     case 'repository': s.setView('repository'); break

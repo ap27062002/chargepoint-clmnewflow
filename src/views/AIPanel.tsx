@@ -1,20 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
-import { Sparkles, Send, BookOpen, Shield, GitCompareArrows, FileEdit, Scale, History } from 'lucide-react'
+import { Sparkles, Send, BookOpen, GitCompareArrows, FileEdit } from 'lucide-react'
 import { Markdown } from '@/components/Markdown'
 import { AiTag } from '@/components/ui'
+import { sendToAgent } from '@/agent/engine'
 
 interface Msg { role: 'user' | 'ai'; text: string }
 
+// Consolidated to Playbook guidance + an ad-hoc Claude action + prior-deal comparison (Eric §6).
 const CAPS = [
-  { icon: <Scale size={13} />, label: 'Clause analysis', prompt: 'Analyze the term & termination clause' },
-  { icon: <Shield size={13} />, label: 'Risk analysis', prompt: 'What are the top risks in this redline?' },
-  { icon: <BookOpen size={13} />, label: 'Playbook guidance', prompt: 'What does the playbook say about residuals?' },
-  { icon: <FileEdit size={13} />, label: 'Alternative language', prompt: 'Draft alternative language for the injunctive relief clause' },
+  { icon: <BookOpen size={13} />, label: 'Playbook guidance', prompt: 'What does the playbook say about this clause?' },
+  { icon: <FileEdit size={13} />, label: 'Suggest revisions favorable to us', prompt: 'Suggest revisions favorable to ChargePoint for this clause' },
   { icon: <GitCompareArrows size={13} />, label: 'Previous deal comparison', prompt: 'How did we handle this with Subaru?' },
-  { icon: <History size={13} />, label: 'Draft revisions', prompt: 'Revise §8 to our Fallback 1 position' },
 ]
 
 const ANSWERS: { match: (t: string) => boolean; text: string }[] = [
+  { match: (t) => t.includes('favorable') || t.includes('suggest revision'), text: `**Suggested revisions favorable to ChargePoint.** For this provision, tighten to our standard position, cap our exposure, and keep obligations mutual. If it's a term/survival clause → 3yr/3yr with trade secrets indefinite; if liability → mutual cap at 12 months' fees with consequentials waived; if indemnity → scope to third-party IP only with our standard exclusions. Want me to draft the exact language?` },
   { match: (t) => t.includes('residual'), text: `**Playbook — Residuals (red line).** The NDA playbook lists residuals as a strict red line under §4 Exclusions: *"Any clause permitting use of information retained in unaided memory."* It erodes trade-secret protection and was rejected in 100% of sampled deals (Subaru, Microchip). Recommend striking §1(f) entirely.` },
   { match: (t) => t.includes('injunctive') || t.includes('alternative language'), text: `**Alternative language — §9 Injunctive Relief (Fallback 1):**\n\n> "Each Party acknowledges that a breach may cause irreparable harm and that the non-breaching Party shall be entitled to seek injunctive relief, **without limiting other remedies and as the court deems appropriate with respect to any bond**."\n\nThis keeps relief mutual and avoids a mandatory bond on ChargePoint while giving the court discretion — within our approved fallback range.` },
   { match: (t) => t.includes('subaru') || t.includes('previous') || t.includes('compare'), text: `**Previous deal — Subaru MNDA (executed Feb 2026).** Subaru also introduced residuals and a 3-year term. Outcome: residuals **rejected**; term settled at **3yr / 3yr CI survival** (our Fallback 1). Same counter we're recommending here — Subaru accepted within one round.` },
@@ -25,6 +25,7 @@ const ANSWERS: { match: (t: string) => boolean; text: string }[] = [
 export function AIPanel({ agreementTitle, seed }: { agreementTitle: string; seed?: { text: string; nonce: number } | null }) {
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [input, setInput] = useState('')
+  const [lastSel, setLastSel] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const ask = (text: string) => {
@@ -36,7 +37,7 @@ export function AIPanel({ agreementTitle, seed }: { agreementTitle: string; seed
 
   // "Ask AI" from a document selection seeds a question here.
   useEffect(() => {
-    if (seed?.text) ask(`Explain this clause: "${seed.text}"`)
+    if (seed?.text) { setLastSel(seed.text); ask(`Explain this clause: "${seed.text}"`) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed?.nonce])
 
@@ -82,6 +83,12 @@ export function AIPanel({ agreementTitle, seed }: { agreementTitle: string; seed
       </div>
 
       <div className="border-t border-slate-100 p-2.5">
+        {lastSel && (
+          <button onClick={() => sendToAgent(`Suggest to add to playbook as a fallback: "${lastSel.length > 200 ? lastSel.slice(0, 200) + '…' : lastSel}"`)}
+            className="mb-1.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-ai-200 py-1.5 text-[11.5px] font-semibold text-ai-700 hover:bg-ai-50">
+            <BookOpen size={12} /> Suggest this clause to the playbook
+          </button>
+        )}
         <div className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 focus-within:border-ai-400">
           <input
             value={input}

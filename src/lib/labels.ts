@@ -25,8 +25,8 @@ export const agreementStatusMeta: Record<AgreementStatus, { label: string; chip:
   internal_review:     { label: 'Internal Review',      chip: 'bg-indigo-100 text-indigo-700' },
   sent_to_counterparty:{ label: 'Sent to Counterparty', chip: 'bg-sky-100 text-sky-700' },
   redline_received:    { label: 'Redline Received',     chip: 'bg-amber-100 text-amber-800' },
-  negotiation:         { label: 'Negotiation',          chip: 'bg-orange-100 text-orange-700' },
-  pending_execution:   { label: 'Pending Execution',    chip: 'bg-violet-100 text-violet-700' },
+  negotiation:         { label: 'In Negotiation',       chip: 'bg-orange-100 text-orange-700' },
+  pending_execution:   { label: 'Ready to Sign',        chip: 'bg-violet-100 text-violet-700' },
   executed:            { label: 'Executed',             chip: 'bg-brand-100 text-brand-800' },
 }
 
@@ -36,7 +36,8 @@ export const statusChip = (status: string): string => {
     'Internal Review': 'bg-indigo-100 text-indigo-700',
     'Draft': 'bg-slate-100 text-slate-700',
     'Sent to Counterparty': 'bg-sky-100 text-sky-700',
-    'Pending Execution': 'bg-violet-100 text-violet-700',
+    'In Negotiation': 'bg-orange-100 text-orange-700',
+    'Ready to Sign': 'bg-violet-100 text-violet-700',
     'Executed': 'bg-brand-100 text-brand-800',
     'Open': 'bg-slate-100 text-slate-700',
     'In Progress': 'bg-indigo-100 text-indigo-700',
@@ -75,6 +76,14 @@ export const auditLabel: Record<AuditEventType, string> = {
   status_changed: 'Status Changed', document_sent: 'Document Sent', signature_requested: 'Signature Requested',
   signature_completed: 'Signature Completed', comment_posted: 'Comment Posted', playbook_updated: 'Playbook Updated',
   approval_granted: 'Approval Granted', approval_denied: 'Approval Denied', sla_breached: 'SLA Breached',
+  playbook_suggested: 'Playbook Suggested', playbook_suggestion_decided: 'Playbook Suggestion Decided',
+}
+
+export const redlineKindMeta: Record<'added' | 'removed' | 'modified' | 'unchanged', { label: string; chip: string }> = {
+  added:     { label: 'Added',     chip: 'bg-brand-50 text-brand-700 ring-brand-600/20' },
+  removed:   { label: 'Removed',   chip: 'bg-red-50 text-red-700 ring-red-600/20' },
+  modified:  { label: 'Revised',   chip: 'bg-amber-50 text-amber-700 ring-amber-600/20' },
+  unchanged: { label: 'Unchanged', chip: 'bg-slate-100 text-slate-500 ring-slate-400/20' },
 }
 
 export const channelLabel: Record<NotificationChannel, string> = {

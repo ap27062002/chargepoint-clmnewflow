@@ -115,7 +115,7 @@ export interface LeadershipMetrics {
   attention: LeaderAttention[]
 }
 
-export const PIPELINE_STAGES = ['Red Line Analysis', 'Internal Review', 'Draft', 'Sent to Counterparty', 'Pending Execution', 'Executed']
+export const PIPELINE_STAGES = ['Red Line Analysis', 'Internal Review', 'Draft', 'Sent to Counterparty', 'In Negotiation', 'Ready to Sign', 'Executed']
 
 export function leadershipMetrics(
   tickets: Ticket[], agreements: Agreement[], versions: Version[], deviations: Deviation[], asOf = AS_OF,

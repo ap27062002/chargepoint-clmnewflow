@@ -1,10 +1,10 @@
 import { clsx } from 'clsx'
-import { Check, X, CornerUpLeft, Sparkles, FileText, ChevronRight, Lock } from 'lucide-react'
+import { Check, X, CornerUpLeft, Sparkles, FileText, ChevronRight, Lock, BookOpen } from 'lucide-react'
 import { useStore } from '@/store'
 import { Chip, Avatar } from '@/components/ui'
 import { can } from '@/lib/access'
 import { riskMeta, dispositionMeta, impactLabel, directionLabel } from '@/lib/labels'
-import type { Deviation, DispositionStatus } from '@/types'
+import type { Deviation } from '@/types'
 
 function DispoButton({ active, onClick, icon, label, tone }: { active: boolean; onClick: () => void; icon: JSX.Element; label: string; tone: 'accept' | 'counter' | 'reject' }) {
   const tones = {
@@ -19,7 +19,7 @@ function DispoButton({ active, onClick, icon, label, tone }: { active: boolean; 
   )
 }
 
-function DeviationCard({ d, onViewInDoc }: { d: Deviation; onViewInDoc: () => void }) {
+function DeviationCard({ d, onViewInDoc, onOpenPlaybook }: { d: Deviation; onViewInDoc: () => void; onOpenPlaybook: () => void }) {
   const setDisposition = useStore((s) => s.setDisposition)
   const canDispose = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'disposition'))
   const rm = riskMeta[d.risk_category]
@@ -39,11 +39,16 @@ function DeviationCard({ d, onViewInDoc }: { d: Deviation; onViewInDoc: () => vo
             <Chip className={clsx('ring-1 ring-inset', dispositionMeta[d.disposition_status].chip)}>{dispositionMeta[d.disposition_status].label}</Chip>
           </div>
         </div>
-        {hasClause && (
-          <button onClick={onViewInDoc} className="flex shrink-0 items-center gap-1 text-[12px] font-semibold text-slate-500 hover:text-brand-600">
-            <FileText size={13} /> View in doc <ChevronRight size={12} />
+        <div className="flex shrink-0 items-center gap-2">
+          <button onClick={onOpenPlaybook} title="See this provision in the playbook" className="flex items-center gap-1 text-[12px] font-semibold text-slate-400 hover:text-ai-600">
+            <BookOpen size={13} /> In playbook
           </button>
-        )}
+          {hasClause && (
+            <button onClick={onViewInDoc} className="flex items-center gap-1 text-[12px] font-semibold text-slate-500 hover:text-brand-600">
+              <FileText size={13} /> View in doc <ChevronRight size={12} />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 px-4 py-3">
@@ -84,6 +89,10 @@ function DeviationCard({ d, onViewInDoc }: { d: Deviation; onViewInDoc: () => vo
 
 export function IssuesView({ agreementId, onViewInDoc }: { agreementId: string; onViewInDoc: (deviationId: string) => void }) {
   const devs = useStore((s) => s.deviations).filter((d) => d.agreement_id === agreementId)
+  const agreements = useStore((s) => s.agreements)
+  const openCanvas = useStore((s) => s.openCanvas)
+  const playbookId = agreements.find((a) => a.id === agreementId)?.playbook_id ?? 'pb_nda'
+  const openPlaybook = () => openCanvas({ view: 'playbook', playbookId, playbookMode: 'inventory' })
   const sorted = [...devs].sort((a, b) => riskMeta[a.risk_category].order - riskMeta[b.risk_category].order)
 
   const summary = (['red_line', 'negotiate', 'missing', 'new', 'enhancement', 'accept'] as const)
@@ -104,7 +113,7 @@ export function IssuesView({ agreementId, onViewInDoc }: { agreementId: string; 
         ))}
       </div>
       <div className="space-y-3">
-        {sorted.map((d) => <DeviationCard key={d.id} d={d} onViewInDoc={() => onViewInDoc(d.id)} />)}
+        {sorted.map((d) => <DeviationCard key={d.id} d={d} onViewInDoc={() => onViewInDoc(d.id)} onOpenPlaybook={openPlaybook} />)}
       </div>
     </div>
   )

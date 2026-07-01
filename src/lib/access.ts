@@ -14,6 +14,8 @@ export type Capability =
   | 'audit'          // audit center
   | 'deal_summary'   // executed deal summaries / analytics
   | 'comment'        // comment on provisions
+  | 'playbook_suggest' // suggest a clause be added to the playbook
+  | 'templates'      // template "Projects" workspace
 
 export const ROLE_LABEL: Record<Role, string> = {
   initiator: 'Initiator',
@@ -25,10 +27,10 @@ export const ROLE_LABEL: Record<Role, string> = {
 
 const ACCESS: Record<Role, Capability[]> = {
   initiator:      ['queue', 'notifications', 'intake', 'review', 'pipeline'],
-  attorney:       ['queue', 'notifications', 'intake', 'review', 'disposition', 'comment', 'pipeline', 'playbook_view', 'audit', 'deal_summary'],
+  attorney:       ['queue', 'notifications', 'intake', 'review', 'disposition', 'comment', 'pipeline', 'playbook_view', 'audit', 'deal_summary', 'templates', 'playbook_suggest'],
   contributor:    ['queue', 'notifications', 'review', 'comment'],
-  playbook_owner: ['queue', 'notifications', 'playbook_view', 'playbook_edit', 'pipeline', 'audit', 'deal_summary', 'review'],
-  administrator:  ['queue', 'notifications', 'admin', 'pipeline', 'audit'],
+  playbook_owner: ['queue', 'notifications', 'playbook_view', 'playbook_edit', 'pipeline', 'audit', 'deal_summary', 'review', 'templates', 'playbook_suggest'],
+  administrator:  ['queue', 'notifications', 'admin', 'pipeline', 'audit', 'playbook_view', 'playbook_edit', 'deal_summary', 'templates'],
 }
 
 export function can(role: Role, cap: Capability): boolean {
@@ -50,6 +52,7 @@ export const VIEW_CAP: Record<ViewKey, Capability> = {
   execution: 'disposition',
   repository: 'review',
   contracts: 'pipeline',
+  projects: 'templates',
 }
 
 export function canView(role: Role, view: ViewKey): boolean {
@@ -63,6 +66,7 @@ export const CAP_LABEL: Record<Capability, string> = {
   intake: 'creating new agreements', playbook_view: 'the playbook', playbook_edit: 'editing playbooks',
   admin: 'the admin console', audit: 'the audit center', deal_summary: 'deal summaries & analytics',
   comment: 'commenting',
+  playbook_suggest: 'suggesting playbook additions', templates: 'the template projects workspace',
 }
 
 // One-line summary of what each role CAN do — shown when access is denied.
@@ -91,17 +95,17 @@ export function startersFor(role: Role): Starter[] {
       ]
     case 'playbook_owner':
       return [
-        { label: 'Review 2 new changes in playbook', sub: '2 refinement updates to approve', prompt: 'show me the NDA playbook' },
-        { label: 'Refinement recommendations', sub: 'Weekly analysis to approve', prompt: 'what is the refinement loop recommending?' },
-        { label: 'Summarize the Mondelez deal', sub: 'Executed · analytics', prompt: 'summarize the Mondelez deal' },
-        { label: "What's on my plate?", sub: 'My queue', prompt: "what's on my plate?" },
+        { label: 'Review playbook suggestions', sub: 'Attorney-proposed additions', prompt: 'review playbook suggestions' },
+        { label: 'Open the NDA playbook', sub: '10 provisions · v3', prompt: 'show me the NDA playbook' },
+        { label: 'Create a new playbook', sub: 'From a template + examples', prompt: 'create a new playbook' },
+        { label: 'Build a new template', sub: 'From precedent + standards', prompt: 'create a new template project' },
       ]
     case 'administrator':
       return [
         { label: 'Open the admin console', sub: 'Routing · SLAs · integrations', prompt: 'open the admin console' },
+        { label: 'Review playbook suggestions', sub: 'Attorney-proposed additions', prompt: 'review playbook suggestions' },
+        { label: 'Template projects', sub: 'Build new form templates', prompt: 'open template projects' },
         { label: 'Review the audit log', sub: 'Immutable event history', prompt: 'show me the audit log' },
-        { label: 'Pipeline overview', sub: 'All active matters', prompt: 'show me the dashboard' },
-        { label: "What's on my plate?", sub: 'My queue', prompt: "what's on my plate?" },
       ]
     case 'attorney':
     default:

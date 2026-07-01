@@ -11,6 +11,7 @@ export function StageTracker({ agreementId }: { agreementId: string }) {
   const agreement = useStore((s) => s.agreements.find((a) => a.id === agreementId))
   const approvals = useStore((s) => s.approvals).filter((ap) => ap.agreement_id === agreementId)
   const advance = useStore((s) => s.advanceAgreementStage)
+  const openSendBack = useStore((s) => s.openSendBack)
   const decideApproval = useStore((s) => s.decideApproval)
   const uid = useStore((s) => s.currentUserId)
   const canAdvance = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'disposition'))
@@ -50,9 +51,9 @@ export function StageTracker({ agreementId }: { agreementId: string }) {
         </div>
         {agreement.status !== 'executed' && next && (
           canAdvance ? (
-            <button onClick={() => advance(agreementId)}
+            <button onClick={() => (next === 'negotiation' ? openSendBack(agreementId) : advance(agreementId))}
               className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-[12.5px] font-semibold text-white transition hover:bg-brand-600">
-              {next === 'executed' ? 'Execute & sign' : next === 'sent_to_counterparty' && blockedBySend ? 'Request approval to send' : `Advance to ${agreementStatusMeta[next].label}`}
+              {next === 'negotiation' ? 'Send back to counterparty' : next === 'executed' ? 'Execute & sign' : next === 'sent_to_counterparty' && blockedBySend ? 'Request approval to send' : `Advance to ${agreementStatusMeta[next].label}`}
               <ArrowRight size={13} />
             </button>
           ) : (

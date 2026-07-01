@@ -31,7 +31,8 @@ export type ContractStatus =
   | 'Internal Review'
   | 'Draft'
   | 'Sent to Counterparty'
-  | 'Pending Execution'
+  | 'In Negotiation'
+  | 'Ready to Sign'
   | 'Executed'
 
 export interface Ticket {
@@ -195,6 +196,8 @@ export interface Provision {
   counterparty_introduced?: boolean
   tier?: ProvisionTier // playbook classification used for filtering
   deferred_to?: string // for tier 'deferred' — who the decision is escalated to
+  children?: Provision[] // nested sub-provisions (e.g. Indemnification → scope/exclusions/limitations…)
+  parent_id?: string
 }
 
 export interface Playbook {
@@ -225,6 +228,8 @@ export type AuditEventType =
   | 'approval_granted'
   | 'approval_denied'
   | 'sla_breached'
+  | 'playbook_suggested'
+  | 'playbook_suggestion_decided'
 
 export interface AuditEvent {
   id: string
@@ -270,6 +275,13 @@ export type ArtifactKind =
   | 'audit'
   | 'repository'
   | 'contracts'
+  | 'redline_doc'
+  | 'send_back'
+  | 'deal_execution'
+  | 'projects'
+  | 'template'
+  | 'playbook_create'
+  | 'playbook_suggestions'
   | 'none'
 
 export interface ChatMessage {
@@ -322,6 +334,7 @@ export interface Signer {
   state: SignerState
   signed_date?: string
 }
+export type EnvelopeMode = 'combined' | 'individual'
 export interface Envelope {
   id: string // DocuSign-style envelope id
   agreement_id: string
@@ -330,6 +343,8 @@ export interface Envelope {
   signers: Signer[]
   created_date: string
   completed_date?: string
+  envelope_group_id?: string // groups envelopes sent together for one ticket/deal
+  mode?: EnvelopeMode
 }
 
 // ----- View routing ---------------------------------------------------------
@@ -347,6 +362,7 @@ export type ViewKey =
   | 'execution'
   | 'repository'
   | 'contracts'
+  | 'projects'
 
 export interface CanvasState {
   view: ViewKey
@@ -354,13 +370,22 @@ export interface CanvasState {
   solo?: boolean // canvas shown full-width with the agent collapsed (rail-driven navigation)
   ticketId?: string
   agreementId?: string
-  agreementTab?: 'deal' | 'review'
-  reviewMode?: 'issues' | 'document' | 'compare'
+  agreementTab?: 'overview' | 'deal' | 'review'
+  reviewMode?: 'issues' | 'document' | 'compare' | 'directive' | 'sendback' | 'redline'
+  reviewFocusDeviationId?: string        // directive cursor — which issue the walkthrough is on
   dealSummaryId?: string
   intakeCp?: string
   executionAgreementId?: string
+  executionTicketId?: string             // deal-level (many-to-one) execution
+  executionSelection?: string[]          // which agreements are selected for signing
   intakePayload?: IntakePayload          // Change 1 — agentic NDA intake
   contractsFilter?: ContractsFilterPreset // Change 3 — contracts list preset
+  sendBack?: SendBackState               // versioning — clean copy + redline send-back
+  playbookId?: string                    // active playbook (multi-playbook)
+  playbookMode?: 'inventory' | 'create' | 'suggestions'
+  playbookDraftId?: string
+  projectId?: string                     // templates / projects
+  templateId?: string
 }
 
 // ----- Intake (agentic NDA drafting, Change 1) ------------------------------
@@ -406,3 +431,105 @@ export interface IntakePayload {
 // ----- Contracts list (Change 3) -------------------------------------------
 export type ContractsFilterPreset =
   | 'all' | 'active' | 'cp_turn' | 'counterparty_turn' | 'sla_risk' | 'executed'
+
+// ----- Send-back: clean copy + redline (build-12, Eric §3) ------------------
+export type RedlineRunKind = 'normal' | 'ins' | 'del'
+export interface RedlineRun { text: string; kind: RedlineRunKind }
+export interface RedlineClause {
+  ref: string
+  heading: string
+  status: 'added' | 'removed' | 'modified' | 'unchanged'
+  runs: RedlineRun[]
+}
+export interface RedlineDoc {
+  baseVersionId: string
+  workingVersionId: string
+  title: string
+  subtitle: string
+  clauses: RedlineClause[]
+  cumulative: boolean
+  changeCount: number
+}
+export type SummaryAudience = 'internal' | 'external'
+export interface ChangeSummary {
+  audience: SummaryAudience
+  headline: string
+  bullets: string[]
+  generatedAt: string
+}
+export interface SendBackState {
+  agreementId: string
+  baseVersionId: string
+  cumulative: boolean
+  redline?: RedlineDoc
+  summary?: ChangeSummary
+  staged: boolean
+}
+
+// ----- Playbook suggestions + NL creation (build-12, Eric §7,§8) ------------
+export type SuggestionKind = 'default' | 'fallback' | 'red_line'
+export type SuggestionState = 'pending' | 'approved' | 'rejected'
+export interface PlaybookSuggestion {
+  id: string
+  playbook_id: string
+  provision_name: string
+  target_provision_id?: string
+  kind: SuggestionKind
+  proposed_text: string
+  rationale: string
+  source_agreement_id?: string
+  source_section?: string
+  suggested_by: string
+  created_date: string
+  state: SuggestionState
+  decided_by?: string
+  decided_date?: string
+}
+export type PlaybookDraftStage = 'collecting' | 'analyzing' | 'generated'
+export interface PlaybookDraft {
+  id: string
+  name: string
+  agreement_type: AgreementType
+  templateRef: string
+  sourceTemplateId?: string // when built from a saved template — link back on publish
+  exampleRefs: string[]
+  stage: PlaybookDraftStage
+  provisions: Provision[]
+  rawPrompt: string
+  created_date: string
+}
+
+// ----- Templates / Projects (build-12, Eric §9) -----------------------------
+export type TemplateOrigin = 'generated' | 'uploaded' | 'precedent'
+export type TemplateStatus = 'draft' | 'in_review' | 'published'
+export type ProjectSourceKind = 'precedent' | 'third_party_standard' | 'concept_note'
+export interface ProjectSource { id: string; kind: ProjectSourceKind; name: string; detail: string; selected: boolean }
+export interface TemplateIteration { id: string; role: 'user' | 'agent'; text: string; ts: string; changeNote?: string }
+export interface TemplateSection { id: string; heading: string; summary: string; parentId?: string; cpConcept?: boolean }
+export interface AgreementTemplate {
+  id: string
+  name: string
+  agreement_type: AgreementType
+  origin: TemplateOrigin
+  status: TemplateStatus
+  project_id: string | null
+  version: number
+  owner_id: string
+  created_date: string
+  sections: TemplateSection[]
+  source_summary: string
+  playbook_id?: string | null
+}
+export type ProjectStatus = 'building' | 'iterating' | 'template_ready' | 'archived'
+export interface TemplateProject {
+  id: string
+  name: string
+  goal: string
+  agreement_type: AgreementType
+  status: ProjectStatus
+  owner_id: string
+  created_date: string
+  sources: ProjectSource[]
+  iterations: TemplateIteration[]
+  draftTemplateId: string | null
+}
