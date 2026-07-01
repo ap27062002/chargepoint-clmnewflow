@@ -1,7 +1,12 @@
 # Project state — resume here
 
 **App:** ChargePoint Legal CLM — agent-first, chat-driven CLM prototype (Unify build).
-**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-14` (git tag) · repo clean.
+**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-16` (git tag) · repo clean.
+
+**build-15/16 — deepening the 20 "advertised-but-not-wired" partials into REAL wired features (12 of 20 done, verified by adversarial re-audit).** Honest status:
+- **Done+verified (12):** R43 (issues list COMPUTED by `lib/playbookAnalysis.ts` diff→map→classify, reproduces golden 9, input-dependent), R44 (`lib/precedent.ts` real executed-corpus grounding; fabricated Subaru/Microchip removed), R48/R49/R50/R62/R105 (`data/playbookDerive.ts` — playbook DERIVED from template+example clause text; folder picker; persisted default-source-folder in Admin; comparative-analysis table in Projects), R52/R54/R57/R58/R60 (`lib/playbookOps.ts` — chat performs REAL transforms on the published playbook: re-tier moves text, nest reparents, reorder, render sets persisted audience mode that hides red-lines/shows rationale, admin-only accent theme).
+- **Still partial/not-built (8):** R18 (real doc lock), R79 (inquiry intake), R81 (multi-agreement intake), R85 (team-folder publish), R89 (scale/virtualization — the one *missing*), R102 (multi entry points), R107 (real agreement generation w/ clause bodies+export), R112 (invert to thin-Claude-layer). Specs at scratchpad/specs/*.json; re-audit output tasks/wj850o4lc.output.
+- **Lesson reinforced:** the adversarial re-audit CAUGHT an over-claim (cluster-3 reorder/render were canned stubs) → fixed in build-16. Always verify against code, not the summary.
 **Stack:** React + Vite + TS + Tailwind + Zustand. In-memory store; simulated agent with live-Claude fallback (`/api/chat`, needs `ANTHROPIC_API_KEY` in Vercel to activate).
 
 ## Run / deploy / revert
