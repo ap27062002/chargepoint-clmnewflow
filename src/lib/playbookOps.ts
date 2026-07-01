@@ -66,7 +66,7 @@ export function applyPlaybookInstruction(pb: Playbook, instr: string, canPresent
   const op = classifyInstruction(instr)
   const t = lc(instr)
   if (PRESENTATION_OPS.includes(op) && !canPresentation) {
-    return { ok: false, op, presentation: true, message: 'Look & feel changes (nesting, grouping, reordering, re-rendering) are administrator-only. You can still edit provision content (add / remove / re-tier).' }
+    return { ok: false, op, presentation: true, message: 'Setting the visual theme / branding of the playbook is administrator-only. You can still restructure it (nest, group, reorder, re-render) and edit provisions (add / remove / re-tier).' }
   }
 
   if (op === 'retier') {
