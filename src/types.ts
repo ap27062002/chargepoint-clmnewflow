@@ -200,7 +200,21 @@ export interface Provision {
   deferred_to?: string // for tier 'deferred' — who the decision is escalated to
   children?: Provision[] // nested sub-provisions (e.g. Indemnification → scope/exclusions/limitations…)
   parent_id?: string
+  sourceSection?: string      // R62 — the template section this provision was derived from
+  sourcePrecedents?: string[] // R50 — example agreement ids whose positions drove the tier/fallbacks
 }
+
+// ----- Playbook derivation / folder sources (R48/R49/R50/R62) ----------------
+export interface FolderAgreement {
+  id: string
+  name: string
+  agreement_type: AgreementType
+  folderPath: string
+  status: string
+  hasBody: boolean // true when the executed clause text is available to derive from
+}
+export interface SourceFolder { path: string; templateId: string; exampleAgreementIds: string[] }
+export type PlaybookSourceDefaults = Partial<Record<AgreementType, SourceFolder>>
 
 export interface Playbook {
   id: string
@@ -494,7 +508,8 @@ export interface PlaybookDraft {
   agreement_type: AgreementType
   templateRef: string
   sourceTemplateId?: string // when built from a saved template — link back on publish
-  exampleRefs: string[]
+  sourcePath?: string       // R48/R49 — the source folder path the examples came from
+  exampleRefs: string[]     // R48 — the real example agreement ids the derivation reads
   stage: PlaybookDraftStage
   provisions: Provision[]
   rawPrompt: string
@@ -505,7 +520,7 @@ export interface PlaybookDraft {
 export type TemplateOrigin = 'generated' | 'uploaded' | 'precedent'
 export type TemplateStatus = 'draft' | 'in_review' | 'published'
 export type ProjectSourceKind = 'precedent' | 'third_party_standard' | 'concept_note'
-export interface ProjectSource { id: string; kind: ProjectSourceKind; name: string; detail: string; selected: boolean }
+export interface ProjectSource { id: string; kind: ProjectSourceKind; name: string; detail: string; selected: boolean; agreementIds?: string[] }
 export interface TemplateIteration { id: string; role: 'user' | 'agent'; text: string; ts: string; changeNote?: string }
 export interface TemplateSection { id: string; heading: string; summary: string; parentId?: string; cpConcept?: boolean }
 export interface AgreementTemplate {

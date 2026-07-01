@@ -1,7 +1,7 @@
 import type {
   User, Ticket, Agreement, Version, Deviation, Message, Playbook,
   AuditEvent, AppNotification,
-  PlaybookSuggestion, TemplateProject, AgreementTemplate, ProjectSource, TemplateSection, AgreementType,
+  PlaybookSuggestion, TemplateProject, AgreementTemplate, ProjectSource, TemplateSection, AgreementType, PlaybookSourceDefaults,
 } from '@/types'
 
 // ============================================================================
@@ -395,14 +395,25 @@ export const playbookSuggestions: PlaybookSuggestion[] = [
 // TEMPLATES & PROJECTS (Eric §9 — Claude-Projects-as-Enterprise)
 // ============================================================================
 export function defaultProjectSources(): ProjectSource[] {
+  // R105 — sources carry real agreementIds into the corpus, so comparative analysis is computed from actual clause text.
   return [
-    { id: 'src-1', kind: 'precedent', name: 'ChargePoint executed License Agreements (7)', detail: 'Archived, negotiated CP paper — extract our standard concepts.', selected: true },
-    { id: 'src-2', kind: 'third_party_standard', name: 'Market-standard SaaS license set (5)', detail: 'Third-party reference agreements to model structure & norms.', selected: true },
-    { id: 'src-3', kind: 'precedent', name: 'Mondelez & Clever Devices MSAs', detail: 'Recently negotiated — capture accepted fallbacks.', selected: false },
+    { id: 'src-1', kind: 'precedent', name: 'ChargePoint executed NDAs (Vishay, Mondelez, Clever)', detail: 'Archived, negotiated CP paper — extract our standard concepts.', selected: true, agreementIds: ['AGR-2201', 'AGR-2150', 'AGR-2152'] },
+    { id: 'src-2', kind: 'third_party_standard', name: 'Aptiv & TE Connectivity precedents', detail: 'Third-party reference agreements to model structure & norms.', selected: true, agreementIds: ['AGR-2140', 'AGR-2145'] },
+    { id: 'src-3', kind: 'precedent', name: 'Mondelez MSA (negotiated fallbacks)', detail: 'Recently negotiated — capture accepted fallbacks.', selected: false, agreementIds: ['AGR-2150'] },
     { id: 'src-4', kind: 'concept_note', name: 'ChargePoint-specific concepts', detail: 'Charging-network data rights, firmware updates, uptime SLAs.', selected: true },
   ]
 }
 export function buildSectionsFor(type: AgreementType): TemplateSection[] {
+  // NDA sections align with the executed-NDA example corpus so derivation has real signal (R50/R62).
+  if (type === 'MNDA' || type === 'NDA') return [
+    { id: 'n1', heading: '1. Confidential Information', summary: 'Definition of Confidential Information and the standard five exclusions.', cpConcept: false },
+    { id: 'n2', heading: '2. Marking / Identification', summary: 'Whether marking is required; oral-disclosure confirmation window.' },
+    { id: 'n3', heading: '3. Protection Obligations', summary: 'Standard of care; use limited to the Purpose.' },
+    { id: 'n4', heading: '4. Return / Destruction', summary: 'Return or destroy on request; certify; legal archival copy.' },
+    { id: 'n5', heading: '5. Injunctive Relief', summary: 'Equitable relief for breach; bond posture.' },
+    { id: 'n6', heading: '6. Term & Termination', summary: 'Term length; confidentiality survival; trade-secret carve-out.' },
+    { id: 'n7', heading: '7. Governing Law & Venue', summary: 'Choice of law and exclusive jurisdiction.' },
+  ]
   const base: TemplateSection[] = [
     { id: 's1', heading: '1. Definitions', summary: 'Defined terms, incl. ChargePoint-specific (Charging Network, Station Data, Firmware).', cpConcept: true },
     { id: 's2', heading: '2. License Grant', summary: 'Scope, restrictions, reservation of rights.' },
@@ -415,8 +426,14 @@ export function buildSectionsFor(type: AgreementType): TemplateSection[] {
     { id: 's9', heading: '9. Term & Termination', summary: 'Initial term, renewal, termination rights.' },
     { id: 's10', heading: '10. Governing Law', summary: 'Delaware; exclusive jurisdiction.' },
   ]
-  return type === 'MNDA' || type === 'NDA' ? base.slice(0, 6) : base
+  return base
 }
+// R49 — default source folder per agreement type ("create the playbook" needs no path argument).
+export const DEFAULT_PLAYBOOK_SOURCES: PlaybookSourceDefaults = {
+  MNDA: { path: 'Legal › CLM › Templates › NDA', templateId: 'TPL-9001', exampleAgreementIds: ['AGR-2201', 'AGR-2150', 'AGR-2152', 'AGR-2140', 'AGR-2145'] },
+  MSA: { path: 'Legal › CLM › Templates › MSA', templateId: 'TPL-9002', exampleAgreementIds: ['AGR-2180'] },
+}
+
 export const agreementTemplates: AgreementTemplate[] = [
   { id: 'TPL-9001', name: 'ChargePoint Mutual NDA 2025 (North America)', agreement_type: 'MNDA', origin: 'precedent', status: 'published',
     project_id: null, version: 3, owner_id: 'u_eric', created_date: '2026-05-01', source_summary: 'Standardized from 11 executed NDAs.',

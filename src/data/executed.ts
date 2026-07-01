@@ -49,7 +49,33 @@ const EXECUTED: Record<string, ExecutedDoc> = {
       { ref: '§16', heading: 'Governing Law', text: 'New York (neutral) governing law, Fallback 2.' },
     ],
   },
+  // Two additional executed examples (R49/R50) — vary from the CP baseline so derivation has real signal.
+  'AGR-2140': {
+    title: 'MUTUAL NONDISCLOSURE AGREEMENT',
+    parties: { cp: 'ChargePoint, Inc.', counterparty: 'Aptiv PLC' },
+    effectiveDate: 'April 8, 2026',
+    clauses: [
+      { ref: '§1', heading: 'Confidential Information', text: 'Broad definition; marking required for written disclosures (Fallback 1).' },
+      { ref: '§2', heading: 'Marking / Identification', text: 'Marking required; oral disclosures confirmed in writing within thirty (30) days.' },
+      { ref: '§8', heading: 'Term & Termination', text: 'Two (2) year term; three (3) year confidentiality survival; trade secrets indefinite.' },
+      { ref: '§16', heading: 'Governing Law', text: 'Delaware law; exclusive Delaware jurisdiction.' },
+    ],
+  },
+  'AGR-2145': {
+    title: 'MUTUAL NONDISCLOSURE AGREEMENT',
+    parties: { cp: 'ChargePoint, Inc.', counterparty: 'TE Connectivity Ltd.' },
+    effectiveDate: 'March 30, 2026',
+    clauses: [
+      { ref: '§1', heading: 'Confidential Information', text: 'Standard definition; no residuals.' },
+      { ref: '§8', heading: 'Term & Termination', text: 'Three (3) year term; five (5) year confidentiality survival.' },
+      { ref: '§9', heading: 'Injunctive Relief', text: 'Mutual injunctive relief; no bond.' },
+      { ref: '§16', heading: 'Governing Law', text: 'New York governing law (Fallback 2).' },
+    ],
+  },
 }
+
+// R48/R50 — expose the executed corpus so the playbook-derivation + precedent engines read real clause text.
+export function executedCorpus(): Record<string, ExecutedDoc> { return EXECUTED }
 
 export function executedDoc(agreementId: string): ExecutedDoc | null {
   return EXECUTED[agreementId] ?? null

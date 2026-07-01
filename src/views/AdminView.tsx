@@ -1,15 +1,17 @@
 import { useState } from 'react'
 import { clsx } from 'clsx'
-import { GitBranch, Timer, CheckSquare, Bell, Users, Plug, Check, Rocket, TrendingUp, Megaphone, GraduationCap } from 'lucide-react'
+import { GitBranch, Timer, CheckSquare, Bell, Users, Plug, Check, Rocket, TrendingUp, Megaphone, GraduationCap, FolderTree, BookOpen } from 'lucide-react'
 import { Card, Chip, Avatar, SectionLabel, Button } from '@/components/ui'
 import { useStore } from '@/store'
 import { ROUTING_LABEL, type RoutingStrategy } from '@/lib/routing'
+import type { AgreementType } from '@/types'
 
 const TABS = [
   { key: 'routing', label: 'Routing', icon: <GitBranch size={15} /> },
   { key: 'sla', label: 'SLAs', icon: <Timer size={15} /> },
   { key: 'approvals', label: 'Approvals', icon: <CheckSquare size={15} /> },
   { key: 'notifications', label: 'Notifications', icon: <Bell size={15} /> },
+  { key: 'playbook_sources', label: 'Playbook sources', icon: <FolderTree size={15} /> },
   { key: 'users', label: 'Users & RBAC', icon: <Users size={15} /> },
   { key: 'adoption', label: 'Adoption', icon: <Rocket size={15} /> },
   { key: 'integrations', label: 'Integrations', icon: <Plug size={15} /> },
@@ -129,6 +131,43 @@ function AdoptionTab() {
   )
 }
 
+// R49 — admin-configured default source folder + example set per agreement type (persisted).
+function PlaybookSourcesTab() {
+  const defaults = useStore((s) => s.playbookSourceDefaults)
+  const setDefault = useStore((s) => s.setPlaybookSourceDefault)
+  const agreements = useStore((s) => s.agreements)
+  const types = Object.keys(defaults) as AgreementType[]
+  return (
+    <div className="grid max-w-3xl gap-3">
+      <SectionLabel>Default playbook source folders — “create the playbook” uses these with no path argument</SectionLabel>
+      {types.map((type) => {
+        const folder = defaults[type]!
+        return (
+          <Card key={type} className="p-4">
+            <div className="mb-2 flex items-center gap-2"><BookOpen size={14} className="text-slate-400" /><span className="text-[13px] font-bold text-slate-700">{type}</span><Chip className="bg-slate-100 text-slate-500 ring-slate-300/30 font-mono">{folder.templateId}</Chip></div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Folder path</label>
+            <input defaultValue={folder.path} onBlur={(e) => e.target.value !== folder.path && setDefault(type, { ...folder, path: e.target.value })}
+              className="mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-1.5 font-mono text-[12px] text-slate-700 outline-none focus:border-brand-400" />
+            <div className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Example agreements ({folder.exampleAgreementIds.length})</div>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {agreements.filter((a) => a.agreement_type === type || a.agreement_type === 'MNDA' || a.agreement_type === 'NDA').map((a) => {
+                const on = folder.exampleAgreementIds.includes(a.id)
+                return (
+                  <button key={a.id} onClick={() => setDefault(type, { ...folder, exampleAgreementIds: on ? folder.exampleAgreementIds.filter((x) => x !== a.id) : [...folder.exampleAgreementIds, a.id] })}
+                    className={clsx('rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1', on ? 'bg-brand-50 text-brand-700 ring-brand-200' : 'bg-white text-slate-400 ring-slate-200')}>
+                    {on && <Check size={9} className="mr-0.5 inline" />}{a.id}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="mt-2 text-[11px] text-slate-400">Saved to your browser — reload and it persists. This is what “create the {type} playbook” derives from.</div>
+          </Card>
+        )
+      })}
+    </div>
+  )
+}
+
 export function AdminView() {
   const [tab, setTab] = useState<Tab>('routing')
   const users = useStore((s) => s.users)
@@ -190,6 +229,7 @@ export function AdminView() {
             ))}
           </div>
         )}
+        {tab === 'playbook_sources' && <PlaybookSourcesTab />}
         {tab === 'adoption' && <AdoptionTab />}
         {tab === 'users' && (
           <Card className="max-w-3xl overflow-hidden">

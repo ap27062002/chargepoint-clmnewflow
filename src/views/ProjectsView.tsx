@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { clsx } from 'clsx'
 import { FolderKanban, FileStack, Plus, Sparkles, Wand2, BookOpen, Save, FileText } from 'lucide-react'
 import { useStore } from '@/store'
+import { comparativeAnalysis } from '@/data/playbookDerive'
 import { Card, Chip, Button, SectionLabel, Empty } from '@/components/ui'
 import type { TemplateProject, AgreementTemplate } from '@/types'
 
@@ -22,6 +23,9 @@ function ProjectDetail({ project }: { project: TemplateProject }) {
   const buildPlaybook = useStore((s) => s.buildPlaybookFromTemplate)
   const [instr, setInstr] = useState('')
   const draft = templates.find((t) => t.id === project.draftTemplateId)
+  // R105 — the comparative analysis across the SELECTED negotiated agreements (computed from real clause text).
+  const selectedIds = project.sources.filter((s) => s.selected).flatMap((s) => s.agreementIds ?? [])
+  const analysis = comparativeAnalysis(selectedIds)
 
   return (
     <div className="space-y-4">
@@ -54,6 +58,30 @@ function ProjectDetail({ project }: { project: TemplateProject }) {
           </div>
         )}
       </Card>
+
+      {/* R105 — real comparative analysis across the selected negotiated agreements */}
+      {draft && analysis.length > 0 && (
+        <Card className="p-4">
+          <SectionLabel className="mb-2 flex items-center gap-1.5"><FileStack size={13} className="text-ai-600" /> Comparative analysis · {selectedIds.length} negotiated agreement{selectedIds.length === 1 ? '' : 's'}</SectionLabel>
+          <div className="overflow-hidden rounded-lg border border-slate-200">
+            <table className="w-full text-left text-[11.5px]">
+              <thead><tr className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-400">
+                <th className="px-2.5 py-1.5 font-semibold">Concept</th><th className="px-2 py-1.5 font-semibold">Seen in</th><th className="px-2 py-1.5 font-semibold">Positions across precedents</th>
+              </tr></thead>
+              <tbody>
+                {analysis.map((row) => (
+                  <tr key={row.key} className="border-t border-slate-100 align-top">
+                    <td className="px-2.5 py-1.5 font-semibold text-slate-700">{row.label}</td>
+                    <td className="px-2 py-1.5 text-slate-500">{row.seenIn.length}/{selectedIds.length}</td>
+                    <td className="px-2 py-1.5 text-slate-500">{[...new Set(row.positions.map((p) => `${p.text.length > 60 ? p.text.slice(0, 60) + '…' : p.text} [${p.counterparty.split(' ')[0]}]`))].join(' · ')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-1.5 text-[11px] text-slate-400">Toggle a source above and this analysis + the generated template change — both are computed from the actual clause text.</div>
+        </Card>
+      )}
 
       {/* Generated template preview */}
       {draft && (

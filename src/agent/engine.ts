@@ -176,12 +176,19 @@ const intents: Intent[] = [
   {
     name: 'create_playbook', cap: 'playbook_edit',
     test: (t) => has(t, 'create a playbook', 'create my playbook', 'new playbook', 'build a playbook', 'create playbook', 'make a playbook'),
-    reply: () => ({
-      text: `Let's build a playbook in plain language. I'll start from a **template** + example agreements, analyze them, and draft the provisions — you review, refine by chat, and publish. No file editing. Open the builder below.`,
-      artifact: { kind: 'playbook_create', title: 'Create a playbook' },
-      effect: () => useStore.getState().startPlaybookDraft('New MSA Playbook', 'MSA', 'Create a playbook from the CP MSA template + recent examples'),
-      actions: [],
-    }),
+    reply: (t) => {
+      // R48/R49 — infer the agreement type + resolve the default source folder for it (no path needed).
+      const type: 'MSA' | 'MNDA' = has(t, 'msa', 'master service', 'services agreement') ? 'MSA' : 'MNDA'
+      const s = useStore.getState()
+      const folder = s.playbookSourceDefaults[type]
+      const exampleN = folder?.exampleAgreementIds.length ?? 0
+      return {
+        text: `Let's build a **${type === 'MSA' ? 'MSA' : 'NDA'} playbook**. I'll start from the default source folder **${folder?.path ?? '(none set)'}** — the ${type} template plus **${exampleN} example agreement${exampleN === 1 ? '' : 's'}** — analyze how each example resolved every section, and derive the provisions. You review, refine by chat, and publish. Open the builder below (adjust the folder/examples there).`,
+        artifact: { kind: 'playbook_create', title: `Create a ${type === 'MSA' ? 'MSA' : 'NDA'} playbook` },
+        effect: () => useStore.getState().startPlaybookDraft(`New ${type === 'MSA' ? 'MSA' : 'NDA'} Playbook`, type, `Create a ${type} playbook from ${folder?.path ?? 'the default folder'}`),
+        actions: [],
+      }
+    },
   },
   {
     name: 'playbook_restructure', cap: 'playbook_edit',

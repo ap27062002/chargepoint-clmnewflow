@@ -15,11 +15,14 @@ import {
   versions as seedVersions, deviations as seedDeviations, messages as seedMessages,
   playbooks as seedPlaybooks, auditSeed, notificationSeed, CURRENT_USER_ID, ndaPlaybook,
   playbookSuggestions as seedSuggestions, templateProjects as seedProjects,
-  agreementTemplates as seedTemplates, defaultProjectSources, buildSectionsFor, GENERATED_MSA_PROVISIONS, GENERATED_NDA_PROVISIONS,
+  agreementTemplates as seedTemplates, defaultProjectSources, buildSectionsFor, DEFAULT_PLAYBOOK_SOURCES,
 } from '@/data/seed'
 import { GREETING, greetingFor } from '@/agent/greeting'
 import { seedDocuments, buildCleanCopy, buildRedlineDoc, summarizeRedline, cleanCopyId, type DocModel, type DocClause } from '@/data/documents'
 import { analyzePlaybook } from '@/lib/playbookAnalysis'
+import { deriveProvisions, comparativeAnalysis, folderAgreements } from '@/data/playbookDerive'
+import { executedCorpus } from '@/data/executed'
+import type { PlaybookSourceDefaults, SourceFolder } from '@/types'
 import { routeAttorney, type RoutingStrategy } from '@/lib/routing'
 import { slaStatus } from '@/lib/labels'
 
@@ -148,10 +151,14 @@ interface CLMState {
   setPlaybook: (playbookId: string) => void
   suggestToPlaybook: (s: { playbook_id: string; provision_name: string; kind: SuggestionKind; proposed_text: string; rationale?: string; source_agreement_id?: string; source_section?: string }) => void
   decidePlaybookSuggestion: (id: string, approve: boolean) => void
-  startPlaybookDraft: (name: string, agreement_type: AgreementType, rawPrompt: string, sourceTemplateId?: string) => string
+  startPlaybookDraft: (name: string, agreement_type: AgreementType, rawPrompt: string, opts?: { sourceTemplateId?: string; sourcePath?: string; exampleRefs?: string[] }) => string
   advancePlaybookDraft: (draftId: string) => void
   publishPlaybookDraft: (draftId: string) => void
   refinePlaybookDraft: (draftId: string, instruction: string) => string // returns the agent's confirmation
+  setDraftExampleRefs: (draftId: string, exampleRefs: string[]) => void  // R48 — folder picker toggles
+  // R49 — default source folders per agreement type (persisted)
+  playbookSourceDefaults: PlaybookSourceDefaults
+  setPlaybookSourceDefault: (type: AgreementType, folder: SourceFolder) => void
 
   // templates / projects
   createProject: (name: string, goal: string, agreement_type: AgreementType) => string
@@ -178,6 +185,13 @@ const initialDeviations: Deviation[] = [
   ...seedDeviations.filter((d) => d.agreement_id !== 'AGR-2201'),
 ]
 
+// R49 — persist the default source folders across reloads (first persisted slice in the app).
+const SOURCES_KEY = 'clm.playbookSourceDefaults'
+function loadSourceDefaults(): PlaybookSourceDefaults {
+  try { const raw = typeof localStorage !== 'undefined' && localStorage.getItem(SOURCES_KEY); if (raw) return { ...DEFAULT_PLAYBOOK_SOURCES, ...JSON.parse(raw) } } catch { /* ignore */ }
+  return DEFAULT_PLAYBOOK_SOURCES
+}
+
 export const useStore = create<CLMState>((set, get) => ({
   users,
   currentUserId: CURRENT_USER_ID,
@@ -185,6 +199,7 @@ export const useStore = create<CLMState>((set, get) => ({
   agreements: seedAgreements,
   versions: seedVersions,
   deviations: initialDeviations,
+  playbookSourceDefaults: loadSourceDefaults(),
   messages: seedMessages,
   playbooks: seedPlaybooks,
   audit: buildAudit(),
@@ -739,17 +754,36 @@ export const useStore = create<CLMState>((set, get) => ({
     get().audit_push({ event_type: 'playbook_suggestion_decided', summary: `Suggestion ${approve ? 'approved & applied' : 'rejected'}.` })
     get().setToast(approve ? 'Approved — added to the playbook.' : 'Suggestion rejected.')
   },
-  startPlaybookDraft: (name, agreement_type, rawPrompt, sourceTemplateId) => {
+  startPlaybookDraft: (name, agreement_type, rawPrompt, opts) => {
     const id = nextId('PD')
-    const draft: PlaybookDraft = { id, name, agreement_type, templateRef: 'ChargePoint template', sourceTemplateId, exampleRefs: [], stage: 'collecting', provisions: [], rawPrompt, created_date: now() }
+    // Resolve the default source folder for this type (R49) so examples are pre-populated from real data.
+    const folder = get().playbookSourceDefaults[agreement_type]
+    const exampleRefs = opts?.exampleRefs ?? folder?.exampleAgreementIds ?? Object.keys(executedCorpus())
+    const sourceTemplateId = opts?.sourceTemplateId ?? folder?.templateId
+    const sourcePath = opts?.sourcePath ?? folder?.path
+    const draft: PlaybookDraft = { id, name, agreement_type, templateRef: 'ChargePoint template', sourceTemplateId, sourcePath, exampleRefs, stage: 'collecting', provisions: [], rawPrompt, created_date: now() }
     set((s) => ({ playbookDrafts: [draft, ...s.playbookDrafts], canvas: { ...s.canvas, view: 'playbook', open: true, playbookMode: 'create', playbookDraftId: id } }))
     return id
+  },
+  setDraftExampleRefs: (draftId, exampleRefs) => set((s) => ({ playbookDrafts: s.playbookDrafts.map((d) => (d.id === draftId ? { ...d, exampleRefs } : d)) })),
+  setPlaybookSourceDefault: (type, folder) => {
+    set((s) => {
+      const next = { ...s.playbookSourceDefaults, [type]: folder }
+      try { localStorage.setItem(SOURCES_KEY, JSON.stringify(next)) } catch { /* ignore */ }
+      return { playbookSourceDefaults: next }
+    })
+    get().setToast(`Default ${type} source folder saved.`)
   },
   advancePlaybookDraft: (draftId) => {
     set((s) => ({ playbookDrafts: s.playbookDrafts.map((d) => {
       if (d.id !== draftId) return d
       if (d.stage === 'collecting') return { ...d, stage: 'analyzing' }
-      if (d.stage === 'analyzing') return { ...d, stage: 'generated', provisions: d.agreement_type === 'MNDA' || d.agreement_type === 'NDA' ? GENERATED_NDA_PROVISIONS : GENERATED_MSA_PROVISIONS }
+      if (d.stage === 'analyzing') {
+        // R50/R62 — DERIVE provisions from the template sections + the selected example agreements.
+        const tpl = s.templates.find((t) => t.id === d.sourceTemplateId)
+        const sections = tpl?.sections ?? buildSectionsFor(d.agreement_type)
+        return { ...d, stage: 'generated', provisions: deriveProvisions(sections, d.exampleRefs) }
+      }
       return d
     }) }))
   },
@@ -807,14 +841,21 @@ export const useStore = create<CLMState>((set, get) => ({
     const proj = get().projects.find((p) => p.id === projectId); if (!proj) return
     const tplId = nextId('TPL')
     const selected = proj.sources.filter((sc) => sc.selected)
+    // R105 — real comparative analysis across the SELECTED negotiated agreements.
+    const ids = selected.flatMap((sc) => sc.agreementIds ?? [])
+    const analysis = comparativeAnalysis(ids)
+    const conceptSections = analysis.map((row, i) => ({ id: `cs${i}`, heading: `${i + 1}. ${row.label}`, summary: `Seen in ${row.seenIn.length}/${ids.length} sources; ${Math.round(row.divergence * 100)}% divergence across precedents.`, cpConcept: false }))
+    const cpSections = buildSectionsFor(proj.agreement_type).filter((sec) => sec.cpConcept)
+    // Sections are DERIVED from the analysis (fall back to the type template only when no sources are linked).
+    const sections = conceptSections.length ? [...conceptSections, ...cpSections] : buildSectionsFor(proj.agreement_type)
     const tpl: AgreementTemplate = {
       id: tplId, name: proj.name, agreement_type: proj.agreement_type, origin: 'generated', status: 'draft', project_id: projectId,
-      version: 1, owner_id: get().currentUserId, created_date: now(), sections: buildSectionsFor(proj.agreement_type),
-      source_summary: `Generated from ${selected.length} sources (${selected.map((sc) => sc.name).join('; ')}).`, playbook_id: null,
+      version: 1, owner_id: get().currentUserId, created_date: now(), sections,
+      source_summary: `Generated from ${selected.length} sources; comparative analysis over ${ids.length} negotiated agreement(s) found ${analysis.length} recurring concepts.`, playbook_id: null,
     }
-    const it: TemplateIteration = { id: nextId('it'), role: 'agent', text: `Analyzed ${selected.length} sources and generated a ${tpl.sections.length}-section ${proj.agreement_type} template; flagged the ChargePoint-specific sections.`, ts: now(), changeNote: 'Initial generation' }
+    const it: TemplateIteration = { id: nextId('it'), role: 'agent', text: `Ran a comparative analysis across ${ids.length} negotiated agreement(s) and ${selected.length} source group(s); found ${analysis.length} recurring concepts and generated a ${sections.length}-section ${proj.agreement_type} template. ChargePoint-specific sections flagged.`, ts: now(), changeNote: 'Comparative analysis + generation' }
     set((s) => ({ templates: [tpl, ...s.templates], projects: s.projects.map((p) => (p.id === projectId ? { ...p, status: 'iterating', draftTemplateId: tplId, iterations: [...p.iterations, it] } : p)), canvas: { ...s.canvas, templateId: tplId } }))
-    get().setToast('Template draft generated — refine it in the chat.')
+    get().setToast(`Comparative analysis over ${ids.length} agreements → ${sections.length}-section template.`)
   },
   iterateTemplate: (projectId, instruction) => {
     const uIt: TemplateIteration = { id: nextId('it'), role: 'user', text: instruction, ts: now() }
@@ -829,7 +870,7 @@ export const useStore = create<CLMState>((set, get) => ({
   },
   buildPlaybookFromTemplate: (templateId) => {
     const tpl = get().templates.find((t) => t.id === templateId); if (!tpl) return
-    get().startPlaybookDraft(`${tpl.name} — Playbook`, tpl.agreement_type, `Build a playbook from the ${tpl.name} template`, templateId)
+    get().startPlaybookDraft(`${tpl.name} — Playbook`, tpl.agreement_type, `Build a playbook from the ${tpl.name} template`, { sourceTemplateId: templateId })
     get().setToast(`Building a playbook from "${tpl.name}"…`)
   },
 

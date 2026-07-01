@@ -6,6 +6,7 @@ import { Card, Chip, Avatar, Button, SectionLabel, Empty } from '@/components/ui
 import { fmtDate } from '@/lib/labels'
 import { refinementRecs } from '@/lib/analytics'
 import { userById } from '@/data/seed'
+import { folderAgreements } from '@/data/playbookDerive'
 import { can } from '@/lib/access'
 import type { Provision, ProvisionTier, PlaybookSuggestion } from '@/types'
 
@@ -126,23 +127,42 @@ function PlaybookCreate() {
   const advance = useStore((s) => s.advancePlaybookDraft)
   const publish = useStore((s) => s.publishPlaybookDraft)
   const refine = useStore((s) => s.refinePlaybookDraft)
+  const setDraftExampleRefs = useStore((s) => s.setDraftExampleRefs)
+  const agreements = useStore((s) => s.agreements)
+  const tickets = useStore((s) => s.tickets)
   const draft = drafts.find((d) => d.id === canvas.playbookDraftId) ?? drafts[0]
   const [refineInput, setRefineInput] = useState('')
   const [lastReply, setLastReply] = useState<string | null>(null)
+  // R48 — the real, selectable folder of example agreements the derivation reads from.
+  const folder = useStore((s) => (draft ? s.playbookSourceDefaults[draft.agreement_type] : undefined))
+  const allExamples = folderAgreements(agreements, tickets)
   if (!draft) return <Empty icon={<Wand2 size={28} className="text-ai-400" />} title="Create a playbook in plain language" sub="Ask the agent to “create a playbook”, or start from a template in Projects." />
   const runRefine = (instr: string) => { if (!instr.trim()) return; const reply = refine(draft.id, instr.trim()); setLastReply(reply); setRefineInput('') }
+  const toggleExample = (id: string) => setDraftExampleRefs(draft.id, draft.exampleRefs.includes(id) ? draft.exampleRefs.filter((x) => x !== id) : [...draft.exampleRefs, id])
   return (
     <div className="space-y-3">
       <Card className="p-4">
         <div className="flex items-center gap-2"><Wand2 size={16} className="text-ai-600" /><span className="text-[14px] font-bold text-slate-800">{draft.name}</span><Chip className="bg-ai-50 text-ai-700 ring-ai-500/20">{draft.stage}</Chip></div>
         <p className="mt-1 text-[12px] text-slate-500">“{draft.rawPrompt}”</p>
-        {/* Source path — the template + example agreements the agent learned from (Eric §8). */}
-        <div className="mt-3 flex flex-wrap items-center gap-1.5 rounded-lg bg-slate-50 px-3 py-2 text-[11.5px] text-slate-500">
-          <BookOpen size={12} className="text-slate-400" /> Source:
-          <Chip className="bg-white text-slate-600 ring-slate-200">Template: {draft.sourceTemplateId ? 'from Projects' : `${draft.agreement_type} standard`}</Chip>
-          <span className="text-slate-300">+</span>
-          <Chip className="bg-white text-slate-600 ring-slate-200">7 example agreements</Chip>
-          <span className="ml-1 text-slate-400">— the agent compares each example against the template to derive positions.</span>
+        {/* R48 — real folder picker: template + a selectable list of example agreements (not a static chip). */}
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div className="mb-1.5 flex items-center gap-1.5 text-[11.5px] font-semibold text-slate-600">
+            <BookOpen size={12} className="text-slate-400" /> Source folder: <span className="font-mono text-[11px] text-slate-500">{draft.sourcePath ?? folder?.path ?? '(none)'}</span>
+            <Chip className="ml-auto bg-white text-slate-500 ring-slate-200">Template: {draft.sourceTemplateId ?? `${draft.agreement_type} standard`}</Chip>
+          </div>
+          <div className="space-y-1">
+            {allExamples.map((ex) => {
+              const on = draft.exampleRefs.includes(ex.id)
+              return (
+                <button key={ex.id} onClick={() => toggleExample(ex.id)} disabled={draft.stage !== 'collecting'} className={clsx('flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[12px] transition disabled:opacity-60', on ? 'bg-brand-50 text-slate-700 ring-1 ring-brand-200' : 'text-slate-500 hover:bg-white')}>
+                  <span className={clsx('flex h-4 w-4 shrink-0 items-center justify-center rounded border', on ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-300')}>{on && <Check size={11} />}</span>
+                  <span className="truncate font-medium">{ex.name}</span>
+                  <Chip className="ml-auto bg-white text-slate-400 ring-slate-200">{ex.agreement_type}</Chip>
+                </button>
+              )
+            })}
+          </div>
+          <div className="mt-1.5 text-[11px] text-slate-400">{draft.exampleRefs.length} example{draft.exampleRefs.length === 1 ? '' : 's'} selected — the agent reads each one's clause text and compares it against the template to derive positions.</div>
         </div>
         <div className="mt-3 space-y-2">
           {[['collecting', 'Point at the template + example agreements', draft.stage !== 'collecting'],
