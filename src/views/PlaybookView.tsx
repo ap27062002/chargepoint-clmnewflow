@@ -7,6 +7,7 @@ import { fmtDate } from '@/lib/labels'
 import { refinementRecs } from '@/lib/analytics'
 import { userById } from '@/data/seed'
 import { folderAgreements } from '@/data/playbookDerive'
+import { TEAM_FOLDERS } from '@/data/folders'
 import { can } from '@/lib/access'
 import type { Provision, ProvisionTier, PlaybookSuggestion } from '@/types'
 
@@ -222,6 +223,8 @@ export function PlaybookView() {
   const [filter, setFilter] = useState<ProvisionTier | 'all'>('all')
   const [applied, setApplied] = useState(false)
   const [publishOpen, setPublishOpen] = useState(false)
+  const [pubFolder, setPubFolder] = useState(TEAM_FOLDERS[0].path)
+  const publishArtifact = useStore((s) => s.publishArtifact)
   // R52/R57/R58/R60 — chat-driven restructure performs a REAL transform on the published playbook.
   const restructurePlaybook = useStore((s) => s.restructurePlaybook)
   const [restructOpen, setRestructOpen] = useState(false)
@@ -278,10 +281,18 @@ export function PlaybookView() {
                 {publishOpen && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setPublishOpen(false)} />
-                    <div className="absolute right-0 z-20 mt-1 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 text-left shadow-lg">
-                      <div className="px-2.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">Publish this playbook for…</div>
+                    <div className="absolute right-0 z-20 mt-1 w-80 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 text-left shadow-lg">
+                      <div className="px-2.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">Publish this playbook to a team folder…</div>
+                      {/* R85 — real access-scoped destination folder + category */}
+                      <div className="px-2.5 pb-1.5">
+                        <select value={pubFolder} onChange={(e) => setPubFolder(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11.5px] font-semibold text-slate-600 outline-none">
+                          {TEAM_FOLDERS.map((f) => <option key={f.path} value={f.path}>{f.path} · {f.category}</option>)}
+                        </select>
+                        <div className="mt-0.5 text-[10.5px] text-slate-400">Accessible to: {(TEAM_FOLDERS.find((f) => f.path === pubFolder)?.access_roles ?? []).map((r) => r.replace('_', ' ')).join(', ')}</div>
+                      </div>
+                      <div className="px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">…for</div>
                       {PUBLISH_PURPOSES.map((p) => (
-                        <button key={p.key} onClick={() => { setPublishOpen(false); auditPush({ event_type: 'playbook_updated', summary: `Published “${pb.name}” as ${p.label}.` }); setToast(`Published “${pb.name}” → ${p.label}. (Prototype — export staged.)`) }}
+                        <button key={p.key} onClick={() => { setPublishOpen(false); publishArtifact('playbook', pb.id, pb.name, p.label, pubFolder) }}
                           className="flex w-full items-start gap-2 rounded-lg px-2.5 py-1.5 hover:bg-slate-50">
                           <FileDown size={13} className="mt-0.5 shrink-0 text-slate-400" />
                           <div><div className="text-[12.5px] font-semibold text-slate-700">{p.label}</div><div className="text-[11px] text-slate-400">{p.sub}</div></div>

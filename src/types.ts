@@ -227,6 +227,21 @@ export interface FolderAgreement {
 export interface SourceFolder { path: string; templateId: string; exampleAgreementIds: string[] }
 export type PlaybookSourceDefaults = Partial<Record<AgreementType, SourceFolder>>
 
+// ----- Publish to a team folder / category (R85) ----------------------------
+export interface TeamFolder { path: string; category: string; access_roles: Role[] }
+export interface PublishedArtifact {
+  id: string
+  kind: 'playbook' | 'template'
+  source_id: string
+  name: string
+  purpose: string
+  folder_path: string
+  category: string
+  access_roles: Role[]
+  published_by: string
+  date: string
+}
+
 export interface Playbook {
   id: string
   agreement_type: AgreementType
@@ -539,7 +554,7 @@ export type TemplateStatus = 'draft' | 'in_review' | 'published'
 export type ProjectSourceKind = 'precedent' | 'third_party_standard' | 'concept_note'
 export interface ProjectSource { id: string; kind: ProjectSourceKind; name: string; detail: string; selected: boolean; agreementIds?: string[] }
 export interface TemplateIteration { id: string; role: 'user' | 'agent'; text: string; ts: string; changeNote?: string }
-export interface TemplateSection { id: string; heading: string; summary: string; parentId?: string; cpConcept?: boolean }
+export interface TemplateSection { id: string; heading: string; summary: string; parentId?: string; cpConcept?: boolean; body?: string }
 export interface AgreementTemplate {
   id: string
   name: string

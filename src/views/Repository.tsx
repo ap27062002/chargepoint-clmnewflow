@@ -60,6 +60,9 @@ export function Repository() {
   const ingestFolder = useStore((s) => s.ingestFolderAgreements)
   const canSuggest = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'playbook_suggest'))
   const ndaPlaybook = playbooks.find((p) => p.agreement_type === 'MNDA' || p.agreement_type === 'NDA') ?? playbooks[0]
+  // R85 — published playbooks/templates, scoped to team folders. Only show what the current role can access.
+  const role = useStore((s) => s.users.find((u) => u.id === s.currentUserId)!.role)
+  const published = useStore((s) => s.publishedArtifacts).filter((p) => p.access_roles.includes(role))
 
   // Group agreements into counterparty "folders".
   const folders = Array.from(
@@ -90,6 +93,22 @@ export function Repository() {
         <div className="mb-4 flex items-center gap-2 rounded-xl border border-ai-200 bg-ai-50/40 px-4 py-2.5">
           <Sparkles size={15} className="shrink-0 text-ai-600" />
           <span className="text-[12.5px] text-slate-600">Drop new agreements into a folder and the agent learns from them — comparing against your <b>{ndaPlaybook.name}</b> and proposing updates in <b>Playbook → Suggested additions</b>.</span>
+        </div>
+      )}
+      {/* R85 — published playbooks/templates in access-scoped team folders */}
+      {published.length > 0 && (
+        <div className="mb-4 overflow-hidden rounded-xl border border-brand-200 bg-brand-50/30">
+          <div className="border-b border-brand-100 px-4 py-2 text-[12px] font-bold text-brand-700">Published library · {published.length}</div>
+          <div className="divide-y divide-brand-100/60">
+            {published.map((p) => (
+              <div key={p.id} className="flex items-center gap-2 px-4 py-2 text-[12.5px]">
+                <FileSignature size={14} className="shrink-0 text-brand-500" />
+                <span className="font-semibold text-slate-700">{p.name}</span>
+                <Chip className="bg-white text-slate-500 ring-slate-200">{p.purpose}</Chip>
+                <span className="ml-auto text-[11px] text-slate-400">{p.folder_path} · {p.category} · {p.access_roles.length} roles</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
       <div className="space-y-2.5">

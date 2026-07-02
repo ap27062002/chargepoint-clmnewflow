@@ -5,6 +5,7 @@ import { can, CAP_LABEL, ROLE_LABEL, ROLE_SCOPE, startersFor, type Capability } 
 import { canSeeTicket } from '@/lib/scope'
 import { lookupCounterparty, inferDealContext } from '@/data/counterparties'
 import { precedentAnswer, precedentDigest, searchPrecedent } from '@/lib/precedent'
+import { answerFromState } from '@/lib/reason'
 export { GREETING } from '@/agent/greeting'
 
 let _c = 0
@@ -795,12 +796,13 @@ export function sendToAgent(text: string) {
     return
   }
 
-  // Off-script → try the live model; gracefully fall back to the deterministic reply.
+  // R112 — thin layer over Claude: off-script questions go to the live model FIRST; the deterministic
+  // reasoner (answerFromState, grounded in real store data) is the always-on floor — not a canned string.
   callLiveModel(text).then((live) => {
     if (live) {
       pushAgent({ text: live, actions: reply.actions })
     } else {
-      pushAgent(reply)
+      pushAgent({ text: answerFromState(text), artifact: { kind: 'none' }, actions: reply.actions })
     }
   })
 }

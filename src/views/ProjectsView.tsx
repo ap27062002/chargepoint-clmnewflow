@@ -3,6 +3,7 @@ import { clsx } from 'clsx'
 import { FolderKanban, FileStack, Plus, Sparkles, Wand2, BookOpen, Save, FileText } from 'lucide-react'
 import { useStore } from '@/store'
 import { comparativeAnalysis } from '@/data/playbookDerive'
+import { exportTemplateHtml } from '@/lib/templateGen'
 import { Card, Chip, Button, SectionLabel, Empty } from '@/components/ui'
 import type { TemplateProject, AgreementTemplate } from '@/types'
 
@@ -97,13 +98,19 @@ function ProjectDetail({ project }: { project: TemplateProject }) {
                 <FileText size={13} className="mt-0.5 shrink-0 text-slate-300" />
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 text-[12.5px] font-semibold text-slate-700">{s.heading}{s.cpConcept && <Chip className="bg-ai-50 text-ai-700 ring-ai-500/20"><Sparkles size={9} /> CP concept</Chip>}</div>
-                  <div className="text-[11.5px] text-slate-400">{s.summary}</div>
+                  {/* R107 — real drafted clause body text, not just a heading */}
+                  {s.body ? <div className="mt-0.5 rounded bg-slate-50 px-2 py-1 font-serif text-[11.5px] leading-snug text-slate-600">{s.body}</div> : <div className="text-[11.5px] text-slate-400">{s.summary}</div>}
                 </div>
               </div>
             ))}
           </div>
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             <Button size="sm" variant="outline" icon={<Save size={13} />} onClick={() => save(project.id)}>Save to library</Button>
+            <Button size="sm" variant="outline" icon={<FileText size={13} />} onClick={() => {
+              const html = exportTemplateHtml(draft)
+              const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
+              const a = document.createElement('a'); a.href = url; a.download = `${draft.name.replace(/[^a-z0-9]+/gi, '-')}.html`; a.click(); URL.revokeObjectURL(url)
+            }}>Export (.html)</Button>
             <Button size="sm" variant="ai" icon={<BookOpen size={13} />} onClick={() => buildPlaybook(draft.id)}>Build a playbook from this</Button>
           </div>
         </Card>

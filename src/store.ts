@@ -23,7 +23,10 @@ import { analyzePlaybook } from '@/lib/playbookAnalysis'
 import { deriveProvisions, comparativeAnalysis, folderAgreements } from '@/data/playbookDerive'
 import { applyPlaybookInstruction } from '@/lib/playbookOps'
 import { precedentAnswer } from '@/lib/precedent'
+import { TEAM_FOLDERS } from '@/data/folders'
+import { generateSectionBodies, bodyForSection } from '@/lib/templateGen'
 import { can } from '@/lib/access'
+import type { PublishedArtifact } from '@/types'
 import { executedCorpus } from '@/data/executed'
 import type { PlaybookSourceDefaults, SourceFolder, DocLock } from '@/types'
 import { agreementIdForVersion } from '@/data/documents'
@@ -174,6 +177,8 @@ interface CLMState {
   publishPlaybookDraft: (draftId: string) => void
   refinePlaybookDraft: (draftId: string, instruction: string) => string // returns the agent's confirmation
   restructurePlaybook: (playbookId: string, instruction: string) => string // R52/R57/R58/R60 — edit a PUBLISHED playbook by chat
+  publishedArtifacts: PublishedArtifact[]                 // R85 — published playbooks/templates in team folders
+  publishArtifact: (kind: 'playbook' | 'template', sourceId: string, name: string, purpose: string, folderPath: string) => void
   setDraftExampleRefs: (draftId: string, exampleRefs: string[]) => void  // R48 — folder picker toggles
   // R49 — default source folders per agreement type (persisted)
   playbookSourceDefaults: PlaybookSourceDefaults
@@ -220,6 +225,7 @@ export const useStore = create<CLMState>((set, get) => ({
   deviations: initialDeviations,
   playbookSourceDefaults: loadSourceDefaults(),
   docLocks: { 'AGR-2201': { agreement_id: 'AGR-2201', mode: 'live', locked_by: null, locked_at: null, claimed_clauses: {} } },
+  publishedArtifacts: [],
   messages: seedMessages,
   playbooks: seedPlaybooks,
   audit: buildAudit(),
@@ -947,6 +953,18 @@ export const useStore = create<CLMState>((set, get) => ({
     return result.message
   },
 
+  // R85 — publish a playbook/template into a real, access-scoped team folder/category.
+  publishArtifact: (kind, sourceId, name, purpose, folderPath) => {
+    const folder = TEAM_FOLDERS.find((f) => f.path === folderPath) ?? TEAM_FOLDERS[0]
+    const art: PublishedArtifact = { id: nextId('PUB'), kind, source_id: sourceId, name, purpose, folder_path: folder.path, category: folder.category, access_roles: folder.access_roles, published_by: get().currentUserId, date: now() }
+    set((s) => ({
+      publishedArtifacts: [art, ...s.publishedArtifacts],
+      notifications: [{ id: nextId('N'), event: 'Published to library', body: `${name} published as "${purpose}" to ${folder.path} — now accessible to ${folder.access_roles.length} roles.`, channels: ['in_app'], created_date: now(), read: false, severity: 'info' }, ...s.notifications],
+    }))
+    get().audit_push({ event_type: 'playbook_updated', summary: `Published "${name}" (${purpose}) to ${folder.path} [${folder.category}].` })
+    get().setToast(`Published "${name}" → ${folder.path}.`)
+  },
+
   // ----- templates / projects (Eric §9) ---------------------------------------
   createProject: (name, goal, agreement_type) => {
     const id = nextId('PRJ')
@@ -965,7 +983,8 @@ export const useStore = create<CLMState>((set, get) => ({
     const conceptSections = analysis.map((row, i) => ({ id: `cs${i}`, heading: `${i + 1}. ${row.label}`, summary: `Seen in ${row.seenIn.length}/${ids.length} sources; ${Math.round(row.divergence * 100)}% divergence across precedents.`, cpConcept: false }))
     const cpSections = buildSectionsFor(proj.agreement_type).filter((sec) => sec.cpConcept)
     // Sections are DERIVED from the analysis (fall back to the type template only when no sources are linked).
-    const sections = conceptSections.length ? [...conceptSections, ...cpSections] : buildSectionsFor(proj.agreement_type)
+    const rawSections = conceptSections.length ? [...conceptSections, ...cpSections] : buildSectionsFor(proj.agreement_type)
+    const sections = generateSectionBodies(rawSections) // R107 — real clause body text, not just headings
     const tpl: AgreementTemplate = {
       id: tplId, name: proj.name, agreement_type: proj.agreement_type, origin: 'generated', status: 'draft', project_id: projectId,
       version: 1, owner_id: get().currentUserId, created_date: now(), sections,
@@ -976,8 +995,36 @@ export const useStore = create<CLMState>((set, get) => ({
     get().setToast(`Comparative analysis over ${ids.length} agreements → ${sections.length}-section template.`)
   },
   iterateTemplate: (projectId, instruction) => {
+    // R107 — actually EDIT the draft template from the instruction (add / remove / rewrite a section), not just echo.
+    const proj = get().projects.find((p) => p.id === projectId)
+    const tplId = proj?.draftTemplateId
+    const t = instruction.toLowerCase().trim()
+    let note = ''
+    if (tplId) {
+      set((s) => ({ templates: s.templates.map((tpl) => {
+        if (tpl.id !== tplId) return tpl
+        let sections = tpl.sections
+        if (/\b(add|include)\b/.test(t)) {
+          const name = (t.match(/\b(?:add|include)\b (?:a |an |the )?(?:section (?:on |for )?)?(.+?)( section| clause)?$/)?.[1] ?? 'New Section').replace(/\b\w/g, (c) => c.toUpperCase())
+          const sec = { id: 'sx' + sections.length, heading: `${sections.length + 1}. ${name}`, summary: `${name} terms.`, body: '' }
+          sections = [...sections, { ...sec, body: bodyForSection(sec) }]
+          note = `Added a "${name}" section (with drafted clause text).`
+        } else if (/\b(remove|delete|drop|strike)\b/.test(t)) {
+          const target = t.replace(/.*\b(remove|delete|drop|strike)\b (?:the )?/, '').replace(/ ?section.*/, '').trim()
+          const before = sections.length
+          sections = sections.filter((sec) => !(target && sec.heading.toLowerCase().includes(target)))
+          note = before !== sections.length ? `Removed the "${target}" section.` : `No section matched "${target}".`
+        } else {
+          // treat as a rewrite directive for the best-matching section
+          const target = sections.find((sec) => t.split(' ').some((w) => w.length > 3 && sec.heading.toLowerCase().includes(w)))
+          if (target) { sections = sections.map((sec) => (sec.id === target.id ? { ...sec, body: `${sec.body ?? bodyForSection(sec)} [Revised per instruction: ${instruction}]` } : sec)); note = `Revised "${target.heading}" per your instruction.` }
+          else note = 'Tell me which section to change (e.g. "tighten the Governing Law section" or "add an Insurance section").'
+        }
+        return { ...tpl, sections }
+      }) }))
+    }
     const uIt: TemplateIteration = { id: nextId('it'), role: 'user', text: instruction, ts: now() }
-    const aIt: TemplateIteration = { id: nextId('it'), role: 'agent', text: `Applied: ${instruction}`, ts: now(), changeNote: instruction.length > 48 ? instruction.slice(0, 48) + '…' : instruction }
+    const aIt: TemplateIteration = { id: nextId('it'), role: 'agent', text: note || `Applied: ${instruction}`, ts: now(), changeNote: note.slice(0, 48) }
     set((s) => ({ projects: s.projects.map((p) => (p.id === projectId ? { ...p, iterations: [...p.iterations, uIt, aIt] } : p)) }))
   },
   saveTemplate: (projectId) => {
