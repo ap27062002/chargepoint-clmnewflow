@@ -49,6 +49,31 @@ const EXECUTED: Record<string, ExecutedDoc> = {
       { ref: '§16', heading: 'Governing Law', text: 'New York (neutral) governing law, Fallback 2.' },
     ],
   },
+  // MSA-type executed examples (R62/R105) — real MSA clause bodies so MSA playbook derivation +
+  // cross-doc-type comparative analysis have non-NDA source text (not just NDAs).
+  'AGR-2180': {
+    title: 'MASTER SERVICES AGREEMENT',
+    parties: { cp: 'ChargePoint, Inc.', counterparty: 'Northwind Utilities' },
+    effectiveDate: 'June 2, 2026',
+    clauses: [
+      { ref: '§1', heading: 'Definitions', text: 'Defined terms including Charging Network, Station Data, Firmware, and Deliverables.' },
+      { ref: '§7', heading: 'Indemnification', text: 'Mutual third-party IP-infringement indemnity with standard exclusions; indemnitor controls the defense; indemnitee may participate with its own counsel.' },
+      { ref: '§8', heading: 'Limitation of Liability', text: 'Mutual cap at twelve (12) months of fees; consequential and indirect damages waived; carve-outs for confidentiality, indemnity, and IP.' },
+      { ref: '§9', heading: 'Term & Termination', text: 'Initial two (2) year term, auto-renewing one (1) year; termination for cause with 30-day cure; termination for convenience with 90 days notice.' },
+      { ref: '§10', heading: 'Governing Law', text: 'California law; exclusive jurisdiction in the state and federal courts located in California.' },
+    ],
+  },
+  'AGR-2185': {
+    title: 'MASTER SERVICES AGREEMENT',
+    parties: { cp: 'ChargePoint, Inc.', counterparty: 'Evergreen Transit Authority' },
+    effectiveDate: 'May 12, 2026',
+    clauses: [
+      { ref: '§7', heading: 'Indemnification', text: 'Mutual IP indemnity; super-cap of 2× fees for IP indemnity only (approved fallback).' },
+      { ref: '§8', heading: 'Limitation of Liability', text: 'Cap at the greater of twelve (12) months of fees or $1M (approved fallback); consequential damages waived.' },
+      { ref: '§9', heading: 'Term & Termination', text: 'Three (3) year term; termination for convenience after the initial term only.' },
+      { ref: '§10', heading: 'Governing Law', text: 'Delaware law; exclusive Delaware jurisdiction.' },
+    ],
+  },
   // Two additional executed examples (R49/R50) — vary from the CP baseline so derivation has real signal.
   'AGR-2140': {
     title: 'MUTUAL NONDISCLOSURE AGREEMENT',

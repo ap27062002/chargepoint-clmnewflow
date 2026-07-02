@@ -81,10 +81,11 @@ export function folderAgreements(agreements: Agreement[], tickets: Ticket[]): Fo
   return Object.keys(corpus).map((id) => {
     const a = agreements.find((x) => x.id === id)
     const cp = a ? (tickets.find((t) => t.id === a.ticket_id)?.counterparty_name ?? corpus[id].parties.counterparty) : corpus[id].parties.counterparty
+    const type = (a?.agreement_type ?? (/MASTER SERVICES/i.test(corpus[id].title) ? 'MSA' : 'MNDA')) as AgreementType
     return {
       id, name: `${cp} — ${corpus[id].title.split(' ').slice(0, 3).join(' ')}`,
-      agreement_type: (a?.agreement_type ?? 'MNDA') as AgreementType,
-      folderPath: 'Legal › Executed Agreements › NDAs', status: a?.status ?? 'executed', hasBody: true,
+      agreement_type: type,
+      folderPath: type === 'MSA' ? 'Legal › Executed Agreements › MSAs' : 'Legal › Executed Agreements › NDAs', status: a?.status ?? 'executed', hasBody: true,
     }
   })
 }

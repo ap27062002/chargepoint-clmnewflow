@@ -436,7 +436,7 @@ export function buildSectionsFor(type: AgreementType): TemplateSection[] {
 // R49 — default source folder per agreement type ("create the playbook" needs no path argument).
 export const DEFAULT_PLAYBOOK_SOURCES: PlaybookSourceDefaults = {
   MNDA: { path: 'Legal › CLM › Templates › NDA', templateId: 'TPL-9001', exampleAgreementIds: ['AGR-2201', 'AGR-2150', 'AGR-2152', 'AGR-2140', 'AGR-2145'] },
-  MSA: { path: 'Legal › CLM › Templates › MSA', templateId: 'TPL-9002', exampleAgreementIds: ['AGR-2180'] },
+  MSA: { path: 'Legal › CLM › Templates › MSA', templateId: 'TPL-9002', exampleAgreementIds: ['AGR-2180', 'AGR-2185'] },
 }
 
 export const agreementTemplates: AgreementTemplate[] = [
