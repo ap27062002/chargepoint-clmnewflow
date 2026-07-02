@@ -157,6 +157,17 @@ export interface Deviation {
   matched_provision_id?: string  // R43 — which playbook provision it was classified against
 }
 
+// ----- Document integrity / lock (R18) --------------------------------------
+// Two integrity modes Eric described: LIVE (everyone views/comments; each clause edit-locked
+// to one editor) or LOCKED (single-writer checkout; everyone else read-only, genuinely locked out).
+export interface DocLock {
+  agreement_id: string
+  mode: 'live' | 'locked'
+  locked_by: string | null       // in 'locked' mode, the sole editor; null = available to check out
+  locked_at: string | null
+  claimed_clauses: Record<string, { user_id: string; at: string }> // 'live' mode: per-clause editor
+}
+
 // ----- Collaboration --------------------------------------------------------
 export type ThreadType = 'deal_level' | 'agreement_level'
 export type MessageTag = 'timeline' | 'pricing' | 'decision' | 'question'
@@ -249,6 +260,9 @@ export type AuditEventType =
   | 'sla_breached'
   | 'playbook_suggested'
   | 'playbook_suggestion_decided'
+  | 'document_locked'
+  | 'document_released'
+  | 'edit_blocked'
 
 export interface AuditEvent {
   id: string

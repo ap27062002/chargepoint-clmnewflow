@@ -48,14 +48,22 @@ function ClauseEditor({ versionId, clauseId }: { versionId: string; clauseId: st
 export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi }: { versionId: string; agreementId: string; focusClauseId?: string; onAskAi?: (text: string) => void }) {
   const doc = useStore((s) => s.documents[versionId])
   const devs = useStore((s) => s.deviations).filter((d) => d.agreement_id === agreementId)
-  const canEdit = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'disposition'))
+  const roleCanEdit = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'disposition'))
   const canSuggest = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'playbook_suggest'))
   const currentUserId = useStore((s) => s.currentUserId)
   const messages = useStore((s) => s.messages)
   const editClauseText = useStore((s) => s.editClauseText)
+  // R18 — real document lock (store-backed), not a banner.
+  const lock = useStore((s) => s.docLocks[agreementId])
+  const setCollabMode = useStore((s) => s.setCollabMode)
+  const checkoutDoc = useStore((s) => s.checkoutDoc)
+  const releaseDoc = useStore((s) => s.releaseDoc)
   const [edit, setEdit] = useState(false)
   const [proseEdit, setProseEdit] = useState(false) // Eric §2: type directly into the document
-  const [collabMode, setCollabMode] = useState<'live' | 'locked'>('live')
+  const collabMode: 'live' | 'locked' = lock?.mode ?? 'live'
+  const holderId = lock?.locked_by ?? undefined
+  const lockedByOther = collabMode === 'locked' && !!holderId && holderId !== currentUserId
+  const canEdit = roleCanEdit && !lockedByOther // effective: role AND the lock allows it
   const fmt = (cmd: string) => document.execCommand(cmd)
   const cleanText = (r: DocRun[]) => r.filter((x) => x.type !== 'del').map((x) => x.text).join('')
   // Contributors on this document (from the agreement's threads + tags) — mock presence.
@@ -142,17 +150,26 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
         </div>
         <span className="text-[11px] text-slate-400">{collaborators.length ? `${collaborators.length + 1} on this document` : 'You are the only one here'}</span>
         {collabMode === 'live' && collaborators[0] && (
-          <span className="flex items-center gap-1 text-[11px] font-medium text-amber-600"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" /> {userById(collaborators[0])?.name.split(' ')[0]} is viewing §1(f)</span>
+          <span className="flex items-center gap-1 text-[11px] font-medium text-amber-600"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" /> {userById(collaborators[0])?.name.split(' ')[0]} is viewing</span>
         )}
-        <div className="ml-auto flex rounded-lg border border-slate-200 p-0.5">
-          <button onClick={() => setCollabMode('live')} className={clsx('flex items-center gap-1 rounded-md px-2 py-0.5 text-[11.5px] font-semibold', collabMode === 'live' ? 'bg-brand-500 text-white' : 'text-slate-500')}><Users size={12} /> Live co-editing</button>
-          <button onClick={() => setCollabMode('locked')} className={clsx('flex items-center gap-1 rounded-md px-2 py-0.5 text-[11.5px] font-semibold', collabMode === 'locked' ? 'bg-slate-800 text-white' : 'text-slate-500')}><Lock size={12} /> Locked to me</button>
+        <div className="ml-auto flex items-center gap-1.5">
+          {collabMode === 'locked' && (holderId === currentUserId
+            ? <button onClick={() => releaseDoc(agreementId)} className="rounded-md border border-slate-200 px-2 py-0.5 text-[11.5px] font-semibold text-slate-600 hover:bg-slate-50">Release lock</button>
+            : holderId
+              ? <button onClick={() => checkoutDoc(agreementId)} className="rounded-md border border-amber-200 px-2 py-0.5 text-[11.5px] font-semibold text-amber-700 hover:bg-amber-50">Take the pen</button>
+              : <button onClick={() => checkoutDoc(agreementId)} className="rounded-md border border-slate-200 px-2 py-0.5 text-[11.5px] font-semibold text-slate-600 hover:bg-slate-50">Check out</button>)}
+          <div className="flex rounded-lg border border-slate-200 p-0.5">
+            <button onClick={() => setCollabMode(agreementId, 'live')} className={clsx('flex items-center gap-1 rounded-md px-2 py-0.5 text-[11.5px] font-semibold', collabMode === 'live' ? 'bg-brand-500 text-white' : 'text-slate-500')}><Users size={12} /> Live co-editing</button>
+            <button onClick={() => setCollabMode(agreementId, 'locked')} className={clsx('flex items-center gap-1 rounded-md px-2 py-0.5 text-[11.5px] font-semibold', collabMode === 'locked' ? 'bg-slate-800 text-white' : 'text-slate-500')}><Lock size={12} /> Single-editor lock</button>
+          </div>
         </div>
       </div>
-      <div className={clsx('shrink-0 px-3 py-1 text-[11px]', collabMode === 'live' ? 'bg-brand-50/60 text-brand-700' : 'bg-amber-50 text-amber-700')}>
-        {collabMode === 'live'
-          ? 'Live co-editing (recommended) — everyone can view and comment; edits are per-paragraph locked so two people never overwrite the same clause. Integrity preserved, no one is shut out.'
-          : 'Locked to you — others have read-only access until you release the document. Guarantees integrity by allowing only one editor at a time.'}
+      <div className={clsx('shrink-0 px-3 py-1 text-[11px]', lockedByOther ? 'bg-red-50 text-red-700' : collabMode === 'live' ? 'bg-brand-50/60 text-brand-700' : 'bg-amber-50 text-amber-700')}>
+        {lockedByOther
+          ? `🔒 Locked by ${userById(holderId!)?.name ?? 'another user'}${lock?.locked_at ? ` since ${lock.locked_at}` : ''} — this document is read-only for you until they release it. (Switch persona to ${userById(holderId!)?.name.split(' ')[0]} to edit, or "Take the pen".)`
+          : collabMode === 'live'
+            ? 'Live co-editing — everyone can view and comment; each clause is edit-locked to one editor at a time so two people never overwrite the same clause. No one is shut out.'
+            : `Single-editor lock — you hold the pen; everyone else is read-only until you Release. Guarantees integrity by allowing only one editor at a time.`}
       </div>
 
       <div ref={containerRef} onMouseUp={onSelect} onScroll={() => setAskBtn(null)} className="flex-1 overflow-y-auto py-6">

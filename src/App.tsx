@@ -5,7 +5,7 @@ import { ChatPanel } from '@/components/ChatPanel'
 import { Canvas } from '@/components/Canvas'
 import { CommandMenu } from '@/components/CommandMenu'
 import { LeftRail } from '@/components/LeftRail'
-import { SlackLanding } from '@/components/SlackLanding'
+import { EntryLanding } from '@/components/EntryLanding'
 import { useStore } from '@/store'
 
 function Toast() {
@@ -34,7 +34,7 @@ export default function App() {
   const entered = useStore((s) => s.entered)
   const runSlaCheck = useStore((s) => s.runSlaCheck)
   useEffect(() => { runSlaCheck() }, [runSlaCheck])
-  if (!entered) return <SlackLanding />
+  if (!entered) return <EntryLanding />
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-slate-50">
       <TopBar />

@@ -1,14 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { clsx } from 'clsx'
-import { Table, Search, X, ArrowDown, ArrowUp } from 'lucide-react'
+import { Table, Search, X, ArrowDown, ArrowUp, Gauge } from 'lucide-react'
 import { useStore } from '@/store'
 import { Chip, Avatar, Empty } from '@/components/ui'
 import { agreementStatusMeta, ticketTypeLabel, fmtDate } from '@/lib/labels'
 import { fmtMoney } from '@/lib/analytics'
 import { visibleTickets } from '@/lib/scope'
 import { buildRows, type ContractRow } from '@/lib/contracts'
+import { syntheticContractRows } from '@/data/generateScale'
 import { userById } from '@/data/seed'
 import type { ContractsFilterPreset } from '@/types'
+
+const PAGE_SIZE = 30 // windowed render — never map the whole (potentially huge) list at once
 
 const PRESET_LABEL: Record<ContractsFilterPreset, string> = {
   all: 'All contracts', active: 'Active only', cp_turn: 'In our court', counterparty_turn: 'Waiting on counterparty', sla_risk: 'SLA at risk', executed: 'Executed',
@@ -49,32 +52,39 @@ export function ContractsList() {
   const [stage, setStage] = useState<string>('all')
   const [cp, setCp] = useState<string>('all')
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'days', dir: 'desc' })
+  const [scaleN, setScaleN] = useState(0)   // R89 — scale simulator (0 / 200 / 1000 synthetic contracts)
+  const [page, setPage] = useState(1)        // R89 — windowed render
 
   // Re-sync when a dashboard KPI deep-links with a different preset.
   useEffect(() => { if (presetFromCanvas) setPreset(presetFromCanvas) }, [presetFromCanvas])
 
-  // RBAC scope, then build one row per visible agreement.
-  const tickets = visibleTickets(allTickets, messages, cu)
-  const ticketIds = new Set(tickets.map((t) => t.id))
-  const scoped = agreements.filter((a) => ticketIds.has(a.ticket_id))
-  const rows = buildRows(scoped, tickets)
-
-  const counterparties = Array.from(new Set(rows.map((r) => r.counterparty))).sort()
   const ql = q.toLowerCase().trim()
-  const filtered = rows
+  // RBAC scope, then build one row per visible agreement. Memoized so we don't rebuild every keystroke.
+  const tickets = useMemo(() => visibleTickets(allTickets, messages, cu), [allTickets, messages, cu])
+  const scoped = useMemo(() => { const ids = new Set(tickets.map((t) => t.id)); return agreements.filter((a) => ids.has(a.ticket_id)) }, [agreements, tickets])
+  const rows = useMemo(() => [...buildRows(scoped, tickets), ...(scaleN ? syntheticContractRows(scaleN) : [])], [scoped, tickets, scaleN])
+
+  const counterparties = useMemo(() => Array.from(new Set(rows.map((r) => r.counterparty))).sort(), [rows])
+
+  const filtered = useMemo(() => rows
     .filter(presetPred(preset))
     .filter((r) => turn === 'all' || (!r.executed && r.ball === turn))
     .filter((r) => stage === 'all' || r.stage === stage)
     .filter((r) => cp === 'all' || r.counterparty === cp)
-    .filter((r) => !ql || r.name.toLowerCase().includes(ql) || r.counterparty.toLowerCase().includes(ql))
+    .filter((r) => !ql || r.name.toLowerCase().includes(ql) || r.counterparty.toLowerCase().includes(ql)),
+    [rows, preset, turn, stage, cp, ql])
 
-  const sorted = [...filtered].sort((a, b) => {
+  const sorted = useMemo(() => [...filtered].sort((a, b) => {
     const d = sort.dir === 'asc' ? 1 : -1
     if (sort.key === 'name') return a.name.localeCompare(b.name) * d
     if (sort.key === 'date') return (new Date(a.agreementDate).getTime() - new Date(b.agreementDate).getTime()) * d
     if (sort.key === 'stage') return (a.stageIdx - b.stageIdx) * d
     return (a.daysWaiting - b.daysWaiting) * d
-  })
+  }), [filtered, sort])
+
+  // Windowed slice — render only the first `page` pages, never the whole (possibly huge) list.
+  const visible = useMemo(() => sorted.slice(0, page * PAGE_SIZE), [sorted, page])
+  useEffect(() => { setPage(1) }, [preset, turn, stage, cp, ql, sort, scaleN])
 
   const toggleSort = (key: SortKey) => setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'name' ? 'asc' : 'desc' }))
   const SortHead = ({ k, children, className }: { k: SortKey; children: React.ReactNode; className?: string }) => (
@@ -94,6 +104,15 @@ export function ContractsList() {
           <div>
             <h1 className="text-[18px] font-bold text-slate-800">All contracts</h1>
             <p className="text-[12.5px] text-slate-500">{sorted.length} of {rows.length} agreements · {cu.role === 'administrator' || cu.role === 'playbook_owner' ? 'full portfolio' : 'matters visible to you'}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* R89 — scale story: render stays paginated + memoized even at portfolio volume */}
+            <span className="flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-500" title="Windowed render: only the first pages are in the DOM; filter/sort are memoized."><Gauge size={12} /> {Math.min(visible.length, sorted.length)} of {sorted.length} rendered</span>
+            <Select value={String(scaleN)} onChange={(v) => setScaleN(Number(v))}>
+              <option value="0">Real data</option>
+              <option value="200">Simulate +200</option>
+              <option value="1000">Simulate +1,000</option>
+            </Select>
           </div>
         </div>
         {/* Toolbar */}
@@ -138,7 +157,7 @@ export function ContractsList() {
               </tr>
             </thead>
             <tbody>
-              {sorted.map((r) => (
+              {visible.map((r) => (
                 <tr key={r.agreementId} onClick={() => openAgreement(r.agreementId, 'review')} className="cursor-pointer border-b border-slate-50 hover:bg-slate-50">
                   <td className="px-2 py-2.5">
                     <div className="font-semibold text-slate-700">{r.name}</div>
@@ -170,6 +189,12 @@ export function ContractsList() {
               ))}
             </tbody>
           </table>
+        )}
+        {visible.length < sorted.length && (
+          <div className="mt-3 flex items-center justify-center gap-3 pb-4">
+            <span className="text-[11.5px] text-slate-400">Showing {visible.length} of {sorted.length} — windowed for performance</span>
+            <button onClick={() => setPage((p) => p + 1)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-[12px] font-semibold text-slate-600 hover:bg-slate-50">Load {Math.min(PAGE_SIZE, sorted.length - visible.length)} more</button>
+          </div>
         )}
       </div>
     </div>

@@ -11,7 +11,7 @@ import type {
 } from '@/types'
 import { lookupCounterparty, inferDealContext } from '@/data/counterparties'
 import {
-  users, tickets as seedTickets, agreements as seedAgreements,
+  users, userById, tickets as seedTickets, agreements as seedAgreements,
   versions as seedVersions, deviations as seedDeviations, messages as seedMessages,
   playbooks as seedPlaybooks, auditSeed, notificationSeed, CURRENT_USER_ID, ndaPlaybook,
   playbookSuggestions as seedSuggestions, templateProjects as seedProjects,
@@ -24,7 +24,8 @@ import { deriveProvisions, comparativeAnalysis, folderAgreements } from '@/data/
 import { applyPlaybookInstruction } from '@/lib/playbookOps'
 import { can } from '@/lib/access'
 import { executedCorpus } from '@/data/executed'
-import type { PlaybookSourceDefaults, SourceFolder } from '@/types'
+import type { PlaybookSourceDefaults, SourceFolder, DocLock } from '@/types'
+import { agreementIdForVersion } from '@/data/documents'
 import { routeAttorney, type RoutingStrategy } from '@/lib/routing'
 import { slaStatus } from '@/lib/labels'
 
@@ -86,6 +87,8 @@ interface CLMState {
   slaChecked: boolean
   entered: boolean
   enterApp: () => void
+  entryChannel: 'slack' | 'teams' | 'landing' // R102 — which entry point the user came through
+  setEntryChannel: (c: 'slack' | 'teams' | 'landing') => void
   setCmdkOpen: (v: boolean) => void
 
   // navigation
@@ -128,6 +131,15 @@ interface CLMState {
   acceptChange: (versionId: string, cid: string) => void
   rejectChange: (versionId: string, cid: string) => void
   addTrackedChange: (versionId: string, clauseId: string, text: string, kind: 'ins' | 'del') => void
+
+  // R18 — document integrity (real lock / per-clause claim, not a banner)
+  docLocks: Record<string, DocLock>
+  setCollabMode: (agreementId: string, mode: 'live' | 'locked') => void
+  checkoutDoc: (agreementId: string) => boolean   // false if already held by someone else
+  releaseDoc: (agreementId: string) => void
+  claimClause: (agreementId: string, clauseId: string) => boolean
+  releaseClause: (agreementId: string, clauseId: string) => void
+  canEditDoc: (agreementId: string, clauseId?: string) => { allowed: boolean; holderId?: string; reason?: string }
 
   // lifecycle / routing / approvals / e-sign
   advanceAgreementStage: (agreementId: string) => void
@@ -203,6 +215,7 @@ export const useStore = create<CLMState>((set, get) => ({
   versions: seedVersions,
   deviations: initialDeviations,
   playbookSourceDefaults: loadSourceDefaults(),
+  docLocks: { 'AGR-2201': { agreement_id: 'AGR-2201', mode: 'live', locked_by: null, locked_at: null, claimed_clauses: {} } },
   messages: seedMessages,
   playbooks: seedPlaybooks,
   audit: buildAudit(),
@@ -223,6 +236,8 @@ export const useStore = create<CLMState>((set, get) => ({
   slaChecked: false,
   entered: false,
   enterApp: () => set({ entered: true }),
+  entryChannel: 'slack',
+  setEntryChannel: (c) => set({ entryChannel: c }),
   setCmdkOpen: (v) => set({ cmdkOpen: v }),
 
   navigate: (c) => set((s) => ({ canvas: { ...s.canvas, ...c } })),
@@ -396,7 +411,9 @@ export const useStore = create<CLMState>((set, get) => ({
   },
 
   // ----- documents: real accept/reject + edit (mutates the doc model) --------
+  // R18 — every mutator hard-refuses when the doc is locked by another user (defense in depth).
   acceptChange: (versionId, cid) => {
+    if (!get().canEditDoc(agreementIdForVersion(versionId)).allowed) { get().setToast('Document is locked by another user — read-only.'); return }
     set((s) => {
       const doc = s.documents[versionId]
       if (!doc) return {}
@@ -410,6 +427,7 @@ export const useStore = create<CLMState>((set, get) => ({
     get().audit_push({ event_type: 'version_created', summary: `Tracked change ${cid} accepted.` })
   },
   rejectChange: (versionId, cid) => {
+    if (!get().canEditDoc(agreementIdForVersion(versionId)).allowed) { get().setToast('Document is locked by another user — read-only.'); return }
     set((s) => {
       const doc = s.documents[versionId]
       if (!doc) return {}
@@ -423,6 +441,7 @@ export const useStore = create<CLMState>((set, get) => ({
     get().audit_push({ event_type: 'version_created', summary: `Tracked change ${cid} rejected.` })
   },
   addTrackedChange: (versionId, clauseId, text, kind) => {
+    if (!get().canEditDoc(agreementIdForVersion(versionId), clauseId).allowed) { get().setToast('That clause is locked by another user right now.'); return }
     const cid = nextId('ch').replace('ch-', 'ch-cp-')
     set((s) => {
       const doc = s.documents[versionId]
@@ -433,6 +452,48 @@ export const useStore = create<CLMState>((set, get) => ({
     })
     get().audit_push({ event_type: 'version_created', summary: `ChargePoint ${kind === 'ins' ? 'insertion' : 'deletion'} added (${clauseId}).` })
   },
+
+  // ----- R18: document integrity — real lock / per-clause claim -----------------
+  canEditDoc: (agreementId, clauseId) => {
+    const lock = get().docLocks[agreementId]
+    const uid = get().currentUserId
+    if (!lock) return { allowed: true }
+    if (lock.mode === 'locked') {
+      if (lock.locked_by && lock.locked_by !== uid) return { allowed: false, holderId: lock.locked_by, reason: 'locked' }
+      return { allowed: true, holderId: lock.locked_by ?? undefined }
+    }
+    // live mode: everyone may edit, but not a clause another user is actively editing
+    if (clauseId) { const c = lock.claimed_clauses[clauseId]; if (c && c.user_id !== uid) return { allowed: false, holderId: c.user_id, reason: 'clause_claimed' } }
+    return { allowed: true }
+  },
+  setCollabMode: (agreementId, mode) => {
+    set((s) => {
+      const prev = s.docLocks[agreementId] ?? { agreement_id: agreementId, mode: 'live', locked_by: null, locked_at: null, claimed_clauses: {} }
+      // switching to 'locked' with no holder auto-checks-out to the current user
+      const locked_by = mode === 'locked' ? (prev.locked_by ?? s.currentUserId) : null
+      return { docLocks: { ...s.docLocks, [agreementId]: { ...prev, mode, locked_by, locked_at: locked_by ? now() : null, claimed_clauses: {} } } }
+    })
+    if (mode === 'locked') get().audit_push({ event_type: 'document_locked', agreement_id: agreementId, summary: 'Document checked out (single-editor lock) — others are read-only.' })
+    else get().audit_push({ event_type: 'document_released', agreement_id: agreementId, summary: 'Live co-editing enabled — all contributors may view and comment.' })
+  },
+  checkoutDoc: (agreementId) => {
+    const lock = get().docLocks[agreementId]
+    if (lock?.locked_by && lock.locked_by !== get().currentUserId) { get().setToast(`Locked by ${userById(lock.locked_by)?.name ?? 'another user'} — can't check out.`); return false }
+    set((s) => ({ docLocks: { ...s.docLocks, [agreementId]: { ...(s.docLocks[agreementId] ?? { agreement_id: agreementId, mode: 'locked', claimed_clauses: {} }), mode: 'locked', locked_by: s.currentUserId, locked_at: now() } as DocLock } }))
+    get().audit_push({ event_type: 'document_locked', agreement_id: agreementId, summary: 'Document checked out.' })
+    return true
+  },
+  releaseDoc: (agreementId) => {
+    set((s) => ({ docLocks: { ...s.docLocks, [agreementId]: { ...(s.docLocks[agreementId]!), locked_by: null, locked_at: null } } }))
+    get().audit_push({ event_type: 'document_released', agreement_id: agreementId, summary: 'Document released — available to others.' })
+  },
+  claimClause: (agreementId, clauseId) => {
+    const chk = get().canEditDoc(agreementId, clauseId)
+    if (!chk.allowed) { get().audit_push({ event_type: 'edit_blocked', agreement_id: agreementId, summary: `Edit blocked — ${clauseId} is being edited by ${userById(chk.holderId!)?.name ?? 'another user'}.` }); return false }
+    set((s) => { const l = s.docLocks[agreementId]; if (!l) return {}; return { docLocks: { ...s.docLocks, [agreementId]: { ...l, claimed_clauses: { ...l.claimed_clauses, [clauseId]: { user_id: s.currentUserId, at: now() } } } } } })
+    return true
+  },
+  releaseClause: (agreementId, clauseId) => set((s) => { const l = s.docLocks[agreementId]; if (!l) return {}; const cc = { ...l.claimed_clauses }; delete cc[clauseId]; return { docLocks: { ...s.docLocks, [agreementId]: { ...l, claimed_clauses: cc } } } }),
 
   // ----- runtime versioning (Eric §3 — counterparty returns further redlines) ----
   // Auto-detects the incoming draft, creates a new counterparty version + a CP working copy,
@@ -472,6 +533,7 @@ export const useStore = create<CLMState>((set, get) => ({
   },
   // Free-text prose edit of a clause (Eric §2 — "edit the document"). Recorded as a CP tracked change.
   editClauseText: (versionId, clauseId, text) => {
+    if (!get().canEditDoc(agreementIdForVersion(versionId), clauseId).allowed) { get().setToast('That clause is locked by another user right now.'); return }
     set((s) => {
       const doc = s.documents[versionId]; if (!doc) return {}
       const clauses = doc.clauses.map((c) => (c.id === clauseId ? { ...c, runs: [{ text, type: 'ins' as const, party: 'cp' as const, cid: nextId('ed') }] } : c))

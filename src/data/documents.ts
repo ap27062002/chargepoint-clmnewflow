@@ -145,6 +145,13 @@ export function seedDocuments(): Record<string, DocModel> {
 // The clean working-copy id for an agreement's working version (prototype: Vishay only).
 export const cleanCopyId = (agreementId: string): string => (agreementId === 'AGR-2201' ? 'V-2201-3C' : '')
 
+// R18 — map a versionId back to its agreement (runtime `AGR-2201-5`, seeded `V-2201-3`).
+export function agreementIdForVersion(versionId: string): string {
+  const runtime = versionId.match(/^(AGR-\d+)-\d+$/); if (runtime) return runtime[1]
+  const seeded = versionId.match(/^V-(\d+)-/); if (seeded) return 'AGR-' + seeded[1]
+  return ''
+}
+
 // Clause id that a deviation maps to, within a given doc (deviation↔clause is via DocClause.deviationId).
 export function clauseIdForDeviation(doc: DocModel | undefined, deviationId: string): string | undefined {
   return doc?.clauses.find((c) => c.deviationId === deviationId)?.id

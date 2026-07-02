@@ -77,6 +77,7 @@ export const auditLabel: Record<AuditEventType, string> = {
   signature_completed: 'Signature Completed', comment_posted: 'Comment Posted', playbook_updated: 'Playbook Updated',
   approval_granted: 'Approval Granted', approval_denied: 'Approval Denied', sla_breached: 'SLA Breached',
   playbook_suggested: 'Playbook Suggested', playbook_suggestion_decided: 'Playbook Suggestion Decided',
+  document_locked: 'Document Locked', document_released: 'Document Released', edit_blocked: 'Edit Blocked',
 }
 
 export const redlineKindMeta: Record<'added' | 'removed' | 'modified' | 'unchanged', { label: string; chip: string }> = {
