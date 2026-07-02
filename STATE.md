@@ -1,7 +1,9 @@
 # Project state — resume here
 
 **App:** ChargePoint Legal CLM — agent-first, chat-driven CLM prototype (Unify build).
-**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-16` (git tag) · repo clean.
+**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-17` (git tag) · repo clean.
+
+**build-17 — all 20 partials attempted; adversarial re-audit verdict: 12 done / 8 partial (improved) / 0 missing.** Done: R18 (real store-backed doc lock + guards), R43, R44, R48, R49, R50, R52, R54, R58, R79 (inquiry intake), R81 (multi-agreement intake), R102 (Slack/Teams/Web entry). Still PARTIAL (real but bounded — R57/R60/R107/R112 need `ANTHROPIC_API_KEY` for full fidelity): R57 (restructure is a fixed regex classifier not open-ended NL), R60 (3 render buckets not arbitrary layout), R62 (MSA-corpus bug fixed post-audit → now real; re-verify), R85 (fixed folder preset, playbook-only publish, admin-gated), R89 (windowing on contracts only), R105 (added MSA source post-audit; re-verify cross-type), R107 (clause bodies are boilerplate not composed from precedent text; NL rewrite tag-appends), R112 (Claude is fallback-only/text-only, not the primary action-driving path). Re-audit output: tasks/w3n2254gd.output.
 
 **build-15/16 — deepening the 20 "advertised-but-not-wired" partials into REAL wired features (12 of 20 done, verified by adversarial re-audit).** Honest status:
 - **Done+verified (12):** R43 (issues list COMPUTED by `lib/playbookAnalysis.ts` diff→map→classify, reproduces golden 9, input-dependent), R44 (`lib/precedent.ts` real executed-corpus grounding; fabricated Subaru/Microchip removed), R48/R49/R50/R62/R105 (`data/playbookDerive.ts` — playbook DERIVED from template+example clause text; folder picker; persisted default-source-folder in Admin; comparative-analysis table in Projects), R52/R54/R57/R58/R60 (`lib/playbookOps.ts` — chat performs REAL transforms on the published playbook: re-tier moves text, nest reparents, reorder, render sets persisted audience mode that hides red-lines/shows rationale, admin-only accent theme).
