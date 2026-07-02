@@ -326,6 +326,11 @@ export const deviations: Deviation[] = [
 // COLLABORATION — threads
 // ============================================================================
 export const messages: Message[] = [
+  // R79 — the seeded inquiry (TKT-1048) opens to a real question→response thread, not an empty view.
+  { id: 'M-INQ1', thread_type: 'deal_level', ticket_id: 'TKT-1048', agreement_id: null, author_id: 'u_marcus',
+    body: 'Quick question — a counterparty keeps asking for a residuals clause in evaluation NDAs. What\'s our exposure and can we ever accept it?', tag: 'question', created_date: '2026-06-26T14:20:00' },
+  { id: 'M-INQ2', thread_type: 'deal_level', ticket_id: 'TKT-1048', agreement_id: null, author_id: 'ai_engine',
+    body: 'Residuals is a named playbook **red line** — it lets the other side use anything "retained in unaided memory," which guts trade-secret protection. No executed ChargePoint agreement in the corpus contains a residuals clause, so there is no accepted precedent for it. Recommend declining; InfoSec sign-off would be required to ever vary. This is an inquiry (no agreement attached) — tag an attorney if you want a formal sign-off.', tag: 'decision', created_date: '2026-06-26T14:22:00' },
   { id: 'M-01', thread_type: 'deal_level', ticket_id: 'TKT-1042', agreement_id: null, author_id: 'u_marcus',
     body: 'Vishay wants to move quickly — technical eval kicks off next week. Can we turn the redline around by Friday?', tag: 'timeline', created_date: '2026-06-23T09:12:00' },
   { id: 'M-02', thread_type: 'deal_level', ticket_id: 'TKT-1042', agreement_id: null, author_id: 'u_kirsten',

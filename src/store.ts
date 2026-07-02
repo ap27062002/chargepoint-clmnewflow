@@ -22,6 +22,7 @@ import { seedDocuments, buildCleanCopy, buildRedlineDoc, summarizeRedline, clean
 import { analyzePlaybook } from '@/lib/playbookAnalysis'
 import { deriveProvisions, comparativeAnalysis, folderAgreements } from '@/data/playbookDerive'
 import { applyPlaybookInstruction } from '@/lib/playbookOps'
+import { precedentAnswer } from '@/lib/precedent'
 import { can } from '@/lib/access'
 import { executedCorpus } from '@/data/executed'
 import type { PlaybookSourceDefaults, SourceFolder, DocLock } from '@/types'
@@ -120,6 +121,9 @@ interface CLMState {
   updateIntakeField: (key: keyof IntakePayload, value: IntakePayload[keyof IntakePayload]) => void
   confirmCounterparty: (profile: CounterpartyProfile) => void
   generateNdaFromIntake: () => Ticket | null
+  createInquiry: (question: string) => Ticket   // R79 — a ticket with no agreement, just a question→response
+  addIntakeAgreementType: (type: AgreementType) => void // R81 — add a parallel agreement to the intake
+  intakeExtraTypes: AgreementType[]             // R81 — extra agreement types requested alongside the NDA
 
   // runtime versioning (G4/G5) + free-text edit (G2)
   receiveCounterpartyRedline: (agreementId: string) => void
@@ -238,6 +242,7 @@ export const useStore = create<CLMState>((set, get) => ({
   enterApp: () => set({ entered: true }),
   entryChannel: 'slack',
   setEntryChannel: (c) => set({ entryChannel: c }),
+  intakeExtraTypes: [],
   setCmdkOpen: (v) => set({ cmdkOpen: v }),
 
   navigate: (c) => set((s) => ({ canvas: { ...s.canvas, ...c } })),
@@ -386,16 +391,50 @@ export const useStore = create<CLMState>((set, get) => ({
     const p = get().canvas.intakePayload
     if (!p || !p.profile || !p.confirmed) { get().setToast('Confirm the counterparty before generating.'); return null }
     const cp = p.profile.legal_name
+    // R81 — the NDA plus any parallel agreements requested (e.g. NDA + MSA for the same counterparty).
+    const types: AgreementType[] = ['MNDA', ...get().intakeExtraTypes]
+    const multi = types.length > 1
     const t = get().createTicketFromAgent({
-      title: `${cp} — Mutual NDA`, counterparty_name: cp, type: 'single_agreement',
+      title: multi ? `${cp} — ${types.join(' + ')}` : `${cp} — Mutual NDA`, counterparty_name: cp,
+      type: multi ? 'multi_agreement' : 'single_agreement',
       agreement_type: 'MNDA', assigned_attorney_id: p.attorneyId, priority: 'normal',
-      description: `NDA generated from ${p.template.value} for ${cp} (${p.profile.hq_city}, ${p.profile.hq_country}). `
+      description: `${types.join(' + ')} generated from ${p.template.value} for ${cp} (${p.profile.hq_city}, ${p.profile.hq_country}). `
         + `Requestor: ${get().users.find((u) => u.id === p.requestorId)?.name ?? ''}${p.onBehalfOf ? ' (filed on their behalf)' : ''}. `
         + `Jurisdiction ${p.jurisdiction.value}; governing law ${p.governingLaw.value}. Purpose: ${p.purpose.value}. `
         + `Posture: ${p.clausePosture.value}. Signer: ${p.signerName} <${p.signerEmail}>. SF: ${p.sfOpportunity.value}.`,
     })
-    get().audit_push({ event_type: 'agreement_added', ticket_id: t.id, actor_id: 'ai_engine', summary: `V1 generated from ${p.template.value}; counterparty resolved via ${p.profile.crm_account ? 'CRM' : 'web'} lookup.` })
-    get().setToast(`Generated ${cp} NDA (V1) and routed to ${get().users.find((u) => u.id === p.attorneyId)?.name.split(' ')[0]}.`)
+    // Materialize a real Agreement + V1 per requested type so they can be reviewed in parallel.
+    const baseNum = 9000 + get().agreements.length
+    const newAgreements: Agreement[] = []
+    const newVersions: Version[] = []
+    types.forEach((type, i) => {
+      const aid = `AGR-${baseNum + i}`
+      const vid = `${aid}-1`
+      newAgreements.push({ id: aid, ticket_id: t.id, title: `${cp} ${type}`, agreement_type: type, status: 'draft', current_version_id: vid, playbook_id: type === 'MNDA' || type === 'NDA' ? 'pb_nda' : type === 'MSA' ? 'pb_msa' : null, paper_origin: 'cp_paper', ball_in_court: 'cp_legal', red_line_count: 0, created_date: now(), last_activity_date: '2026-06-27', turn_count: 0 })
+      newVersions.push({ id: vid, agreement_id: aid, version_number: 1, label: 'V1', source: 'cp_draft', document_ref: `${aid}_v1.docx`, created_by: 'ai_engine', created_date: now(), parent_version_id: null, change_summary: `${type} V1 generated from the ChargePoint template.` })
+    })
+    set((s) => ({
+      agreements: [...newAgreements, ...s.agreements],
+      versions: [...s.versions, ...newVersions],
+      tickets: s.tickets.map((x) => (x.id === t.id ? { ...x, agreement_ids: newAgreements.map((a) => a.id) } : x)),
+      intakeExtraTypes: [],
+    }))
+    newAgreements.forEach((a) => get().audit_push({ event_type: 'agreement_added', ticket_id: t.id, agreement_id: a.id, actor_id: 'ai_engine', summary: `${a.agreement_type} V1 generated from the template.` }))
+    get().setToast(multi ? `Generated ${types.length} agreements (${types.join(' + ')}) for ${cp} — reviewing in parallel.` : `Generated ${cp} NDA (V1) and routed to ${get().users.find((u) => u.id === p.attorneyId)?.name.split(' ')[0]}.`)
+    return { ...t, agreement_ids: newAgreements.map((a) => a.id) }
+  },
+  addIntakeAgreementType: (type) => set((s) => ({ intakeExtraTypes: s.intakeExtraTypes.includes(type) ? s.intakeExtraTypes.filter((x) => x !== type) : [...s.intakeExtraTypes, type] })),
+  // R79 — a ticket that is a pure inquiry (no agreement), with an agent-drafted response.
+  createInquiry: (question) => {
+    const t = get().createTicketFromAgent({ title: `Inquiry — ${question.length > 56 ? question.slice(0, 56) + '…' : question}`, counterparty_name: '—', type: 'inquiry', priority: 'normal', description: question })
+    const answer = precedentAnswer(question)
+    set((s) => ({ messages: [...s.messages,
+      { id: nextId('M'), thread_type: 'deal_level', ticket_id: t.id, agreement_id: null, author_id: get().currentUserId, body: question, created_date: now() },
+      { id: nextId('M'), thread_type: 'deal_level', ticket_id: t.id, agreement_id: null, author_id: 'ai_engine', body: `${answer}\n\n_This is an inquiry (no agreement attached) — I've drafted a response above from the playbook + executed precedent. Edit it, or tag an attorney for sign-off._`, created_date: now() },
+    ] }))
+    get().audit_push({ event_type: 'ticket_created', ticket_id: t.id, actor_id: 'ai_engine', summary: `Inquiry logged (no agreement); agent drafted a response.` })
+    get().openTicket(t.id)
+    get().setToast('Inquiry logged — agent drafted a response for your review.')
     return t
   },
 

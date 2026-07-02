@@ -44,6 +44,8 @@ export function IntakeFlow() {
   const prepareIntake = useStore((s) => s.prepareIntake)
   const generate = useStore((s) => s.generateNdaFromIntake)
   const openTicket = useStore((s) => s.openTicket)
+  const extraTypes = useStore((s) => s.intakeExtraTypes)
+  const addType = useStore((s) => s.addIntakeAgreementType)
   const [generated, setGenerated] = useState(false)
   const [behalf, setBehalf] = useState('')
   const [reQuery, setReQuery] = useState('')
@@ -203,6 +205,19 @@ export function IntakeFlow() {
               className="rounded-lg border border-slate-300 px-2.5 py-2 text-[13px] outline-none focus:border-brand-400" />
             <input value={payload.signerEmail} onChange={(e) => update('signerEmail', e.target.value)} placeholder="Signer email"
               className="rounded-lg border border-slate-300 px-2.5 py-2 text-[13px] outline-none focus:border-brand-400" />
+          </div>
+          {/* R81 — originate parallel agreements for the same counterparty under one request. */}
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2.5">
+            <span className="text-[11.5px] font-semibold text-slate-500">Also process in parallel:</span>
+            {(['MSA', 'DPA', 'SOW'] as const).map((ty) => {
+              const on = extraTypes.includes(ty)
+              return (
+                <button key={ty} onClick={() => addType(ty)} className={clsx('rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold ring-1', on ? 'bg-brand-50 text-brand-700 ring-brand-200' : 'bg-white text-slate-500 ring-slate-200 hover:bg-slate-50')}>
+                  {on ? '✓ ' : '+ '}{ty}
+                </button>
+              )
+            })}
+            {extraTypes.length > 0 && <span className="text-[11px] text-slate-400">{extraTypes.length + 1} agreements will be created on one ticket, reviewed in parallel.</span>}
           </div>
         </Card>
 

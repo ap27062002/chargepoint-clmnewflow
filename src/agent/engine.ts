@@ -421,6 +421,21 @@ const intents: Intent[] = [
     }),
   },
   {
+    // R79 — a pure inquiry (a question, no agreement) → logged as an inquiry ticket + drafted response.
+    name: 'create_inquiry', cap: 'intake',
+    test: (t) => (has(t, 'log an inquiry', 'log a question', 'i have a question', 'legal question', 'ask legal', 'quick question', 'just a question', 'no agreement, just', 'open an inquiry', 'raise an inquiry'))
+      && !has(t, 'create an nda', 'draft an nda', 'new nda'),
+    reply: (t) => {
+      const q = t.replace(/^.*?(question|inquiry)[:,]?\s*/i, '').trim() || t
+      return {
+        text: `Logged that as an **inquiry** (no agreement attached) and drafted a response from the playbook + executed precedent — open it to review, edit, or tag an attorney for sign-off.`,
+        artifact: { kind: 'ticket', title: 'Inquiry — drafted response' },
+        effect: () => useStore.getState().createInquiry(q),
+        actions: [],
+      }
+    },
+  },
+  {
     name: 'create_nda', cap: 'intake',
     test: (t) => (has(t, 'create', 'draft', 'start', 'new') && has(t, 'nda', 'agreement', 'mutual'))
       && !has(t, 'response', 'redline', 'review the', 'use defaults'),
@@ -446,6 +461,7 @@ const intents: Intent[] = [
       const profile = lookupCounterparty(query)[0]
       const ctx = profile ? inferDealContext(profile) : null
       const cp = profile?.legal_name ?? query
+      const wantsMsa = has(t, 'and an msa', 'and a msa', 'and msa', 'msa too', 'plus an msa', 'master services', 'and a master')
       const known = !!profile && !profile.address.toLowerCase().includes('pending')
       const lines = profile ? [
         `- **Counterparty:** ${profile.legal_name} · ${profile.website} · ${profile.hq_city}, ${profile.hq_country}${known ? '' : '  _(unverified — confirm in the brief)_'}`,
@@ -454,9 +470,9 @@ const intents: Intent[] = [
         profile.sf_opportunity ? `- **Salesforce:** ${profile.sf_opportunity} (auto-linked)` : `- **Salesforce:** no opportunity linked (optional)`,
       ].join('\n') : ''
       return {
-        text: `On it. Drafting a **Mutual NDA** on the **ChargePoint template** for **${cp}**${behalf ? `, filed on behalf of **${behalf}**` : ''}.\n\nHere's what I inferred — all editable:\n${lines}\n\nRequestor is auto-filled from your login. **Open the drafting brief** to confirm the counterparty and add the signer — everything else is done.`,
+        text: `On it. Drafting a **Mutual NDA** on the **ChargePoint template** for **${cp}**${behalf ? `, filed on behalf of **${behalf}**` : ''}${wantsMsa ? ' — **plus an MSA** to review in parallel' : ''}.\n\nHere's what I inferred — all editable:\n${lines}\n\nRequestor is auto-filled from your login. **Open the drafting brief** to confirm the counterparty and add the signer — everything else is done.`,
         artifact: { kind: 'intake_form', refId: cp, title: `Open the drafting brief — ${cp}` },
-        effect: () => useStore.getState().prepareIntake({ query, rawPrompt: t, onBehalfOf: behalf }),
+        effect: () => { const st = useStore.getState(); st.prepareIntake({ query, rawPrompt: t, onBehalfOf: behalf }); if (wantsMsa) st.addIntakeAgreementType('MSA') },
         actions: [
           { label: 'Use defaults & generate', prompt: `use defaults and generate the NDA for ${cp}`, variant: 'primary' },
           { label: 'Different counterparty', prompt: 'create a new NDA' },
