@@ -24,6 +24,10 @@ function ProjectDetail({ project }: { project: TemplateProject }) {
   const buildPlaybook = useStore((s) => s.buildPlaybookFromTemplate)
   const [instr, setInstr] = useState('')
   const draft = templates.find((t) => t.id === project.draftTemplateId)
+  // R85 — publish the finished TEMPLATE into an access-scoped team folder (not just playbooks).
+  const teamFolders = useStore((s) => s.teamFolders)
+  const publishArtifact = useStore((s) => s.publishArtifact)
+  const [pubFolder, setPubFolder] = useState('')
   // R105 — the comparative analysis across the SELECTED negotiated agreements (computed from real clause text).
   const selectedIds = project.sources.filter((s) => s.selected).flatMap((s) => s.agreementIds ?? [])
   const analysis = comparativeAnalysis(selectedIds)
@@ -113,6 +117,14 @@ function ProjectDetail({ project }: { project: TemplateProject }) {
             }}>Export (.html)</Button>
             <Button size="sm" variant="ai" icon={<BookOpen size={13} />} onClick={() => buildPlaybook(draft.id)}>Build a playbook from this</Button>
           </div>
+          {/* R85 — place the finished template in a folder accessible to the larger team */}
+          <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
+            <span className="text-[11.5px] font-semibold text-slate-500">Publish to team folder:</span>
+            <select value={pubFolder || teamFolders[0]?.path} onChange={(e) => setPubFolder(e.target.value)} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11.5px] font-semibold text-slate-600 outline-none">
+              {teamFolders.map((f) => <option key={f.path} value={f.path}>{f.path} · {f.category}</option>)}
+            </select>
+            <Button size="sm" variant="outline" icon={<Save size={12} />} onClick={() => publishArtifact('template', draft.id, draft.name, 'Form template', pubFolder || teamFolders[0]?.path)}>Publish template</Button>
+          </div>
         </Card>
       )}
 
@@ -155,11 +167,20 @@ function TemplateDetail({ template }: { template: AgreementTemplate }) {
           {template.sections.map((s) => (
             <div key={s.id} className="flex items-start gap-2 rounded-md px-2 py-1.5">
               <FileText size={13} className="mt-0.5 shrink-0 text-slate-300" />
-              <div><div className="flex items-center gap-1.5 text-[12.5px] font-semibold text-slate-700">{s.heading}{s.cpConcept && <Chip className="bg-ai-50 text-ai-700 ring-ai-500/20">CP</Chip>}</div><div className="text-[11.5px] text-slate-400">{s.summary}</div></div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 text-[12.5px] font-semibold text-slate-700">{s.heading}{s.cpConcept && <Chip className="bg-ai-50 text-ai-700 ring-ai-500/20">CP</Chip>}</div>
+                {/* R107 — real drafted clause body (composed from precedent text), not just a heading */}
+                {s.body ? <div className="mt-0.5 rounded bg-slate-50 px-2 py-1 font-serif text-[11.5px] leading-snug text-slate-600">{s.body}</div> : <div className="text-[11.5px] text-slate-400">{s.summary}</div>}
+              </div>
             </div>
           ))}
         </div>
-        <div className="mt-3">
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" icon={<FileText size={13} />} onClick={() => {
+            const html = exportTemplateHtml(template)
+            const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
+            const a = document.createElement('a'); a.href = url; a.download = `${template.name.replace(/[^a-z0-9]+/gi, '-')}.html`; a.click(); URL.revokeObjectURL(url)
+          }}>Export (.html)</Button>
           {pb ? <Chip className="bg-brand-50 text-brand-700 ring-brand-500/20"><BookOpen size={11} /> Playbook: {pb.name}</Chip>
             : <Button size="sm" variant="ai" icon={<BookOpen size={13} />} onClick={() => buildPlaybook(template.id)}>Build a playbook from this template</Button>}
         </div>

@@ -3,6 +3,7 @@ import { Bell, Mail, MessageSquare, Hash, Check, AlertTriangle, Info, CircleAler
 import { useStore } from '@/store'
 import { Card, Chip, Button } from '@/components/ui'
 import { channelLabel, fmtDateTime } from '@/lib/labels'
+import { useWindowed } from '@/lib/useWindowed'
 import type { NotificationChannel } from '@/types'
 
 const chIcon: Record<NotificationChannel, JSX.Element> = {
@@ -20,6 +21,8 @@ export function NotificationsView() {
   const markAll = useStore((s) => s.markAllNotificationsRead)
   const openTicket = useStore((s) => s.openTicket)
   const unread = notifications.filter((n) => !n.read).length
+  // R89 — windowed render (notifications accumulate at runtime).
+  const { visible, total, hasMore, remaining, loadMore } = useWindowed(notifications, 25)
 
   return (
     <div className="flex h-full flex-col">
@@ -33,7 +36,7 @@ export function NotificationsView() {
 
       <div className="flex-1 overflow-y-auto p-6">
         <div className="mx-auto max-w-3xl space-y-2.5">
-          {notifications.map((n) => {
+          {visible.map((n) => {
             const sv = sevMeta[n.severity]
             return (
               <Card key={n.id} className={clsx('flex items-start gap-3 p-3.5', sv.ring, !n.read && 'bg-white ring-1 ring-brand-100')}>
@@ -56,6 +59,12 @@ export function NotificationsView() {
               </Card>
             )
           })}
+          {hasMore && (
+            <div className="flex items-center justify-center gap-3 pt-1">
+              <span className="text-[11.5px] text-slate-400">Showing {visible.length} of {total} — windowed for performance</span>
+              <button onClick={loadMore} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-600 hover:bg-slate-50">Load {Math.min(25, remaining)} more</button>
+            </div>
+          )}
         </div>
       </div>
     </div>

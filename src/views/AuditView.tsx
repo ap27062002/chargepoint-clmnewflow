@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { clsx } from 'clsx'
 import { ShieldCheck, Link2, Bot } from 'lucide-react'
 import { useStore } from '@/store'
 import { Card, Chip, Avatar, SectionLabel } from '@/components/ui'
 import { auditLabel, fmtDateTime } from '@/lib/labels'
+import { useWindowed } from '@/lib/useWindowed'
 import type { AuditEventType } from '@/types'
 
 const eventTone: Partial<Record<AuditEventType, string>> = {
@@ -18,8 +19,10 @@ const eventTone: Partial<Record<AuditEventType, string>> = {
 export function AuditView() {
   const audit = useStore((s) => s.audit)
   const [filter, setFilter] = useState<'all' | AuditEventType>('all')
-  const rows = [...audit].reverse().filter((e) => filter === 'all' || e.event_type === filter)
-  const types = Array.from(new Set(audit.map((e) => e.event_type)))
+  // R89 — memoized derivation + windowed render: the audit trail grows forever, the DOM must not.
+  const rows = useMemo(() => [...audit].reverse().filter((e) => filter === 'all' || e.event_type === filter), [audit, filter])
+  const types = useMemo(() => Array.from(new Set(audit.map((e) => e.event_type))), [audit])
+  const { visible, total, hasMore, remaining, loadMore } = useWindowed(rows, 40)
 
   return (
     <div className="flex h-full flex-col">
@@ -46,7 +49,7 @@ export function AuditView() {
               <th className="px-2 py-2 font-semibold">Detail</th><th className="px-2 py-2 font-semibold">Timestamp</th><th className="px-2 py-2 font-semibold">Hash</th>
             </tr></thead>
             <tbody>
-              {rows.map((e) => (
+              {visible.map((e) => (
                 <tr key={e.id} className="border-b border-slate-50 hover:bg-slate-50">
                   <td className="px-4 py-2.5"><Chip className={clsx('ring-1 ring-inset', eventTone[e.event_type] ?? 'bg-slate-100 text-slate-600 ring-slate-300/40')}>{auditLabel[e.event_type]}</Chip></td>
                   <td className="px-2 py-2.5">
@@ -62,6 +65,12 @@ export function AuditView() {
             </tbody>
           </table>
         </Card>
+        {hasMore && (
+          <div className="mt-3 flex items-center justify-center gap-3">
+            <span className="text-[11.5px] text-slate-400">Showing {visible.length} of {total} — windowed for performance</span>
+            <button onClick={loadMore} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-600 hover:bg-slate-50">Load {Math.min(40, remaining)} more</button>
+          </div>
+        )}
         <div className="mt-3 text-center text-[11px] text-slate-400">Each hash chains the previous event — any tampering breaks the chain.</div>
       </div>
     </div>

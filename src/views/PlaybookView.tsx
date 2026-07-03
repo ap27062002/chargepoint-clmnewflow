@@ -225,6 +225,9 @@ export function PlaybookView() {
   const [publishOpen, setPublishOpen] = useState(false)
   const [pubFolder, setPubFolder] = useState(TEAM_FOLDERS[0].path)
   const publishArtifact = useStore((s) => s.publishArtifact)
+  const teamFolders = useStore((s) => s.teamFolders) // R85 — stateful, user-creatable folders
+  const createTeamFolder = useStore((s) => s.createTeamFolder)
+  const [newFolder, setNewFolder] = useState<{ path: string; category: string } | null>(null)
   // R52/R57/R58/R60 — chat-driven restructure performs a REAL transform on the published playbook.
   const restructurePlaybook = useStore((s) => s.restructurePlaybook)
   const [restructOpen, setRestructOpen] = useState(false)
@@ -275,20 +278,32 @@ export function PlaybookView() {
                 <Inbox size={13} /> Suggested {pendingCount > 0 && <span className="rounded-full bg-red-500 px-1.5 text-[10.5px] text-white">{pendingCount}</span>}
               </button>
               {canEdit && <button onClick={() => startDraft('New Playbook', pb.agreement_type, 'Create a playbook from a template + examples')} className={clsx('flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold', mode === 'create' ? 'bg-white text-slate-800' : 'bg-slate-800 text-slate-200 hover:bg-slate-700')}><Plus size={13} /> Create</button>}
-              {/* R54 — publishing look & feel for different purposes is administrator-only. */}
-              {canPresentation && <div className="relative">
+              {/* R85 — publishing to a team folder is the owner's workflow (visual theme stays admin-only, R54). */}
+              {canEdit && <div className="relative">
                 <button onClick={() => setPublishOpen((v) => !v)} className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-2.5 py-1.5 text-[12px] font-semibold text-slate-200 hover:bg-slate-700"><Share2 size={13} /> Publish</button>
                 {publishOpen && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setPublishOpen(false)} />
                     <div className="absolute right-0 z-20 mt-1 w-80 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 text-left shadow-lg">
                       <div className="px-2.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">Publish this playbook to a team folder…</div>
-                      {/* R85 — real access-scoped destination folder + category */}
+                      {/* R85 — real access-scoped destination folder + category (user-creatable) */}
                       <div className="px-2.5 pb-1.5">
                         <select value={pubFolder} onChange={(e) => setPubFolder(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11.5px] font-semibold text-slate-600 outline-none">
-                          {TEAM_FOLDERS.map((f) => <option key={f.path} value={f.path}>{f.path} · {f.category}</option>)}
+                          {teamFolders.map((f) => <option key={f.path} value={f.path}>{f.path} · {f.category}</option>)}
                         </select>
-                        <div className="mt-0.5 text-[10.5px] text-slate-400">Accessible to: {(TEAM_FOLDERS.find((f) => f.path === pubFolder)?.access_roles ?? []).map((r) => r.replace('_', ' ')).join(', ')}</div>
+                        <div className="mt-0.5 text-[10.5px] text-slate-400">Accessible to: {(teamFolders.find((f) => f.path === pubFolder)?.access_roles ?? []).map((r) => r.replace('_', ' ')).join(', ')}</div>
+                        {newFolder === null ? (
+                          <button onClick={() => setNewFolder({ path: '', category: '' })} className="mt-1 text-[11px] font-semibold text-brand-600 hover:underline">＋ New folder…</button>
+                        ) : (
+                          <div className="mt-1.5 space-y-1 rounded-lg bg-slate-50 p-1.5 ring-1 ring-slate-200">
+                            <input autoFocus value={newFolder.path} onChange={(e) => setNewFolder({ ...newFolder, path: e.target.value })} placeholder="Folder path, e.g. Legal › Playbooks › DPAs" className="w-full rounded border border-slate-200 px-1.5 py-1 text-[11px] outline-none focus:border-brand-400" />
+                            <input value={newFolder.category} onChange={(e) => setNewFolder({ ...newFolder, category: e.target.value })} placeholder="Category, e.g. DPA" className="w-full rounded border border-slate-200 px-1.5 py-1 text-[11px] outline-none focus:border-brand-400" />
+                            <div className="flex gap-1">
+                              <button onClick={() => { if (newFolder.path.trim()) { createTeamFolder(newFolder.path, newFolder.category, []); setPubFolder(newFolder.path.trim()); setNewFolder(null) } }} className="rounded bg-brand-500 px-2 py-0.5 text-[10.5px] font-semibold text-white hover:bg-brand-600">Create</button>
+                              <button onClick={() => setNewFolder(null)} className="rounded px-2 py-0.5 text-[10.5px] font-semibold text-slate-500 hover:bg-slate-100">Cancel</button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <div className="px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">…for</div>
                       {PUBLISH_PURPOSES.map((p) => (

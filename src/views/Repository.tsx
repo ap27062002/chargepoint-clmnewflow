@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { clsx } from 'clsx'
 import { ChevronRight, Folder, FolderOpen, FileText, History, FileSignature, FolderPlus, Sparkles } from 'lucide-react'
 import { useStore } from '@/store'
 import { Chip, Button } from '@/components/ui'
 import { can } from '@/lib/access'
+import { useWindowed } from '@/lib/useWindowed'
 import { agreementStatusMeta, sourceLabel, fmtDate } from '@/lib/labels'
 import type { Agreement } from '@/types'
 
@@ -64,15 +65,16 @@ export function Repository() {
   const role = useStore((s) => s.users.find((u) => u.id === s.currentUserId)!.role)
   const published = useStore((s) => s.publishedArtifacts).filter((p) => p.access_roles.includes(role))
 
-  // Group agreements into counterparty "folders".
-  const folders = Array.from(
+  // Group agreements into counterparty "folders" — memoized + windowed (R89).
+  const folders = useMemo(() => Array.from(
     agreements.reduce((map, a) => {
       const cp = tickets.find((t) => t.id === a.ticket_id)?.counterparty_name ?? 'Other'
       if (!map.has(cp)) map.set(cp, [])
       map.get(cp)!.push(a)
       return map
     }, new Map<string, Agreement[]>()),
-  ).sort((a, b) => a[0].localeCompare(b[0]))
+  ).sort((a, b) => a[0].localeCompare(b[0])), [agreements, tickets])
+  const { visible: visibleFolders, total: folderTotal, hasMore, remaining, loadMore } = useWindowed(folders, 15)
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -112,7 +114,13 @@ export function Repository() {
         </div>
       )}
       <div className="space-y-2.5">
-        {folders.map(([cp, ags]) => <CounterpartyFolder key={cp} name={cp} agreements={ags} />)}
+        {visibleFolders.map(([cp, ags]) => <CounterpartyFolder key={cp} name={cp} agreements={ags} />)}
+        {hasMore && (
+          <div className="flex items-center justify-center gap-3 pt-1">
+            <span className="text-[11.5px] text-slate-400">Showing {visibleFolders.length} of {folderTotal} counterparties — windowed for performance</span>
+            <button onClick={loadMore} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-600 hover:bg-slate-50">Load {Math.min(15, remaining)} more</button>
+          </div>
+        )}
       </div>
     </div>
   )

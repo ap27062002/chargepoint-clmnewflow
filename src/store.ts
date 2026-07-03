@@ -20,13 +20,13 @@ import {
 import { GREETING, greetingFor } from '@/agent/greeting'
 import { seedDocuments, buildCleanCopy, buildRedlineDoc, summarizeRedline, cleanCopyId, type DocModel, type DocClause } from '@/data/documents'
 import { analyzePlaybook } from '@/lib/playbookAnalysis'
-import { deriveProvisions, comparativeAnalysis, folderAgreements } from '@/data/playbookDerive'
+import { deriveProvisions, comparativeAnalysis, folderAgreements, composeBodyFromPrecedents } from '@/data/playbookDerive'
 import { applyPlaybookInstruction } from '@/lib/playbookOps'
 import { precedentAnswer } from '@/lib/precedent'
 import { TEAM_FOLDERS } from '@/data/folders'
 import { generateSectionBodies, bodyForSection } from '@/lib/templateGen'
 import { can } from '@/lib/access'
-import type { PublishedArtifact } from '@/types'
+import type { PublishedArtifact, TeamFolder, Role } from '@/types'
 import { executedCorpus } from '@/data/executed'
 import type { PlaybookSourceDefaults, SourceFolder, DocLock } from '@/types'
 import { agreementIdForVersion } from '@/data/documents'
@@ -179,6 +179,8 @@ interface CLMState {
   restructurePlaybook: (playbookId: string, instruction: string) => string // R52/R57/R58/R60 — edit a PUBLISHED playbook by chat
   publishedArtifacts: PublishedArtifact[]                 // R85 — published playbooks/templates in team folders
   publishArtifact: (kind: 'playbook' | 'template', sourceId: string, name: string, purpose: string, folderPath: string) => void
+  teamFolders: TeamFolder[]                               // R85 — user-creatable, access-scoped destinations
+  createTeamFolder: (path: string, category: string, accessRoles: Role[]) => void
   setDraftExampleRefs: (draftId: string, exampleRefs: string[]) => void  // R48 — folder picker toggles
   // R49 — default source folders per agreement type (persisted)
   playbookSourceDefaults: PlaybookSourceDefaults
@@ -226,6 +228,7 @@ export const useStore = create<CLMState>((set, get) => ({
   playbookSourceDefaults: loadSourceDefaults(),
   docLocks: { 'AGR-2201': { agreement_id: 'AGR-2201', mode: 'live', locked_by: null, locked_at: null, claimed_clauses: {} } },
   publishedArtifacts: [],
+  teamFolders: TEAM_FOLDERS,
   messages: seedMessages,
   playbooks: seedPlaybooks,
   audit: buildAudit(),
@@ -954,8 +957,18 @@ export const useStore = create<CLMState>((set, get) => ({
   },
 
   // R85 — publish a playbook/template into a real, access-scoped team folder/category.
+  // Folders are stateful and user-creatable (not a fixed preset).
+  createTeamFolder: (path, category, accessRoles) => {
+    const clean = path.trim()
+    if (!clean) return
+    if (get().teamFolders.some((f) => f.path.toLowerCase() === clean.toLowerCase())) { get().setToast('That folder already exists.'); return }
+    set((s) => ({ teamFolders: [...s.teamFolders, { path: clean, category: category.trim() || 'General', access_roles: accessRoles.length ? accessRoles : ['attorney', 'playbook_owner', 'administrator'] }] }))
+    get().audit_push({ event_type: 'playbook_updated', summary: `Team folder "${clean}" created (${category || 'General'}).` })
+    get().setToast(`Folder "${clean}" created.`)
+  },
   publishArtifact: (kind, sourceId, name, purpose, folderPath) => {
-    const folder = TEAM_FOLDERS.find((f) => f.path === folderPath) ?? TEAM_FOLDERS[0]
+    const folders = get().teamFolders
+    const folder = folders.find((f) => f.path === folderPath) ?? folders[0]
     const art: PublishedArtifact = { id: nextId('PUB'), kind, source_id: sourceId, name, purpose, folder_path: folder.path, category: folder.category, access_roles: folder.access_roles, published_by: get().currentUserId, date: now() }
     set((s) => ({
       publishedArtifacts: [art, ...s.publishedArtifacts],
@@ -980,7 +993,8 @@ export const useStore = create<CLMState>((set, get) => ({
     // R105 — real comparative analysis across the SELECTED negotiated agreements.
     const ids = selected.flatMap((sc) => sc.agreementIds ?? [])
     const analysis = comparativeAnalysis(ids)
-    const conceptSections = analysis.map((row, i) => ({ id: `cs${i}`, heading: `${i + 1}. ${row.label}`, summary: `Seen in ${row.seenIn.length}/${ids.length} sources; ${Math.round(row.divergence * 100)}% divergence across precedents.`, cpConcept: false }))
+    // R107 — each concept section's body is COMPOSED from the selected precedents' actual clause text.
+    const conceptSections = analysis.map((row, i) => ({ id: `cs${i}`, heading: `${i + 1}. ${row.label}`, summary: `Seen in ${row.seenIn.length}/${ids.length} sources; ${Math.round(row.divergence * 100)}% divergence across precedents.`, cpConcept: false, body: composeBodyFromPrecedents(row) }))
     const cpSections = buildSectionsFor(proj.agreement_type).filter((sec) => sec.cpConcept)
     // Sections are DERIVED from the analysis (fall back to the type template only when no sources are linked).
     const rawSections = conceptSections.length ? [...conceptSections, ...cpSections] : buildSectionsFor(proj.agreement_type)
@@ -1015,9 +1029,28 @@ export const useStore = create<CLMState>((set, get) => ({
           sections = sections.filter((sec) => !(target && sec.heading.toLowerCase().includes(target)))
           note = before !== sections.length ? `Removed the "${target}" section.` : `No section matched "${target}".`
         } else {
-          // treat as a rewrite directive for the best-matching section
+          // R107 — real rewrite transforms on the best-matching section's actual body text.
           const target = sections.find((sec) => t.split(' ').some((w) => w.length > 3 && sec.heading.toLowerCase().includes(w)))
-          if (target) { sections = sections.map((sec) => (sec.id === target.id ? { ...sec, body: `${sec.body ?? bodyForSection(sec)} [Revised per instruction: ${instruction}]` } : sec)); note = `Revised "${target.heading}" per your instruction.` }
+          if (target) {
+            const body = target.body ?? bodyForSection(target)
+            let next: string
+            if (/\b(tighten|shorten|simplif|strict)\b/.test(t)) {
+              next = `${body.split(/(?<=\.)\s/)[0]} No exceptions apply except as expressly stated in this Section.`
+              note = `Tightened "${target.heading}" — trimmed to the operative sentence with a strict no-exceptions rider.`
+            } else if (/\b(expand|broaden|more detail|elaborate)\b/.test(t)) {
+              next = `${body} The Parties shall document any agreed variations in a written amendment, and this Section shall be interpreted to give the fullest effect to its stated purpose.`
+              note = `Expanded "${target.heading}" with an amendments/interpretation rider.`
+            } else if (/\b(mutual|both parties|reciprocal)\b/.test(t)) {
+              next = `${body} For the avoidance of doubt, the obligations in this Section apply mutually and reciprocally to both Parties.`
+              note = `Made "${target.heading}" expressly mutual.`
+            } else {
+              // Integrate the instruction as drafted clause language (a real rider, not a bracket tag).
+              const rider = instruction.trim().replace(/[.?!]?$/, '.')
+              next = `${body} Notwithstanding the foregoing, ${rider.charAt(0).toLowerCase()}${rider.slice(1)}`
+              note = `Drafted your instruction into "${target.heading}" as a Notwithstanding rider.`
+            }
+            sections = sections.map((sec) => (sec.id === target.id ? { ...sec, body: next } : sec))
+          }
           else note = 'Tell me which section to change (e.g. "tighten the Governing Law section" or "add an Insurance section").'
         }
         return { ...tpl, sections }

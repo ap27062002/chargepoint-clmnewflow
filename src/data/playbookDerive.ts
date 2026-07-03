@@ -52,14 +52,18 @@ export function comparativeAnalysis(sourceIds: string[]): ConceptRow[] {
 // R50/R62 — derive one provision per template section, enriched by how the examples resolved it.
 export function deriveProvisions(sections: TemplateSection[], sourceIds: string[]): Provision[] {
   const byKey = new Map(comparativeAnalysis(sourceIds).map((a) => [a.key, a]))
+  const usedIds = new Set<string>() // two sections can map to the same concept — keep ids unique
   return sections.map((sec) => {
     const c = conceptFor(sec.heading + ' ' + sec.summary)
     const row = c ? byKey.get(c.key) : undefined
     const positions = row?.positions ?? []
     const commonest = positions.length ? mode(positions.map((p) => p.text)) : (c?.standard ?? sec.summary)
     const divergent = [...new Set(positions.map((p) => p.text).filter((t) => t !== commonest))].slice(0, 2)
+    let id = 'pv_' + (c?.key ?? sec.id)
+    while (usedIds.has(id)) id += '_' + sec.id
+    usedIds.add(id)
     return {
-      id: 'pv_' + (c?.key ?? sec.id),
+      id,
       provision_name: c?.label ?? sec.heading.replace(/^\d+\.\s*/, ''),
       standard_position: commonest,
       fallback_tiers: divergent,
@@ -73,6 +77,19 @@ export function deriveProvisions(sections: TemplateSection[], sourceIds: string[
       sourcePrecedents: row?.seenIn,
     }
   })
+}
+
+// R107 — compose a template section's CLAUSE BODY from the selected precedents' actual
+// clause text: the modal negotiated position becomes the operative language, with the
+// divergent precedent positions carried as bracketed alternates. Different precedent
+// selection ⇒ different clause body.
+export function composeBodyFromPrecedents(row: ConceptRow): string {
+  const texts = row.positions.map((p) => p.text)
+  if (!texts.length) return ''
+  const modal = mode(texts)
+  const modalSources = [...new Set(row.positions.filter((p) => p.text === modal).map((p) => p.counterparty.split(' ')[0]))]
+  const alternates = [...new Set(row.positions.filter((p) => p.text !== modal).map((p) => `“${p.text}” (${p.counterparty.split(' ')[0]})`))].slice(0, 2)
+  return `${modal} [Operative language drawn from precedent: ${modalSources.join(', ')}.${alternates.length ? ` Alternate negotiated positions on record: ${alternates.join(' · ')}` : ''}]`
 }
 
 // R48 — selectable folder entries (the real corpus, grouped by folder path).
