@@ -180,7 +180,7 @@ interface CLMState {
   publishedArtifacts: PublishedArtifact[]                 // R85 — published playbooks/templates in team folders
   publishArtifact: (kind: 'playbook' | 'template', sourceId: string, name: string, purpose: string, folderPath: string) => void
   teamFolders: TeamFolder[]                               // R85 — user-creatable, access-scoped destinations
-  createTeamFolder: (path: string, category: string, accessRoles: Role[]) => void
+  createTeamFolder: (path: string, category: string, accessRoles: Role[]) => string | null // returns the canonical path (existing on dupe), null if invalid
   setDraftExampleRefs: (draftId: string, exampleRefs: string[]) => void  // R48 — folder picker toggles
   // R49 — default source folders per agreement type (persisted)
   playbookSourceDefaults: PlaybookSourceDefaults
@@ -960,11 +960,15 @@ export const useStore = create<CLMState>((set, get) => ({
   // Folders are stateful and user-creatable (not a fixed preset).
   createTeamFolder: (path, category, accessRoles) => {
     const clean = path.trim()
-    if (!clean) return
-    if (get().teamFolders.some((f) => f.path.toLowerCase() === clean.toLowerCase())) { get().setToast('That folder already exists.'); return }
+    if (!clean) return null
+    // On a duplicate (case-insensitive), return the EXISTING canonical path so the caller selects it
+    // instead of silently falling back to the first folder (re-audit defect fix).
+    const existing = get().teamFolders.find((f) => f.path.toLowerCase() === clean.toLowerCase())
+    if (existing) { get().setToast('That folder already exists — selected it.'); return existing.path }
     set((s) => ({ teamFolders: [...s.teamFolders, { path: clean, category: category.trim() || 'General', access_roles: accessRoles.length ? accessRoles : ['attorney', 'playbook_owner', 'administrator'] }] }))
     get().audit_push({ event_type: 'playbook_updated', summary: `Team folder "${clean}" created (${category || 'General'}).` })
     get().setToast(`Folder "${clean}" created.`)
+    return clean
   },
   publishArtifact: (kind, sourceId, name, purpose, folderPath) => {
     const folders = get().teamFolders
@@ -990,14 +994,16 @@ export const useStore = create<CLMState>((set, get) => ({
     const proj = get().projects.find((p) => p.id === projectId); if (!proj) return
     const tplId = nextId('TPL')
     const selected = proj.sources.filter((sc) => sc.selected)
-    // R105 — real comparative analysis across the SELECTED negotiated agreements.
-    const ids = selected.flatMap((sc) => sc.agreementIds ?? [])
+    // R105 — real comparative analysis across the SELECTED negotiated agreements (deduped).
+    const ids = [...new Set(selected.flatMap((sc) => sc.agreementIds ?? []))]
     const analysis = comparativeAnalysis(ids)
     // R107 — each concept section's body is COMPOSED from the selected precedents' actual clause text.
     const conceptSections = analysis.map((row, i) => ({ id: `cs${i}`, heading: `${i + 1}. ${row.label}`, summary: `Seen in ${row.seenIn.length}/${ids.length} sources; ${Math.round(row.divergence * 100)}% divergence across precedents.`, cpConcept: false, body: composeBodyFromPrecedents(row) }))
     const cpSections = buildSectionsFor(proj.agreement_type).filter((sec) => sec.cpConcept)
     // Sections are DERIVED from the analysis (fall back to the type template only when no sources are linked).
-    const rawSections = conceptSections.length ? [...conceptSections, ...cpSections] : buildSectionsFor(proj.agreement_type)
+    const rawSections = (conceptSections.length ? [...conceptSections, ...cpSections] : buildSectionsFor(proj.agreement_type))
+      // renumber sequentially so appended CP-concept sections don't collide with concept numbering
+      .map((sec, i) => ({ ...sec, heading: `${i + 1}. ${sec.heading.replace(/^\d+\.\s*/, '')}` }))
     const sections = generateSectionBodies(rawSections) // R107 — real clause body text, not just headings
     const tpl: AgreementTemplate = {
       id: tplId, name: proj.name, agreement_type: proj.agreement_type, origin: 'generated', status: 'draft', project_id: projectId,

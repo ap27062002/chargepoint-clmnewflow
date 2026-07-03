@@ -34,7 +34,8 @@ export interface ConceptRow { key: string; label: string; seenIn: string[]; posi
 // R105 — comparative analysis across the selected source agreements.
 export function comparativeAnalysis(sourceIds: string[]): ConceptRow[] {
   const corpus = executedCorpus()
-  const docs = sourceIds.map((id) => ({ id, doc: corpus[id] })).filter((x) => x.doc)
+  // Dedupe — two source groups can reference the same agreement; it must not double-weight the modal.
+  const docs = [...new Set(sourceIds)].map((id) => ({ id, doc: corpus[id] })).filter((x) => x.doc)
   const rows = new Map<string, ConceptRow>()
   for (const { id, doc } of docs) {
     for (const cl of doc.clauses) {

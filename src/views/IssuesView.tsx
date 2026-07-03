@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { clsx } from 'clsx'
 import { Check, X, CornerUpLeft, Sparkles, FileText, ChevronRight, Lock, BookOpen } from 'lucide-react'
 import { useStore } from '@/store'
@@ -89,18 +90,19 @@ function DeviationCard({ d, onViewInDoc, onOpenPlaybook }: { d: Deviation; onVie
 }
 
 export function IssuesView({ agreementId, onViewInDoc }: { agreementId: string; onViewInDoc: (deviationId: string) => void }) {
-  const devs = useStore((s) => s.deviations).filter((d) => d.agreement_id === agreementId)
+  const allDevs = useStore((s) => s.deviations)
   const agreements = useStore((s) => s.agreements)
   const openCanvas = useStore((s) => s.openCanvas)
   const playbookId = agreements.find((a) => a.id === agreementId)?.playbook_id ?? 'pb_nda'
   const openPlaybook = () => openCanvas({ view: 'playbook', playbookId, playbookMode: 'inventory' })
-  const sorted = [...devs].sort((a, b) => riskMeta[a.risk_category].order - riskMeta[b.risk_category].order)
-  // R89 — windowed render: further redline rounds keep adding issues; the DOM stays bounded.
+  // R89 — memoized derivations + windowed render: further redline rounds keep adding issues; the DOM stays bounded.
+  const devs = useMemo(() => allDevs.filter((d) => d.agreement_id === agreementId), [allDevs, agreementId])
+  const sorted = useMemo(() => [...devs].sort((a, b) => riskMeta[a.risk_category].order - riskMeta[b.risk_category].order), [devs])
   const { visible, total, hasMore, remaining, loadMore } = useWindowed(sorted, 15)
 
-  const summary = (['red_line', 'negotiate', 'missing', 'new', 'enhancement', 'accept'] as const)
+  const summary = useMemo(() => (['red_line', 'negotiate', 'missing', 'new', 'enhancement', 'accept'] as const)
     .map((rc) => ({ rc, n: devs.filter((d) => d.risk_category === rc).length }))
-    .filter((x) => x.n > 0)
+    .filter((x) => x.n > 0), [devs])
 
   if (devs.length === 0) {
     return <div className="flex h-full items-center justify-center text-sm text-slate-400">No deviations — this agreement has no playbook analysis yet.</div>

@@ -223,11 +223,11 @@ export function PlaybookView() {
   const [filter, setFilter] = useState<ProvisionTier | 'all'>('all')
   const [applied, setApplied] = useState(false)
   const [publishOpen, setPublishOpen] = useState(false)
-  const [pubFolder, setPubFolder] = useState(TEAM_FOLDERS[0].path)
   const publishArtifact = useStore((s) => s.publishArtifact)
   const teamFolders = useStore((s) => s.teamFolders) // R85 — stateful, user-creatable folders
   const createTeamFolder = useStore((s) => s.createTeamFolder)
-  const [newFolder, setNewFolder] = useState<{ path: string; category: string } | null>(null)
+  const [pubFolder, setPubFolder] = useState(() => useStore.getState().teamFolders[0]?.path ?? TEAM_FOLDERS[0].path)
+  const [newFolder, setNewFolder] = useState<{ path: string; category: string; broad: boolean } | null>(null)
   // R52/R57/R58/R60 — chat-driven restructure performs a REAL transform on the published playbook.
   const restructurePlaybook = useStore((s) => s.restructurePlaybook)
   const [restructOpen, setRestructOpen] = useState(false)
@@ -293,13 +293,14 @@ export function PlaybookView() {
                         </select>
                         <div className="mt-0.5 text-[10.5px] text-slate-400">Accessible to: {(teamFolders.find((f) => f.path === pubFolder)?.access_roles ?? []).map((r) => r.replace('_', ' ')).join(', ')}</div>
                         {newFolder === null ? (
-                          <button onClick={() => setNewFolder({ path: '', category: '' })} className="mt-1 text-[11px] font-semibold text-brand-600 hover:underline">＋ New folder…</button>
+                          <button onClick={() => setNewFolder({ path: '', category: '', broad: false })} className="mt-1 text-[11px] font-semibold text-brand-600 hover:underline">＋ New folder…</button>
                         ) : (
                           <div className="mt-1.5 space-y-1 rounded-lg bg-slate-50 p-1.5 ring-1 ring-slate-200">
                             <input autoFocus value={newFolder.path} onChange={(e) => setNewFolder({ ...newFolder, path: e.target.value })} placeholder="Folder path, e.g. Legal › Playbooks › DPAs" className="w-full rounded border border-slate-200 px-1.5 py-1 text-[11px] outline-none focus:border-brand-400" />
                             <input value={newFolder.category} onChange={(e) => setNewFolder({ ...newFolder, category: e.target.value })} placeholder="Category, e.g. DPA" className="w-full rounded border border-slate-200 px-1.5 py-1 text-[11px] outline-none focus:border-brand-400" />
+                            <label className="flex items-center gap-1.5 text-[10.5px] text-slate-500"><input type="checkbox" checked={newFolder.broad} onChange={(e) => setNewFolder({ ...newFolder, broad: e.target.checked })} className="accent-brand-500" /> Also accessible to business users (requestors & contributors)</label>
                             <div className="flex gap-1">
-                              <button onClick={() => { if (newFolder.path.trim()) { createTeamFolder(newFolder.path, newFolder.category, []); setPubFolder(newFolder.path.trim()); setNewFolder(null) } }} className="rounded bg-brand-500 px-2 py-0.5 text-[10.5px] font-semibold text-white hover:bg-brand-600">Create</button>
+                              <button onClick={() => { const p = createTeamFolder(newFolder.path, newFolder.category, newFolder.broad ? ['initiator', 'attorney', 'contributor', 'playbook_owner', 'administrator'] : []); if (p) { setPubFolder(p); setNewFolder(null) } }} className="rounded bg-brand-500 px-2 py-0.5 text-[10.5px] font-semibold text-white hover:bg-brand-600">Create</button>
                               <button onClick={() => setNewFolder(null)} className="rounded px-2 py-0.5 text-[10.5px] font-semibold text-slate-500 hover:bg-slate-100">Cancel</button>
                             </div>
                           </div>
