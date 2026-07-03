@@ -261,6 +261,8 @@ export function ProjectsView() {
   const canvas = useStore((s) => s.canvas)
   const createProject = useStore((s) => s.createProject)
   const navigate = useStore((s) => s.navigate)
+  const uploadTemplate = useStore((s) => s.uploadTemplate)
+  const [plusOpen, setPlusOpen] = useState(false)
 
   const activeProject = projects.find((p) => p.id === canvas.projectId)
   const activeTemplate = templates.find((t) => t.id === canvas.templateId)
@@ -271,8 +273,24 @@ export function ProjectsView() {
       <div className="flex w-[280px] shrink-0 flex-col border-r border-slate-200 bg-white">
         <div className="flex items-center justify-between px-4 pb-2 pt-4">
           <h1 className="text-[15px] font-bold text-slate-800">Templates</h1>
-          <button onClick={() => createProject('New form template', 'Build a new form agreement from precedent + market standards.', 'MSA')}
-            title="New template project" className="flex h-7 w-7 items-center justify-center rounded-lg bg-ai-600 text-white hover:bg-ai-700"><Plus size={15} /></button>
+          <div className="relative">
+            <button onClick={() => setPlusOpen((v) => !v)} title="New template"
+              className="flex h-7 w-7 items-center justify-center rounded-lg bg-ai-600 text-white hover:bg-ai-700"><Plus size={15} /></button>
+            {plusOpen && (
+              <div className="absolute right-0 top-9 z-20 w-60 rounded-xl border border-slate-200 bg-white p-1.5 shadow-pop">
+                <button onClick={() => { setPlusOpen(false); uploadTemplate('Uploaded form agreement.docx') }}
+                  className="flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-slate-50">
+                  <FileText size={14} className="mt-0.5 shrink-0 text-slate-400" />
+                  <span><span className="block text-[12.5px] font-semibold text-slate-700">Upload template</span><span className="text-[11px] text-slate-400">Drop or pick a form agreement (.docx)</span></span>
+                </button>
+                <button onClick={() => { setPlusOpen(false); createProject('New template from examples', 'Analyze existing agreements and generate a brand-new baseline agreement.', 'MSA') }}
+                  className="flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-slate-50">
+                  <Wand2 size={14} className="mt-0.5 shrink-0 text-ai-500" />
+                  <span><span className="block text-[12.5px] font-semibold text-slate-700">Create from examples</span><span className="text-[11px] text-slate-400">Generate a baseline from existing agreements</span></span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto px-2 pb-3">
           <div className="px-2 pb-1 pt-2 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">In progress</div>

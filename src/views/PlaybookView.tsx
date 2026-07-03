@@ -25,14 +25,18 @@ const ccLabel: Record<string, string> = {
 }
 
 // Recursive provision node — supports nesting (Eric §8: Indemnification parent + children).
-function ProvisionNode({ p, depth, renderPurpose = 'standard', editablePlaybookId }: { p: Provision; depth: number; renderPurpose?: 'standard' | 'external' | 'training'; editablePlaybookId?: string }) {
+function ProvisionNode({ p, depth, renderPurpose = 'standard', editablePlaybookId, editableDraftId }: { p: Provision; depth: number; renderPurpose?: 'standard' | 'external' | 'training'; editablePlaybookId?: string; editableDraftId?: string }) {
   const tier = tierOf(p)
   const editText = useStore((s) => s.editProvisionText)
+  const editDraftText = useStore((s) => s.editDraftProvisionText)
   const mayEdit = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'playbook_edit'))
-  const inline = !!editablePlaybookId && mayEdit
+  const inline = (!!editablePlaybookId || !!editableDraftId) && mayEdit
   const edProps = (field: 'standard' | 'fallback' | 'red_line', idx: number, current: string) => inline ? {
     contentEditable: true, suppressContentEditableWarning: true, title: 'Click to edit — saves on blur',
-    onBlur: (e: React.FocusEvent<HTMLDivElement>) => { const t = e.currentTarget.textContent?.trim() ?? ''; if (t && t !== current) editText(editablePlaybookId!, p.id, field, idx, t) },
+    onBlur: (e: React.FocusEvent<HTMLDivElement>) => {
+      const t = e.currentTarget.textContent?.trim() ?? ''
+      if (t && t !== current) { if (editableDraftId) editDraftText(editableDraftId, p.id, field, idx, t); else editText(editablePlaybookId!, p.id, field, idx, t) }
+    },
     className: 'cursor-text focus:outline-none focus:ring-2 focus:ring-ai-300',
   } : {}
   const external = renderPurpose === 'external' // counterparty-facing: hide red-line internals
@@ -76,7 +80,7 @@ function ProvisionNode({ p, depth, renderPurpose = 'standard', editablePlaybookI
           )}
           {external && <div className="text-[11px] italic text-slate-400">Internal red-line guidance hidden in the counterparty-facing view.</div>}
           {p.rationale && (external ? null : <div className={clsx('text-[11.5px]', training ? 'rounded-lg bg-ai-50/50 px-3 py-2 text-ai-800 ring-1 ring-ai-100' : 'italic text-slate-400')}>{training && <b>Why this position: </b>}{!training && 'Rationale: '}{p.rationale}</div>)}
-          {p.children?.map((c) => <div key={c.id} className="mt-1 rounded-lg border border-slate-100"><ProvisionNode p={c} depth={depth + 1} renderPurpose={renderPurpose} editablePlaybookId={editablePlaybookId} /></div>)}
+          {p.children?.map((c) => <div key={c.id} className="mt-1 rounded-lg border border-slate-100"><ProvisionNode p={c} depth={depth + 1} renderPurpose={renderPurpose} editablePlaybookId={editablePlaybookId} editableDraftId={editableDraftId} /></div>)}
         </div>
       )}
     </div>
@@ -276,10 +280,10 @@ function PlaybookCreate() {
       {draft.stage === 'generated' && (
         <>
           <Card className="overflow-hidden">
-            <div className="border-b border-slate-100 px-4 py-2.5"><SectionLabel>Generated provisions ({draft.provisions.length}) — decide each: Accept · Reject · Defer</SectionLabel></div>
+            <div className="border-b border-slate-100 px-4 py-2.5"><SectionLabel>Generated provisions ({draft.provisions.length}) — decide each (Accept · Reject · Defer) · click any position text to edit it</SectionLabel></div>
             {draft.provisions.map((p) => (
               <div key={p.id} className="border-b border-slate-100 last:border-0">
-                <ProvisionNode p={p} depth={0} />
+                <ProvisionNode p={p} depth={0} editableDraftId={draft.id} />
                 <div className="flex items-center gap-1.5 bg-slate-50/60 px-4 py-1.5">
                   {p.review_state === 'accepted' && <Chip className="bg-brand-50 text-brand-700 ring-brand-500/20"><Check size={10} /> Accepted into the playbook</Chip>}
                   {p.review_state === 'deferred' && <Chip className="bg-violet-50 text-violet-700 ring-violet-500/20"><Clock size={10} /> Deferred — not included in AI review</Chip>}
@@ -492,7 +496,6 @@ export function PlaybookView() {
                 <Inbox size={13} /> Suggested {pendingCount > 0 && <span className="rounded-full bg-red-500 px-1.5 text-[10.5px] text-white">{pendingCount}</span>}
               </button>
               {canEdit && <button onClick={() => startDraft('New Playbook', pb.agreement_type, 'Create a playbook from a template + examples')} className={clsx('flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold', mode === 'create' ? 'bg-white text-slate-800' : 'bg-slate-800 text-slate-200 hover:bg-slate-700')}><Plus size={13} /> Create</button>}
-              <button onClick={() => openCanvas({ view: 'projects', open: true })} title="Baseline form agreements — used to start new tickets and as the foundation for playbooks" className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-2.5 py-1.5 text-[12px] font-semibold text-slate-200 hover:bg-slate-700"><Layers size={13} /> Templates</button>
               {/* R85 — publishing to a team folder is the owner's workflow (visual theme stays admin-only, R54). */}
               {canEdit && <div className="relative">
                 <button onClick={() => setPublishOpen((v) => !v)} className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-2.5 py-1.5 text-[12px] font-semibold text-slate-200 hover:bg-slate-700"><Share2 size={13} /> Publish</button>

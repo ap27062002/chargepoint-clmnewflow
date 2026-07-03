@@ -1,5 +1,5 @@
 import { clsx } from 'clsx'
-import { Sparkles, LayoutDashboard, BookOpen, FolderTree, Lock } from 'lucide-react'
+import { Sparkles, LayoutDashboard, BookOpen, FolderTree, Lock, FileStack } from 'lucide-react'
 import { useStore } from '@/store'
 import { can } from '@/lib/access'
 import type { Role } from '@/types'
@@ -18,6 +18,7 @@ const ITEMS: RailItem[] = [
   { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} />, show: (r) => can(r, 'pipeline') },
   { key: 'repository', label: 'Archive', icon: <FolderTree size={18} />, locked: true, show: (r) => can(r, 'review') || can(r, 'pipeline') },
   { key: 'playbook', label: 'Playbook', icon: <BookOpen size={18} />, show: (r) => can(r, 'playbook_view') },
+  { key: 'projects', label: 'Templates', icon: <FileStack size={18} />, show: (r) => can(r, 'templates') },
 ]
 
 export function LeftRail() {

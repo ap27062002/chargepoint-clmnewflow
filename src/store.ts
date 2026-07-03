@@ -130,6 +130,7 @@ interface CLMState {
   reassignVersion: (versionId: string, targetAgreementId: string, newNumber?: number) => void // intake §5 error correction
   ingestVersion: (agreementId: string, fileName: string, asNewDocument?: boolean) => void // intake §1 — in-deal upload
   decideDraftProvision: (draftId: string, provisionId: string, decision: 'accept' | 'reject' | 'defer') => void // playbooks §2 step 3
+  editDraftProvisionText: (draftId: string, provisionId: string, field: 'standard' | 'fallback' | 'red_line', idx: number, text: string) => void // edit content at CREATE time too
   editProvisionText: (playbookId: string, provisionId: string, field: 'standard' | 'fallback' | 'red_line', idx: number, text: string) => void // playbooks §5 manual inline edit
   addDocumentsToPlaybook: (playbookId: string) => void // playbooks §6 — feed more agreements post-creation
   // ---- Counter flow (Eric E3): tracked-change insertion + keep/discard ----
@@ -588,6 +589,20 @@ export const useStore = create<CLMState>((set, get) => ({
       }),
     }))
   },
+  // Content is editable at CREATE time too — same click-to-edit, on the draft.
+  editDraftProvisionText: (draftId, provisionId, field, idx, text) => {
+    const patch = (p: Provision): Provision => {
+      if (p.id === provisionId) {
+        if (field === 'standard') return { ...p, standard_position: text }
+        if (field === 'red_line') return { ...p, red_line: text }
+        return { ...p, fallback_tiers: p.fallback_tiers.map((f, i) => (i === idx ? text : f)) }
+      }
+      return p.children ? { ...p, children: p.children.map(patch) } : p
+    }
+    set((s) => ({ playbookDrafts: s.playbookDrafts.map((d) => (d.id === draftId ? { ...d, provisions: d.provisions.map(patch) } : d)) }))
+    get().setToast('Draft provision updated.')
+  },
+
   // Playbooks §5 — click-to-edit provision text, coexisting with chat editing ("both").
   editProvisionText: (playbookId, provisionId, field, idx, text) => {
     const patch = (p: Provision): Provision => {
