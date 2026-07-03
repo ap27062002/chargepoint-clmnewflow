@@ -1,7 +1,9 @@
 # Project state — resume here
 
 **App:** ChargePoint Legal CLM — agent-first, chat-driven CLM prototype (Unify build).
-**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-22` (git tag) · repo clean.
+**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-23` (git tag) · repo clean.
+
+**build-23 — filterable margin (All / AI analysis / Team) + better AI cards.** Team comments (agreement-level msgs w/ provision_reference, matched to clauses via normalized ref/heading) now anchor in the margin alongside the AI cards — avatar/author/body/@sign-off + Mark-responded, expandable. AI cards restructured: "Their change" → "Why it matters" (cleanRec strips directive prefixes) → expandable "Our standard", with the AI-recommended action as a FILLED button + ✦.
 
 **build-22 — AI analysis as Word-style MARGIN COMMENTS in the document + wider rail.** The clause analysis moved out of the agent into the document itself: anchored comment cards in the page's right margin (measured clause offsets, overlap-stacked), each with risk chip → calm disposition chip, recommendation, and inline Accept/Counter/Reject; click focuses the clause. Ask Claude is a pure ask-anything chat again. Right rail 360→440px.
 
