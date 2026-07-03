@@ -30,7 +30,7 @@ body {
 .tc-ins { color: #1f8c3f; text-decoration: underline; text-decoration-color: #45c279; }
 .tc-del { color: #b91c1c; text-decoration: line-through; text-decoration-color: #ef4444; }
 .tc-ins-cp { color: #1d4ed8; text-decoration: underline; text-decoration-color: #60a5fa; }
-.tc-del-cp { color: #b91c1c; text-decoration: line-through; }
+.tc-del-cp { color: #1d4ed8; text-decoration: line-through; text-decoration-color: #60a5fa; } /* counterparty deletions blue, matching their insertions */
 
 .doc-prose p { margin: 0 0 12px; line-height: 1.7; }
 .doc-prose h1 { font-size: 15px; font-weight: 700; text-align: center; margin: 0 0 16px; }

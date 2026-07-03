@@ -18,7 +18,7 @@ import {
   agreementTemplates as seedTemplates, defaultProjectSources, buildSectionsFor, DEFAULT_PLAYBOOK_SOURCES,
 } from '@/data/seed'
 import { GREETING, greetingFor } from '@/agent/greeting'
-import { seedDocuments, buildCleanCopy, buildRedlineDoc, summarizeRedline, cleanCopyId, type DocModel, type DocClause } from '@/data/documents'
+import { seedDocuments, buildCleanCopy, buildRedlineDoc, summarizeRedline, cleanCopyId, effectiveText, type DocModel, type DocClause } from '@/data/documents'
 import { analyzePlaybook } from '@/lib/playbookAnalysis'
 import { deriveProvisions, comparativeAnalysis, folderAgreements, composeBodyFromPrecedents } from '@/data/playbookDerive'
 import { applyPlaybookInstruction } from '@/lib/playbookOps'
@@ -223,23 +223,30 @@ function resolveDispositionInDocs(documents: Record<string, DocModel>, agreement
   const docId = candidateIds.find((id) => documents[id]?.clauses.some((c) => c.deviationId === d.id || c.id === d.source_clause_id))
   if (!docId) return documents
   const doc = documents[docId]
+  // The negotiated final language lives in the clean working copy — counters converge to it.
+  const cleanDoc = documents[cleanCopyId(d.agreement_id)]
   const clauses = doc.clauses.map((c) => {
     if (!(c.deviationId === d.id || c.id === d.source_clause_id)) return c
     const base = c.orig ?? c.runs
     let runs
     if (status === 'accepted') {
-      // accept their changes: insertions become normal text, deletions disappear
+      // accept their changes: insertions become normal text, deletions disappear → clean
       runs = base.filter((r) => !(r.party === 'counterparty' && r.type === 'del'))
         .map((r) => (r.party === 'counterparty' && r.type === 'ins' ? { text: r.text, type: 'normal' as const } : r))
+    } else if (status === 'countered') {
+      // counter: the clause becomes OUR proposed language — the REAL negotiated fallback text
+      // (from the clean copy), never guidance prose. If no counter language exists for this
+      // clause, fall back to rejecting their change.
+      const counterClause = cleanDoc?.clauses.find((x) => x.id === c.id)
+      const counterText = counterClause ? effectiveText(counterClause) : ''
+      runs = counterText
+        ? [{ text: counterText, type: 'normal' as const }]
+        : base.filter((r) => !(r.party === 'counterparty' && r.type === 'ins'))
+            .map((r) => (r.party === 'counterparty' && r.type === 'del' ? { text: r.text, type: 'normal' as const } : r))
     } else {
-      // reject their changes: insertions disappear, deletions are restored
+      // reject their changes: insertions disappear, deletions are restored → clean original
       runs = base.filter((r) => !(r.party === 'counterparty' && r.type === 'ins'))
         .map((r) => (r.party === 'counterparty' && r.type === 'del' ? { text: r.text, type: 'normal' as const } : r))
-      if (status === 'countered') {
-        const raw = d.recommended_response.includes(':') ? d.recommended_response.slice(d.recommended_response.indexOf(':') + 1).trim() : d.recommended_response
-        const counter = raw.length > 220 ? raw.slice(0, 220) + '…' : raw
-        runs = [...runs, { text: ` ${counter}`, type: 'ins' as const, party: 'cp' as const, cid: nextId('ctr') }]
-      }
     }
     return { ...c, orig: base, runs }
   })

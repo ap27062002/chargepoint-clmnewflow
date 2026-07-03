@@ -6,16 +6,19 @@ import { useStore } from '@/store'
 import { sendToAgent } from '@/agent/engine'
 import { can } from '@/lib/access'
 import { Chip, Avatar } from '@/components/ui'
-import { riskMeta } from '@/lib/labels'
+import { riskMeta, dispositionMeta } from '@/lib/labels'
 import { userById } from '@/data/seed'
 import type { DocRun } from '@/data/documents'
 
 function ChangeRun({ run, versionId, editable }: { run: DocRun; versionId: string; editable: boolean }) {
   const acceptChange = useStore((s) => s.acceptChange)
   const rejectChange = useStore((s) => s.rejectChange)
+  // normal text carries NO tracked-change styling — only real ins/del runs are marked
   const cls = run.type === 'ins'
     ? (run.party === 'counterparty' ? 'tc-ins-cp' : 'tc-ins')
-    : (run.party === 'counterparty' ? 'tc-del-cp' : 'tc-del')
+    : run.type === 'del'
+      ? (run.party === 'counterparty' ? 'tc-del-cp' : 'tc-del')
+      : ''
   if (!run.cid || !editable) return <span className={cls}>{run.text}</span>
   return (
     <span className="group relative whitespace-normal">
@@ -195,12 +198,18 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
           <p className="mb-5 text-center text-[11px] not-italic text-slate-400">{doc.subtitle}</p>
           {doc.clauses.map((c) => {
             const dev = c.deviationId ? devs.find((d) => d.id === c.deviationId) : undefined
+            // A rejected counterparty-introduced clause resolves to nothing — drop it from the clean doc.
+            if (c.runs.length === 0 || c.runs.every((r) => r.type === 'del' || !r.text.trim())) return null
+            const decided = dev && dev.disposition_status !== 'open'
             return (
               <div key={c.id} id={`clause-${c.id}`} className="clause rounded-md px-2 py-1 transition">
                 {c.heading && (
                   <div className="flex items-center gap-2">
                     <h2 className="!mb-1">{c.heading}</h2>
-                    {dev && <Chip className={clsx('ring-1 ring-inset', riskMeta[dev.risk_category].chip)}><span className={clsx('h-1.5 w-1.5 rounded-full', riskMeta[dev.risk_category].dot)} />{riskMeta[dev.risk_category].label}</Chip>}
+                    {/* open issue → risk chip; decided → calm disposition chip (no lingering red) */}
+                    {dev && (decided
+                      ? <Chip className={clsx('ring-1 ring-inset', dispositionMeta[dev.disposition_status].chip)}>{dev.disposition_status === 'accepted' ? '✓' : dev.disposition_status === 'countered' ? '↩' : '✕'} {dispositionMeta[dev.disposition_status].label}</Chip>
+                      : <Chip className={clsx('ring-1 ring-inset', riskMeta[dev.risk_category].chip)}><span className={clsx('h-1.5 w-1.5 rounded-full', riskMeta[dev.risk_category].dot)} />{riskMeta[dev.risk_category].label}</Chip>)}
                   </div>
                 )}
                 {canEdit && edit && proseEdit ? (
