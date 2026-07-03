@@ -339,14 +339,14 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
                 <button onClick={() => setRightTab('comments')} title="Comments" className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><MessageSquare size={16} /></button>
               </div>
             ) : (
-              <div className="flex w-[360px] shrink-0 flex-col bg-white">
+              <div className="flex w-[440px] shrink-0 flex-col bg-white">
                 <div className="flex shrink-0 items-center gap-0.5 border-b border-slate-100 px-2 py-2">
                   <RailBtn k="ai" icon={<Sparkles size={14} />} label="Ask Claude" ai />
                   <RailBtn k="comments" icon={<MessageSquare size={14} />} label="Comments" />
                   <button onClick={() => setRightTab(null)} title="Collapse panel" className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><PanelRightClose size={15} /></button>
                 </div>
                 <div className="min-h-0 flex-1">
-                  {rightTab === 'ai' ? <AIPanel agreementTitle={agreement.title} seed={aiSeed} agreementId={agreementId} onFocusClause={focusDeviation} />
+                  {rightTab === 'ai' ? <AIPanel agreementTitle={agreement.title} seed={aiSeed} />
                     : <CommentsPanel ticketId={agreement.ticket_id} agreementId={agreementId} provisionOptions={(activeDoc?.clauses ?? []).map((c) => c.heading).filter(Boolean)} />}
                 </div>
               </div>

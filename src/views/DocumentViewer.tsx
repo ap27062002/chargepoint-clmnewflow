@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
-import { Bold, Italic, Underline, List, Table, Pilcrow, Check, X, Pencil, Eye, Plus, Sparkles, BookOpen, Users, Lock } from 'lucide-react'
+import { Bold, Italic, Underline, List, Table, Pilcrow, Check, X, CornerUpLeft, Pencil, Eye, Plus, Sparkles, BookOpen, Users, Lock } from 'lucide-react'
 import { useStore } from '@/store'
 import { sendToAgent } from '@/agent/engine'
 import { can } from '@/lib/access'
@@ -9,6 +9,7 @@ import { Chip, Avatar } from '@/components/ui'
 import { riskMeta, dispositionMeta } from '@/lib/labels'
 import { userById } from '@/data/seed'
 import type { DocRun } from '@/data/documents'
+import type { Deviation } from '@/types'
 
 function ChangeRun({ run, versionId, editable }: { run: DocRun; versionId: string; editable: boolean }) {
   const acceptChange = useStore((s) => s.acceptChange)
@@ -75,6 +76,49 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
   )).filter((id) => id !== currentUserId).slice(0, 3)
   const containerRef = useRef<HTMLDivElement>(null)
   const [askBtn, setAskBtn] = useState<{ text: string; x: number; y: number } | null>(null)
+
+  // ---- AI margin comments (Word-style): the analysis lives NEXT TO the document, anchored to
+  // its clause — not in the agent. One card per issue, with dispositions right on the card. ----
+  const setDisposition = useStore((s) => s.setDisposition)
+  const clauseIdFor = (d: Deviation): string | undefined =>
+    doc?.clauses.find((c) => (c.deviationId === d.id || c.id === d.source_clause_id) && !(c.runs.length === 0 || c.runs.every((r) => r.type === 'del' || !r.text.trim())))?.id
+  const docDevs = devs.filter((d) => !!clauseIdFor(d))
+  const colRef = useRef<HTMLDivElement>(null)
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const [tops, setTops] = useState<Record<string, number>>({})
+  const [colH, setColH] = useState(0)
+  const devKey = docDevs.map((d) => d.id + d.disposition_status).join(',')
+  // Anchor each card to its clause's vertical position (stacked so cards never overlap).
+  useLayoutEffect(() => {
+    const col = colRef.current, cont = containerRef.current
+    if (!col || !cont || !doc) return
+    const colTop = col.getBoundingClientRect().top
+    const desired: { id: string; top: number }[] = []
+    for (const d of docDevs) {
+      const cid = clauseIdFor(d)
+      const el = cid ? (cont.querySelector(`#clause-${cid}`) as HTMLElement | null) : null
+      if (el) desired.push({ id: d.id, top: Math.max(0, el.getBoundingClientRect().top - colTop) })
+    }
+    desired.sort((a, b) => a.top - b.top)
+    const next: Record<string, number> = {}
+    let cursor = 0
+    for (const { id, top } of desired) {
+      const h = cardRefs.current[id]?.offsetHeight ?? 110
+      const t = Math.max(top, cursor)
+      next[id] = t
+      cursor = t + h + 10
+    }
+    setColH(cursor)
+    setTops((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc, devKey, edit, proseEdit])
+  const flashClause = (cid?: string) => {
+    if (!cid) return
+    const el = containerRef.current?.querySelector(`#clause-${cid}`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el?.classList.add('ring-2', 'ring-ai-400')
+    setTimeout(() => el?.classList.remove('ring-2', 'ring-ai-400'), 1600)
+  }
 
   // Surface an "Ask AI" action whenever the reader highlights text in the document.
   const onSelect = () => {
@@ -193,7 +237,8 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
           </div>,
           document.body,
         )}
-        <div className="doc-prose mx-auto max-w-2xl rounded-lg bg-white p-10 font-serif text-[13.5px] text-slate-800 shadow-panel">
+        <div className="mx-auto flex max-w-[1120px] items-start gap-4 px-4">
+        <div className="doc-prose min-w-0 max-w-2xl flex-1 rounded-lg bg-white p-10 font-serif text-[13.5px] text-slate-800 shadow-panel">
           <h1>{doc.title}</h1>
           <p className="mb-5 text-center text-[11px] not-italic text-slate-400">{doc.subtitle}</p>
           {doc.clauses.map((c) => {
@@ -226,6 +271,56 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
               </div>
             )
           })}
+        </div>
+
+        {/* AI review as MARGIN COMMENTS — anchored to their clauses, Word-style. */}
+        {docDevs.length > 0 && (
+          <div ref={colRef} className="relative hidden w-[280px] shrink-0 lg:block" style={{ minHeight: colH }}>
+            {docDevs.map((d) => {
+              const decided = d.disposition_status !== 'open'
+              const rm = riskMeta[d.risk_category]
+              return (
+                <div
+                  key={d.id}
+                  ref={(el) => { cardRefs.current[d.id] = el }}
+                  onClick={() => flashClause(clauseIdFor(d))}
+                  style={{ position: 'absolute', top: tops[d.id] ?? 0, left: 0, right: 0 }}
+                  className={clsx('cursor-pointer rounded-lg border bg-white p-2.5 shadow-card transition hover:shadow-panel',
+                    decided ? 'border-slate-200 opacity-75' : 'border-ai-200')}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles size={11} className="shrink-0 text-ai-600" />
+                    <span className="truncate text-[11.5px] font-bold text-slate-700">{d.provision_name}</span>
+                    <span className="ml-auto shrink-0 font-mono text-[10px] text-slate-400">{d.section_reference}</span>
+                  </div>
+                  {decided ? (
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      <Chip className={clsx('ring-1 ring-inset', dispositionMeta[d.disposition_status].chip)}>
+                        {d.disposition_status === 'accepted' ? '✓' : d.disposition_status === 'countered' ? '↩' : '✕'} {dispositionMeta[d.disposition_status].label}
+                      </Chip>
+                      <span className="text-[10.5px] text-slate-400">resolved in the document</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-1"><Chip className={clsx('ring-1 ring-inset', rm.chip)}><span className={clsx('h-1.5 w-1.5 rounded-full', rm.dot)} /> {rm.label}</Chip></div>
+                      <div className="mt-1.5 text-[11px] leading-snug text-slate-600" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{d.recommended_response}</div>
+                      {roleCanEdit && !lockedByOther && (
+                        <div className="mt-2 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          {([['accepted', 'Accept', Check, 'hover:bg-brand-50 hover:text-brand-700'], ['countered', 'Counter', CornerUpLeft, 'hover:bg-amber-50 hover:text-amber-700'], ['rejected', 'Reject', X, 'hover:bg-red-50 hover:text-red-700']] as const).map(([st, label, Icon, tone]) => (
+                            <button key={st} onClick={() => setDisposition(d.id, st)}
+                              className={clsx('flex flex-1 items-center justify-center gap-1 rounded-md border border-slate-200 py-1 text-[10.5px] font-semibold text-slate-500 transition', tone)}>
+                              <Icon size={11} /> {label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
         </div>
       </div>
     </div>
