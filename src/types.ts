@@ -430,7 +430,7 @@ export interface CanvasState {
   contractsFilter?: ContractsFilterPreset // Change 3 — contracts list preset
   sendBack?: SendBackState               // versioning — clean copy + redline send-back
   playbookId?: string                    // active playbook (multi-playbook)
-  playbookMode?: 'inventory' | 'create' | 'suggestions'
+  playbookMode?: 'library' | 'inventory' | 'create' | 'suggestions' // 'library' = the all-playbooks landing
   playbookDraftId?: string
   projectId?: string                     // templates / projects
   templateId?: string

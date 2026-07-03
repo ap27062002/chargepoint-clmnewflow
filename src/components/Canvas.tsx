@@ -32,6 +32,7 @@ function useBreadcrumb(): string {
     return t ? t.title : 'Ticket workspace'
   }
   if (canvas.view === 'playbook') {
+    if (canvas.playbookMode === 'library') return 'Playbooks'
     const pb = playbooks.find((p) => p.id === (canvas.playbookId ?? playbooks[0].id)) ?? playbooks[0]
     const suffix = canvas.playbookMode === 'create' ? ' · Create' : canvas.playbookMode === 'suggestions' ? ' · Suggested additions' : ''
     return pb.name + suffix

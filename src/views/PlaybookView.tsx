@@ -9,7 +9,7 @@ import { userById } from '@/data/seed'
 import { folderAgreements } from '@/data/playbookDerive'
 import { TEAM_FOLDERS } from '@/data/folders'
 import { can } from '@/lib/access'
-import type { Provision, ProvisionTier, PlaybookSuggestion } from '@/types'
+import type { Provision, ProvisionTier, PlaybookSuggestion, Playbook } from '@/types'
 
 const actionColor: Record<string, string> = { Revise: 'text-amber-600', Add: 'text-violet-600', Maintain: 'text-brand-600' }
 const tierOf = (p: Provision): ProvisionTier => p.tier ?? (p.fallback_tiers.length > 0 ? 'fallback' : 'baseline')
@@ -209,6 +209,111 @@ function PlaybookCreate() {
   )
 }
 
+// Flatten a provision tree (parents + nested children) for honest tier counts.
+const flatProvisions = (ps: Provision[]): Provision[] => ps.flatMap((p) => [p, ...(p.children ? flatProvisions(p.children) : [])])
+
+// The all-playbooks LIBRARY — what the nav lands on. Cards for every playbook + resumable
+// drafts + a prominent Create. Clicking a card opens the existing detail view.
+function PlaybookLibrary() {
+  const playbooks = useStore((s) => s.playbooks)
+  const drafts = useStore((s) => s.playbookDrafts)
+  const suggestions = useStore((s) => s.playbookSuggestions)
+  const agreements = useStore((s) => s.agreements)
+  const role = useStore((s) => s.users.find((u) => u.id === s.currentUserId)!.role)
+  const openCanvas = useStore((s) => s.openCanvas)
+  const startDraft = useStore((s) => s.startPlaybookDraft)
+  const sourceDefaults = useStore((s) => s.playbookSourceDefaults)
+  const canEdit = can(role, 'playbook_edit')
+  const [createOpen, setCreateOpen] = useState(false)
+
+  const openPb = (id: string) => openCanvas({ view: 'playbook', playbookId: id, playbookMode: 'inventory' })
+  const tierCounts = (pb: Playbook) => {
+    const flat = flatProvisions(pb.provisions)
+    return (['baseline', 'fallback', 'red_line', 'deferred'] as const).map((t) => ({ t, n: flat.filter((p) => tierOf(p) === t).length })).filter((x) => x.n > 0)
+  }
+
+  return (
+    <div className="h-full overflow-y-auto p-6">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-[18px] font-bold text-slate-800"><BookOpen size={20} className="text-brand-500" /> Playbooks</h1>
+          <p className="mt-0.5 text-[12.5px] text-slate-500">{playbooks.length} playbooks · your negotiation positions, fallbacks and red lines per agreement type. The agent uses these to classify every counterparty deviation.</p>
+        </div>
+        {canEdit && (
+          <div className="relative shrink-0">
+            <Button variant="ai" icon={<Plus size={14} />} onClick={() => setCreateOpen((v) => !v)}>Create playbook</Button>
+            {createOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setCreateOpen(false)} />
+                <div className="absolute right-0 z-20 mt-1 w-72 rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
+                  <div className="px-2.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">Derived from a template + real examples</div>
+                  {([['MNDA', 'NDA playbook'], ['MSA', 'MSA playbook']] as const).map(([type, label]) => (
+                    <button key={type} onClick={() => { setCreateOpen(false); startDraft(`New ${label}`, type, `Create a ${type} playbook from ${sourceDefaults[type]?.path ?? 'the default folder'}`) }}
+                      className="flex w-full items-start gap-2 rounded-lg px-2.5 py-1.5 text-left hover:bg-slate-50">
+                      <Wand2 size={13} className="mt-0.5 shrink-0 text-ai-500" />
+                      <div><div className="text-[12.5px] font-semibold text-slate-700">{label}</div><div className="text-[11px] text-slate-400">{sourceDefaults[type]?.path ?? 'Pick sources in the builder'} · {sourceDefaults[type]?.exampleAgreementIds.length ?? 0} examples</div></div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* In-progress drafts — resume where you left off */}
+      {drafts.length > 0 && (
+        <Card className="mb-4 overflow-hidden">
+          <div className="border-b border-slate-100 bg-ai-50/40 px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-ai-700">Drafts in progress · {drafts.length}</div>
+          {drafts.map((d) => (
+            <div key={d.id} className="flex items-center gap-2.5 border-b border-slate-50 px-4 py-2.5 last:border-0">
+              <Wand2 size={14} className="shrink-0 text-ai-500" />
+              <span className="text-[13px] font-semibold text-slate-700">{d.name}</span>
+              <Chip className="bg-ai-50 text-ai-700 ring-ai-500/20">{d.stage}</Chip>
+              <span className="text-[11.5px] text-slate-400">{d.agreement_type} · {d.exampleRefs.length} example{d.exampleRefs.length === 1 ? '' : 's'}</span>
+              <button onClick={() => openCanvas({ view: 'playbook', playbookMode: 'create', playbookDraftId: d.id })} className="ml-auto text-[12px] font-semibold text-ai-700 hover:underline">Resume →</button>
+            </div>
+          ))}
+        </Card>
+      )}
+
+      {/* The library */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {playbooks.map((pb) => {
+          const pending = suggestions.filter((x) => x.playbook_id === pb.id && x.state === 'pending').length
+          const usedBy = agreements.filter((a) => a.playbook_id === pb.id).length
+          return (
+            <Card key={pb.id} onClick={() => openPb(pb.id)} className="overflow-hidden" style={pb.accent ? { borderTop: `3px solid ${pb.accent}` } : undefined}>
+              <div className="p-4">
+                <div className="flex items-center gap-2">
+                  <BookOpen size={16} style={pb.accent ? { color: pb.accent } : undefined} className={pb.accent ? '' : 'text-brand-500'} />
+                  <span className="truncate text-[14px] font-bold text-slate-800">{pb.name}</span>
+                  <Chip className="shrink-0 bg-indigo-50 text-indigo-600 ring-indigo-500/20">{pb.agreement_type}</Chip>
+                  <span className="ml-auto shrink-0 text-[11px] font-semibold text-slate-400">v{pb.version}</span>
+                </div>
+                <div className="mt-1 truncate text-[11.5px] text-slate-400">{pb.generated_from}</div>
+                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                  {tierCounts(pb).map(({ t, n }) => <Chip key={t} className={clsx('ring-1 ring-inset', tierMeta[t].chip)}>{n} {tierMeta[t].label.toLowerCase()}</Chip>)}
+                </div>
+                <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-2.5">
+                  <Avatar userId={pb.owner_id} size={20} />
+                  <span className="text-[11.5px] text-slate-500">{userById(pb.owner_id)?.name.split(' ')[0]} · {fmtDate(pb.created_date)}</span>
+                  <Chip className="bg-slate-100 text-slate-500 ring-slate-300/30">{usedBy} agreement{usedBy === 1 ? '' : 's'}</Chip>
+                  {pending > 0 && (
+                    <button onClick={(e) => { e.stopPropagation(); openCanvas({ view: 'playbook', playbookId: pb.id, playbookMode: 'suggestions' }) }}
+                      className="flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-600 ring-1 ring-red-200 hover:bg-red-100"><Inbox size={10} /> {pending} suggestion{pending === 1 ? '' : 's'}</button>
+                  )}
+                  <span className="ml-auto text-[12px] font-semibold text-brand-600">Open →</span>
+                </div>
+              </div>
+            </Card>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export function PlaybookView() {
   const playbooks = useStore((s) => s.playbooks)
   const canvas = useStore((s) => s.canvas)
@@ -257,6 +362,9 @@ export function PlaybookView() {
     setRestructMsgs((m) => [...m, { role: 'user', text: instr }, { role: 'agent', text: reply }])
     setRestructInput('')
   }
+
+  // Nav lands on the all-playbooks library; a card click opens the detail below.
+  if (mode === 'library') return <PlaybookLibrary />
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -321,9 +429,10 @@ export function PlaybookView() {
             </div>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-slate-400">
+            <button onClick={() => openCanvas({ view: 'playbook', playbookMode: 'library' })} className="font-semibold text-slate-300 hover:text-white">← All playbooks</button>
             <span className="flex items-center gap-1.5"><Avatar userId={pb.owner_id} size={18} /> Owner: {userById(pb.owner_id)?.name}</span>
             <span>Generated {fmtDate(pb.created_date)}</span>
-            {mode === 'inventory' && <button onClick={() => setPlaybook(pb.id)} className="text-slate-300 hover:text-white">← Back to inventory</button>}
+            {mode !== 'inventory' && <button onClick={() => setPlaybook(pb.id)} className="text-slate-300 hover:text-white">← Back to inventory</button>}
           </div>
         </div>
       </Card>

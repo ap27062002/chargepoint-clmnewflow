@@ -25,13 +25,18 @@ export function LeftRail() {
   const view = useStore((s) => s.canvas.view)
   const openFull = useStore((s) => s.openFull)
   const closeCanvas = useStore((s) => s.closeCanvas)
+  const navigate = useStore((s) => s.navigate)
   const role = useStore((s) => s.users.find((u) => u.id === s.currentUserId)!.role)
 
   const visible = ITEMS.filter((i) => !i.show || i.show(role))
 
   const go = (k: RailKey) => {
     if (k === 'agent') closeCanvas()
-    else openFull(k) // full-width section; the agent collapses and is one click away
+    else {
+      openFull(k) // full-width section; the agent collapses and is one click away
+      // Nav lands on the all-playbooks LIBRARY (agent deep-links still open a specific playbook).
+      if (k === 'playbook') navigate({ playbookMode: 'library', playbookId: undefined, playbookDraftId: undefined })
+    }
   }
 
   const isActive = (k: RailKey) =>
