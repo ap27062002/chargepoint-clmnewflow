@@ -77,27 +77,48 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
   const containerRef = useRef<HTMLDivElement>(null)
   const [askBtn, setAskBtn] = useState<{ text: string; x: number; y: number } | null>(null)
 
-  // ---- AI margin comments (Word-style): the analysis lives NEXT TO the document, anchored to
-  // its clause — not in the agent. One card per issue, with dispositions right on the card. ----
+  // ---- Word-style margin comments: BOTH the AI analysis and the team's comments live next to
+  // the document, anchored to their clauses, with a filter (All / AI / Team). ----
   const setDisposition = useStore((s) => s.setDisposition)
+  const resolveMention = useStore((s) => s.resolveMention)
+  const isVisibleClause = (c: { runs: DocRun[] }) => !(c.runs.length === 0 || c.runs.every((r) => r.type === 'del' || !r.text.trim()))
   const clauseIdFor = (d: Deviation): string | undefined =>
-    doc?.clauses.find((c) => (c.deviationId === d.id || c.id === d.source_clause_id) && !(c.runs.length === 0 || c.runs.every((r) => r.type === 'del' || !r.text.trim())))?.id
+    doc?.clauses.find((c) => (c.deviationId === d.id || c.id === d.source_clause_id) && isVisibleClause(c))?.id
+  // Match a human comment's provision_reference ('§3(e)' or a heading) to its clause.
+  const clauseForRef = (ref?: string): string | undefined => {
+    if (!ref || !doc) return undefined
+    const norm = ref.toLowerCase().replace(/[§.()\s]/g, '')
+    if (!norm) return undefined
+    return doc.clauses.find((c) => {
+      if (!isVisibleClause(c)) return false
+      const r = c.ref.toLowerCase().replace(/[§.()\s]/g, '')
+      const h = c.heading.toLowerCase().replace(/[§.()\s]/g, '')
+      return (!!r && (r === norm || norm.includes(r) || r.includes(norm))) || (!!h && (h.includes(norm) || norm.includes(h)))
+    })?.id
+  }
+  const [marginFilter, setMarginFilter] = useState<'all' | 'ai' | 'team'>('all')
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const docDevs = devs.filter((d) => !!clauseIdFor(d))
+  const teamMsgs = messages.filter((m) => m.thread_type === 'agreement_level' && m.agreement_id === agreementId && !!clauseForRef(m.provision_reference))
+  type MarginItem = { uid: string; clauseId: string; kind: 'ai'; dev: Deviation } | { uid: string; clauseId: string; kind: 'team'; msg: (typeof teamMsgs)[number] }
+  const marginItems: MarginItem[] = [
+    ...(marginFilter !== 'team' ? docDevs.map((d) => ({ uid: 'ai-' + d.id, clauseId: clauseIdFor(d)!, kind: 'ai' as const, dev: d })) : []),
+    ...(marginFilter !== 'ai' ? teamMsgs.map((m) => ({ uid: 'tm-' + m.id, clauseId: clauseForRef(m.provision_reference)!, kind: 'team' as const, msg: m })) : []),
+  ]
   const colRef = useRef<HTMLDivElement>(null)
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [tops, setTops] = useState<Record<string, number>>({})
   const [colH, setColH] = useState(0)
-  const devKey = docDevs.map((d) => d.id + d.disposition_status).join(',')
+  const itemsKey = marginFilter + '|' + marginItems.map((it) => it.uid + (it.kind === 'ai' ? it.dev.disposition_status : it.msg.resolved ? 'r' : 'o') + (expanded[it.uid] ? 'x' : '')).join(',')
   // Anchor each card to its clause's vertical position (stacked so cards never overlap).
   useLayoutEffect(() => {
     const col = colRef.current, cont = containerRef.current
     if (!col || !cont || !doc) return
     const colTop = col.getBoundingClientRect().top
     const desired: { id: string; top: number }[] = []
-    for (const d of docDevs) {
-      const cid = clauseIdFor(d)
-      const el = cid ? (cont.querySelector(`#clause-${cid}`) as HTMLElement | null) : null
-      if (el) desired.push({ id: d.id, top: Math.max(0, el.getBoundingClientRect().top - colTop) })
+    for (const it of marginItems) {
+      const el = cont.querySelector(`#clause-${it.clauseId}`) as HTMLElement | null
+      if (el) desired.push({ id: it.uid, top: Math.max(0, el.getBoundingClientRect().top - colTop) })
     }
     desired.sort((a, b) => a.top - b.top)
     const next: Record<string, number> = {}
@@ -111,7 +132,7 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
     setColH(cursor)
     setTops((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc, devKey, edit, proseEdit])
+  }, [doc, itemsKey, edit, proseEdit])
   const flashClause = (cid?: string) => {
     if (!cid) return
     const el = containerRef.current?.querySelector(`#clause-${cid}`)
@@ -119,6 +140,20 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
     el?.classList.add('ring-2', 'ring-ai-400')
     setTimeout(() => el?.classList.remove('ring-2', 'ring-ai-400'), 1600)
   }
+  // A good review comment: what they changed → why it matters → what to do. Strip the directive
+  // prefix ("RED LINE — reject.", "ACCEPT — …") — the chips and buttons already say that.
+  const cleanRec = (t: string): string => {
+    // "RED LINE / QA — …", "Enhancement — …", "Counter to Fallback: …", "ACCEPT — …"
+    let s = t.replace(/^\s*(red ?line|accept|counter(?: to fallback(?: \d)?)?|missing(?:\/inconsistent)?|enhancement)[^—:.]{0,12}[—:.]\s*/i, '').trim()
+    if (s.length < 20) {
+      const i = t.indexOf('. ')
+      s = i > 0 && i < 60 && /red ?line|accept|counter|reject|missing|enhancement/i.test(t.slice(0, i)) ? t.slice(i + 2).trim() : t
+    }
+    if (s.length < 20) s = t
+    return s.charAt(0).toUpperCase() + s.slice(1)
+  }
+  const recommendedFor = (d: Deviation): 'accepted' | 'countered' | 'rejected' =>
+    d.risk_category === 'accept' ? 'accepted' : d.risk_category === 'red_line' ? 'rejected' : 'countered'
 
   // Surface an "Ask AI" action whenever the reader highlights text in the document.
   const onSelect = () => {
@@ -273,52 +308,103 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
           })}
         </div>
 
-        {/* AI review as MARGIN COMMENTS — anchored to their clauses, Word-style. */}
-        {docDevs.length > 0 && (
-          <div ref={colRef} className="relative hidden w-[280px] shrink-0 lg:block" style={{ minHeight: colH }}>
-            {docDevs.map((d) => {
-              const decided = d.disposition_status !== 'open'
-              const rm = riskMeta[d.risk_category]
-              return (
-                <div
-                  key={d.id}
-                  ref={(el) => { cardRefs.current[d.id] = el }}
-                  onClick={() => flashClause(clauseIdFor(d))}
-                  style={{ position: 'absolute', top: tops[d.id] ?? 0, left: 0, right: 0 }}
-                  className={clsx('cursor-pointer rounded-lg border bg-white p-2.5 shadow-card transition hover:shadow-panel',
-                    decided ? 'border-slate-200 opacity-75' : 'border-ai-200')}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <Sparkles size={11} className="shrink-0 text-ai-600" />
-                    <span className="truncate text-[11.5px] font-bold text-slate-700">{d.provision_name}</span>
-                    <span className="ml-auto shrink-0 font-mono text-[10px] text-slate-400">{d.section_reference}</span>
-                  </div>
-                  {decided ? (
-                    <div className="mt-1.5 flex items-center gap-1.5">
-                      <Chip className={clsx('ring-1 ring-inset', dispositionMeta[d.disposition_status].chip)}>
-                        {d.disposition_status === 'accepted' ? '✓' : d.disposition_status === 'countered' ? '↩' : '✕'} {dispositionMeta[d.disposition_status].label}
-                      </Chip>
-                      <span className="text-[10.5px] text-slate-400">resolved in the document</span>
+        {/* Margin comments — AI analysis AND team comments, anchored to their clauses, filterable. */}
+        {(docDevs.length > 0 || teamMsgs.length > 0) && (
+          <div className="hidden w-[280px] shrink-0 lg:block">
+            {/* filter: what do you want to see in the margin? */}
+            <div className="mb-2 flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-card">
+              {([['all', `All (${docDevs.length + teamMsgs.length})`], ['ai', `AI analysis (${docDevs.length})`], ['team', `Team (${teamMsgs.length})`]] as const).map(([k, label]) => (
+                <button key={k} onClick={() => setMarginFilter(k)}
+                  className={clsx('flex-1 rounded-md py-1 text-[10.5px] font-semibold transition', marginFilter === k ? (k === 'team' ? 'bg-slate-800 text-white' : 'bg-ai-600 text-white') : 'text-slate-500 hover:bg-slate-50')}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {marginItems.length === 0 && (
+              <div className="rounded-lg border border-dashed border-slate-200 bg-white/60 p-3 text-center text-[11px] text-slate-400">
+                {marginFilter === 'team' ? 'No team comments anchored to this document yet — add one from the Comments tab and pick a clause.' : 'Nothing to show here.'}
+              </div>
+            )}
+            <div ref={colRef} className="relative" style={{ minHeight: colH }}>
+              {marginItems.map((it) => {
+                const common = { ref: (el: HTMLDivElement | null) => { cardRefs.current[it.uid] = el }, style: { position: 'absolute' as const, top: tops[it.uid] ?? 0, left: 0, right: 0 } }
+                if (it.kind === 'team') {
+                  const m = it.msg
+                  const isOpen = !!expanded[it.uid]
+                  return (
+                    <div key={it.uid} {...common} onClick={() => flashClause(it.clauseId)}
+                      className="cursor-pointer rounded-lg border border-slate-200 bg-white p-2.5 shadow-card transition hover:shadow-panel">
+                      <div className="flex items-center gap-1.5">
+                        <Avatar userId={m.author_id} size={18} />
+                        <span className="truncate text-[11.5px] font-bold text-slate-700">{userById(m.author_id)?.name}</span>
+                        <span className="ml-auto shrink-0 font-mono text-[10px] text-slate-400">{m.provision_reference}</span>
+                      </div>
+                      <div className="mt-1.5 text-[11px] leading-snug text-slate-600" style={isOpen ? undefined : { display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{m.body}</div>
+                      <div className="mt-1.5 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        {m.mentions && m.mentions.length > 0 && (m.resolved
+                          ? <Chip className="bg-brand-50 text-brand-700 ring-brand-500/20">✓ Sign-off received</Chip>
+                          : <>
+                              <Chip className="bg-amber-50 text-amber-700 ring-amber-500/20">@ {m.mentions.map((id) => userById(id)?.name.split(' ')[0]).join(', ')}</Chip>
+                              <button onClick={() => resolveMention(m.id)} className="text-[10.5px] font-semibold text-brand-600 hover:underline">Mark responded</button>
+                            </>)}
+                        {m.body.length > 130 && <button onClick={() => setExpanded((p) => ({ ...p, [it.uid]: !isOpen }))} className="ml-auto text-[10.5px] font-semibold text-slate-400 hover:text-slate-600">{isOpen ? 'Less' : 'More'}</button>}
+                      </div>
                     </div>
-                  ) : (
-                    <>
-                      <div className="mt-1"><Chip className={clsx('ring-1 ring-inset', rm.chip)}><span className={clsx('h-1.5 w-1.5 rounded-full', rm.dot)} /> {rm.label}</Chip></div>
-                      <div className="mt-1.5 text-[11px] leading-snug text-slate-600" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{d.recommended_response}</div>
-                      {roleCanEdit && !lockedByOther && (
-                        <div className="mt-2 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                          {([['accepted', 'Accept', Check, 'hover:bg-brand-50 hover:text-brand-700'], ['countered', 'Counter', CornerUpLeft, 'hover:bg-amber-50 hover:text-amber-700'], ['rejected', 'Reject', X, 'hover:bg-red-50 hover:text-red-700']] as const).map(([st, label, Icon, tone]) => (
-                            <button key={st} onClick={() => setDisposition(d.id, st)}
-                              className={clsx('flex flex-1 items-center justify-center gap-1 rounded-md border border-slate-200 py-1 text-[10.5px] font-semibold text-slate-500 transition', tone)}>
-                              <Icon size={11} /> {label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )
-            })}
+                  )
+                }
+                const d = it.dev
+                const decided = d.disposition_status !== 'open'
+                const rm = riskMeta[d.risk_category]
+                const rec = recommendedFor(d)
+                const isOpen = !!expanded[it.uid]
+                return (
+                  <div key={it.uid} {...common} onClick={() => flashClause(it.clauseId)}
+                    className={clsx('cursor-pointer rounded-lg border bg-white p-2.5 shadow-card transition hover:shadow-panel', decided ? 'border-slate-200 opacity-75' : 'border-ai-200')}>
+                    <div className="flex items-center gap-1.5">
+                      <Sparkles size={11} className="shrink-0 text-ai-600" />
+                      <span className="truncate text-[11.5px] font-bold text-slate-700">{d.provision_name}</span>
+                      <span className="ml-auto shrink-0 font-mono text-[10px] text-slate-400">{d.section_reference}</span>
+                    </div>
+                    {decided ? (
+                      <div className="mt-1.5 flex items-center gap-1.5">
+                        <Chip className={clsx('ring-1 ring-inset', dispositionMeta[d.disposition_status].chip)}>
+                          {d.disposition_status === 'accepted' ? '✓' : d.disposition_status === 'countered' ? '↩' : '✕'} {dispositionMeta[d.disposition_status].label}
+                        </Chip>
+                        <span className="text-[10.5px] text-slate-400">resolved in the document</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="mt-1 flex items-center gap-1"><Chip className={clsx('ring-1 ring-inset', rm.chip)}><span className={clsx('h-1.5 w-1.5 rounded-full', rm.dot)} /> {rm.label}</Chip></div>
+                        <div className="mt-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Their change</div>
+                        <div className="text-[11px] leading-snug text-slate-600" style={isOpen ? undefined : { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{d.counterparty_position}</div>
+                        <div className="mt-1.5 text-[10px] font-bold uppercase tracking-wide text-ai-600">Why it matters</div>
+                        <div className="text-[11px] leading-snug text-slate-600" style={isOpen ? undefined : { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{cleanRec(d.recommended_response)}</div>
+                        {isOpen && (
+                          <>
+                            <div className="mt-1.5 text-[10px] font-bold uppercase tracking-wide text-brand-600">Our standard</div>
+                            <div className="text-[11px] leading-snug text-slate-600">{d.template_position}</div>
+                          </>
+                        )}
+                        <button onClick={(e) => { e.stopPropagation(); setExpanded((p) => ({ ...p, [it.uid]: !isOpen })) }} className="mt-1 text-[10.5px] font-semibold text-slate-400 hover:text-slate-600">{isOpen ? 'Less' : 'More'}</button>
+                        {roleCanEdit && !lockedByOther && (
+                          <div className="mt-1.5 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            {([['accepted', 'Accept', Check, 'bg-brand-500 border-brand-500 text-white', 'hover:bg-brand-50 hover:text-brand-700'],
+                               ['countered', 'Counter', CornerUpLeft, 'bg-amber-500 border-amber-500 text-white', 'hover:bg-amber-50 hover:text-amber-700'],
+                               ['rejected', 'Reject', X, 'bg-red-500 border-red-500 text-white', 'hover:bg-red-50 hover:text-red-700']] as const).map(([st, label, Icon, filled, tone]) => (
+                              <button key={st} onClick={() => setDisposition(d.id, st)} title={rec === st ? 'AI-recommended action' : undefined}
+                                className={clsx('flex flex-1 items-center justify-center gap-1 rounded-md border py-1 text-[10.5px] font-semibold transition',
+                                  rec === st ? filled : clsx('border-slate-200 text-slate-500', tone))}>
+                                <Icon size={11} /> {label}{rec === st ? ' ✦' : ''}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
         </div>
