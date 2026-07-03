@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { clsx } from 'clsx'
 import { ListChecks, FileText, MessageSquare, Sparkles, History, AtSign, CheckCircle2, FileQuestion, Wand2, BookOpen, GitCompareArrows, ArrowRight, PanelRightClose, Send, CheckCheck, Layers } from 'lucide-react'
 import { sendToAgent } from '@/agent/engine'
@@ -15,7 +15,7 @@ import { StageTracker } from '@/views/StageTracker'
 import { Chip, Avatar, Button, Card } from '@/components/ui'
 import { MentionComposer } from '@/components/MentionComposer'
 import { sourceLabel, fmtDateTime } from '@/lib/labels'
-import { diffVersions, clauseIdForDeviation } from '@/data/documents'
+import { diffVersions, clauseIdForDeviation, cleanCopyId } from '@/data/documents'
 import { userById } from '@/data/seed'
 
 function CommentsPanel({ ticketId, agreementId, provisionOptions = [] }: { ticketId: string; agreementId: string; provisionOptions?: string[] }) {
@@ -132,60 +132,99 @@ function NoPlaybook({ title, type }: { title: string; type: string }) {
   )
 }
 
-// Send-back: clean copy + redline + change summary (Eric §3)
-function SendBackPanel({ agreementId, workingVerId }: { agreementId: string; workingVerId: string }) {
+// Send-back (Eric §3) — everything is PREPARED automatically; this is a review-and-confirm
+// screen, not a build-it-yourself pipeline. The doc was cleaned in real time as you dispositioned;
+// the redline auto-generates; the summary is one optional click; then Send.
+function SendBackPanel({ agreementId }: { agreementId: string }) {
   const sendBack = useStore((s) => s.canvas.sendBack)
   const versions = useStore((s) => s.versions).filter((v) => v.agreement_id === agreementId).sort((a, b) => a.version_number - b.version_number)
-  const acceptAll = useStore((s) => s.acceptAllChanges)
+  const allDevs = useStore((s) => s.deviations)
+  const documents = useStore((s) => s.documents)
+  const applyAllRecommended = useStore((s) => s.applyAllRecommended)
   const setBase = useStore((s) => s.setSendBackBase)
   const setCumulative = useStore((s) => s.setSendBackCumulative)
   const generate = useStore((s) => s.generateRedline)
   const summarize = useStore((s) => s.summarizeChanges)
   const send = useStore((s) => s.sendRedline)
   const navigate = useStore((s) => s.navigate)
+
+  const devs = allDevs.filter((d) => d.agreement_id === agreementId)
+  const counts = {
+    open: devs.filter((d) => d.disposition_status === 'open').length,
+    accepted: devs.filter((d) => d.disposition_status === 'accepted').length,
+    countered: devs.filter((d) => d.disposition_status === 'countered').length,
+    rejected: devs.filter((d) => d.disposition_status === 'rejected').length,
+  }
+  const agreements = useStore((s) => s.agreements)
+  const curVerId = agreements.find((a) => a.id === agreementId)?.current_version_id ?? ''
+  const hasDoc = !!documents[cleanCopyId(agreementId)] || !!documents[curVerId]
+
+  // Auto-generate the redline — the user shouldn't have to assemble it by hand.
+  useEffect(() => {
+    if (sendBack && !sendBack.redline && !sendBack.staged && hasDoc) generate()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sendBack?.baseVersionId, sendBack?.cumulative, sendBack?.redline])
+
   if (!sendBack) return null
   const baseOptions = versions.filter((v) => v.source === 'counterparty_response' || v.source === 'counterparty_draft' || v.version_number === 1)
+  const baseLabel = versions.find((v) => v.id === (sendBack.redline?.baseVersionId ?? sendBack.baseVersionId))?.label ?? sendBack.baseVersionId
 
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="mx-auto max-w-2xl space-y-3.5">
         <div>
           <h2 className="text-[16px] font-bold text-slate-800">Send back to counterparty</h2>
-          <p className="mt-0.5 text-[12.5px] text-slate-500">Accept your changes → clean copy → redline vs their version (non-cumulative), plus an optional summary. Then send.</p>
+          <p className="mt-0.5 text-[12.5px] text-slate-500">Your decisions were applied to the document as you made them. Everything below is prepared — review it and send.</p>
         </div>
 
+        {/* Resolution status — computed, not a manual step */}
         <Card className="p-4">
-          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-800 text-[11px] text-white">1</span> Clean copy</div>
-          <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2.5">
-            <span className="text-[12.5px] text-slate-500">Accept the counterparty's changes you're keeping, then accept all so the doc isn't a cumulative mess.</span>
-            <Button size="sm" variant="outline" icon={<CheckCheck size={13} />} onClick={() => acceptAll(workingVerId)}>Accept all → clean</Button>
+          <div className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400"><ListChecks size={13} /> Resolution status</div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Chip className="bg-brand-50 text-brand-700 ring-brand-500/20">{counts.accepted} accepted</Chip>
+            <Chip className="bg-amber-50 text-amber-700 ring-amber-500/20">{counts.countered} countered</Chip>
+            <Chip className="bg-red-50 text-red-700 ring-red-500/20">{counts.rejected} rejected</Chip>
+            {counts.open > 0 && <Chip className="bg-slate-100 text-slate-600 ring-slate-300/40">{counts.open} still open</Chip>}
           </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-800 text-[11px] text-white">2</span> Redline</div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[12px] text-slate-500">Compare against</span>
-            <select value={sendBack.baseVersionId} onChange={(e) => setBase(e.target.value)} disabled={sendBack.cumulative} className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[12.5px] font-semibold text-slate-700 outline-none disabled:opacity-50">
-              {baseOptions.map((v) => <option key={v.id} value={v.id}>{v.label} · {sourceLabel[v.source]}</option>)}
-            </select>
-            <label title="Cumulative diffs against the original first draft (every change since the start). Off = just this round's changes vs their last version." className="flex items-center gap-1.5 text-[12px] text-slate-600"><input type="checkbox" checked={sendBack.cumulative} onChange={(e) => setCumulative(e.target.checked)} className="accent-brand-500" /><Layers size={12} /> Cumulative</label>
-            <Button size="sm" variant="ai" icon={<GitCompareArrows size={13} />} onClick={generate} className="ml-auto">Generate redline</Button>
-          </div>
-          <div className="mt-1.5 text-[11px] text-slate-400">{sendBack.cumulative ? 'Cumulative — redlines the whole negotiation vs the original draft (all changes since day one).' : 'This round only — redlines your clean copy vs the version they last sent.'}</div>
-          {sendBack.redline && (
-            <button onClick={() => navigate({ reviewMode: 'redline' })} className="mt-2 flex w-full items-center justify-between rounded-lg bg-brand-50/60 px-3 py-2 text-left ring-1 ring-brand-100 hover:bg-brand-50">
-              <span className="text-[12.5px] font-semibold text-brand-700"><GitCompareArrows size={12} className="mr-1 inline" /> Redline ready — {sendBack.redline.changeCount} changes</span>
-              <span className="text-[11.5px] font-semibold text-brand-600">View →</span>
-            </button>
+          {counts.open > 0 ? (
+            <div className="mt-2.5 flex items-center justify-between rounded-lg bg-amber-50/70 px-3 py-2 ring-1 ring-amber-100">
+              <span className="text-[12.5px] text-amber-800">{counts.open} issue{counts.open === 1 ? '' : 's'} still undecided — resolve them in the review, or apply the recommended dispositions.</span>
+              <Button size="sm" variant="outline" icon={<CheckCheck size={13} />} onClick={() => applyAllRecommended(agreementId)}>Apply recommended to {counts.open}</Button>
+            </div>
+          ) : (
+            <div className="mt-2.5 rounded-lg bg-brand-50/60 px-3 py-2 text-[12.5px] text-brand-700 ring-1 ring-brand-100">✓ All issues resolved — the working document is clean and reflects every decision.</div>
           )}
         </Card>
 
+        {/* Redline — auto-generated; advanced options tucked away */}
         <Card className="p-4">
-          <div className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-800 text-[11px] text-white">3</span> Summary of changes (optional)</div>
+          <div className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400"><GitCompareArrows size={13} /> Redline for the counterparty</div>
+          {sendBack.redline ? (
+            <button onClick={() => navigate({ reviewMode: 'redline' })} className="flex w-full items-center justify-between rounded-lg bg-brand-50/60 px-3 py-2.5 text-left ring-1 ring-brand-100 hover:bg-brand-50">
+              <span className="text-[12.5px] font-semibold text-brand-700"><GitCompareArrows size={12} className="mr-1 inline" /> Ready — {sendBack.redline.changeCount} change{sendBack.redline.changeCount === 1 ? '' : 's'} vs {baseLabel} (their last version)</span>
+              <span className="text-[11.5px] font-semibold text-brand-600">Review it →</span>
+            </button>
+          ) : (
+            <div className="rounded-lg bg-slate-50 px-3 py-2.5 text-[12.5px] text-slate-400">{hasDoc ? 'Generating…' : 'No tracked-changes document available for this agreement.'}</div>
+          )}
+          <details className="mt-2">
+            <summary className="cursor-pointer select-none text-[11.5px] font-semibold text-slate-400 hover:text-slate-600">Advanced — compare against a different version</summary>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <select value={sendBack.baseVersionId} onChange={(e) => setBase(e.target.value)} disabled={sendBack.cumulative} className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[12.5px] font-semibold text-slate-700 outline-none disabled:opacity-50">
+                {baseOptions.map((v) => <option key={v.id} value={v.id}>{v.label} · {sourceLabel[v.source]}</option>)}
+              </select>
+              <label title="Cumulative diffs against the original first draft (every change since the start). Off = just this round's changes vs their last version." className="flex items-center gap-1.5 text-[12px] text-slate-600"><input type="checkbox" checked={sendBack.cumulative} onChange={(e) => setCumulative(e.target.checked)} className="accent-brand-500" /><Layers size={12} /> Cumulative (vs the original draft)</label>
+            </div>
+            <div className="mt-1 text-[11px] text-slate-400">Changing this regenerates the redline automatically.</div>
+          </details>
+        </Card>
+
+        {/* Optional summary */}
+        <Card className="p-4">
+          <div className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400"><Sparkles size={13} /> Cover summary <span className="font-normal normal-case text-slate-300">· optional</span></div>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" icon={<Sparkles size={13} />} onClick={() => summarize('internal')}>Internal summary</Button>
-            <Button size="sm" variant="outline" icon={<Sparkles size={13} />} onClick={() => summarize('external')}>External summary</Button>
+            <Button size="sm" variant="outline" icon={<Sparkles size={13} />} onClick={() => summarize('internal')}>For the deal team</Button>
+            <Button size="sm" variant="outline" icon={<Sparkles size={13} />} onClick={() => summarize('external')}>For the counterparty</Button>
           </div>
           {sendBack.summary && (
             <div className="mt-2 rounded-lg bg-ai-50/50 p-3 ring-1 ring-ai-100">
@@ -196,15 +235,16 @@ function SendBackPanel({ agreementId, workingVerId }: { agreementId: string; wor
         </Card>
 
         <div className="flex items-center justify-between rounded-xl border border-ai-200 bg-ai-50/40 px-4 py-3">
-          <span className="text-[12.5px] text-slate-600">{sendBack.staged ? '✓ Sent — status is now In Negotiation, ball in their court.' : 'Sends a clean copy + redline. AI can\'t deliver — this stages it under your account.'}</span>
-          <Button variant="ai" icon={<Send size={14} />} disabled={!sendBack.redline || sendBack.staged} onClick={() => send(agreementId)}>Send clean copy + redline</Button>
+          <span className="text-[12.5px] text-slate-600">{sendBack.staged ? '✓ Sent — status is now In Negotiation, ball in their court.' : `Sends the clean copy + the redline${sendBack.summary ? ' + your cover summary' : ''} to the counterparty, staged under your account.`}</span>
+          <Button variant="ai" icon={<Send size={14} />} disabled={!sendBack.redline || sendBack.staged} onClick={() => send(agreementId)}>Send to counterparty</Button>
         </div>
       </div>
     </div>
   )
 }
 
-type RightTab = 'directive' | 'ai' | 'comments' | null
+// Two views only: Ask Claude (which carries the playbook-review walkthrough) and Comments.
+type RightTab = 'ai' | 'comments' | null
 
 export function AgreementReview({ agreementId }: { agreementId: string }) {
   const agreement = useStore((s) => s.agreements.find((a) => a.id === agreementId)!)
@@ -215,7 +255,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
   const openSendBack = useStore((s) => s.openSendBack)
   const rawMode = canvas.reviewMode ?? 'directive'
   const mode = rawMode === 'document' ? 'directive' : rawMode // 'document' aliases to the split
-  const [rightTab, setRightTab] = useState<RightTab>('directive')
+  const [rightTab, setRightTab] = useState<RightTab>('ai')
   const [aiSeed, setAiSeed] = useState<{ text: string; nonce: number } | null>(null)
   const [focusClause, setFocusClause] = useState<string | undefined>()
   const [selVer, setSelVer] = useState<string | undefined>(undefined)
@@ -274,7 +314,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
         {!agreement.playbook_id ? (
           <div className="min-w-0 flex-1"><NoPlaybook title={agreement.title} type={agreement.agreement_type} /></div>
         ) : mode === 'sendback' ? (
-          <div className="min-w-0 flex-1"><SendBackPanel agreementId={agreementId} workingVerId={activeVerId ?? 'V-2201-2'} /></div>
+          <div className="min-w-0 flex-1"><SendBackPanel agreementId={agreementId} /></div>
         ) : mode === 'redline' ? (
           <div className="min-w-0 flex-1"><RedlineDocView agreementId={agreementId} /></div>
         ) : mode === 'compare' ? (
@@ -295,21 +335,18 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
             </div>
             {rightTab === null ? (
               <div className="flex w-12 shrink-0 flex-col items-center gap-2 bg-white py-3">
-                <button onClick={() => setRightTab('directive')} title="Review directive" className="flex h-9 w-9 items-center justify-center rounded-lg text-ai-600 hover:bg-ai-50"><ListChecks size={16} /></button>
                 <button onClick={() => setRightTab('ai')} title="Ask Claude" className="flex h-9 w-9 items-center justify-center rounded-lg text-ai-600 hover:bg-ai-50"><Sparkles size={16} /></button>
                 <button onClick={() => setRightTab('comments')} title="Comments" className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><MessageSquare size={16} /></button>
               </div>
             ) : (
               <div className="flex w-[360px] shrink-0 flex-col bg-white">
                 <div className="flex shrink-0 items-center gap-0.5 border-b border-slate-100 px-2 py-2">
-                  <RailBtn k="directive" icon={<ListChecks size={14} />} label="Review" />
                   <RailBtn k="ai" icon={<Sparkles size={14} />} label="Ask Claude" ai />
                   <RailBtn k="comments" icon={<MessageSquare size={14} />} label="Comments" />
                   <button onClick={() => setRightTab(null)} title="Collapse panel" className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><PanelRightClose size={15} /></button>
                 </div>
                 <div className="min-h-0 flex-1">
-                  {rightTab === 'directive' ? <ReviewDirective agreementId={agreementId} onFocus={focusDeviation} />
-                    : rightTab === 'ai' ? <AIPanel agreementTitle={agreement.title} seed={aiSeed} />
+                  {rightTab === 'ai' ? <AIPanel agreementTitle={agreement.title} seed={aiSeed} agreementId={agreementId} onFocusClause={focusDeviation} />
                     : <CommentsPanel ticketId={agreement.ticket_id} agreementId={agreementId} provisionOptions={(activeDoc?.clauses ?? []).map((c) => c.heading).filter(Boolean)} />}
                 </div>
               </div>

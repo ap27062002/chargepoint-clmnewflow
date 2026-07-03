@@ -16,6 +16,7 @@ export interface DocClause {
   heading: string
   runs: DocRun[]
   deviationId?: string
+  orig?: DocRun[] // snapshot before disposition-driven resolution — lets accept/reject/counter recompute idempotently
 }
 
 export interface DocModel {

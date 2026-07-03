@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Sparkles, Send, BookOpen, GitCompareArrows, FileEdit } from 'lucide-react'
+import { Sparkles, Send, BookOpen, GitCompareArrows, FileEdit, ChevronDown } from 'lucide-react'
+import { clsx } from 'clsx'
 import { Markdown } from '@/components/Markdown'
 import { AiTag } from '@/components/ui'
 import { sendToAgent } from '@/agent/engine'
 import { precedentAnswer } from '@/lib/precedent'
+import { ReviewDirective } from '@/views/ReviewDirective'
+import { useStore } from '@/store'
 
 interface Msg { role: 'user' | 'ai'; text: string }
 
@@ -25,10 +28,12 @@ const ANSWERS: { match: (t: string) => boolean; text: string }[] = [
   { match: (t) => t.includes('risk'), text: `**Top risks in the Vishay redline:**\n1. **Residuals (§1(f))** — red line; guts trade-secret protection.\n2. **Affiliate liability (§6)** — uncapped exposure for Affiliate breaches.\n3. **CI survival cut to 2yr (§8)** — below our 3yr floor.\n4. **Undefined "Restricted Information" (§14)** — unenforceable/ambiguous.\n\nItems 1 and 2 are the ones I'd hold firm on.` },
 ]
 
-export function AIPanel({ agreementTitle, seed }: { agreementTitle: string; seed?: { text: string; nonce: number } | null }) {
+export function AIPanel({ agreementTitle, seed, agreementId, onFocusClause }: { agreementTitle: string; seed?: { text: string; nonce: number } | null; agreementId?: string; onFocusClause?: (deviationId: string) => void }) {
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [lastSel, setLastSel] = useState('')
+  const [reviewOpen, setReviewOpen] = useState(true)
+  const devCount = useStore((s) => s.deviations.filter((d) => d.agreement_id === agreementId).length)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const ask = (text: string) => {
@@ -66,6 +71,24 @@ export function AIPanel({ agreementTitle, seed }: { agreementTitle: string; seed
       </div>
 
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3">
+        {/* Playbook review lives IN the chat — the agent walks you through the issues here. */}
+        {agreementId && devCount > 0 && (
+          <div>
+            <div className="rounded-2xl border border-ai-200 bg-white shadow-card">
+              <button onClick={() => setReviewOpen((v) => !v)} className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-[12.5px]">
+                <Sparkles size={13} className="shrink-0 text-ai-600" />
+                <span className="text-slate-700">I analyzed the redline against the playbook — <b>{devCount} issue{devCount === 1 ? '' : 's'}</b>. Step through them here; the document resolves as you decide.</span>
+                <ChevronDown size={14} className={clsx('ml-auto shrink-0 text-slate-400 transition', reviewOpen && 'rotate-180')} />
+              </button>
+              {reviewOpen && (
+                <div className="h-[430px] overflow-hidden border-t border-ai-100">
+                  <ReviewDirective agreementId={agreementId} onFocus={onFocusClause ?? (() => {})} />
+                </div>
+              )}
+            </div>
+            <div className="mt-1"><AiTag /></div>
+          </div>
+        )}
         {msgs.length === 0 ? (
           <>
             <div className="text-[12px] text-slate-500">Ask anything about <span className="font-semibold">{agreementTitle}</span>, or pick a capability:</div>

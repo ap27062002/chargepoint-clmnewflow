@@ -211,6 +211,41 @@ const initialDeviations: Deviation[] = [
   ...seedDeviations.filter((d) => d.agreement_id !== 'AGR-2201'),
 ]
 
+// Real-time doc cleaning: a disposition resolves the counterparty's tracked changes in the
+// working document immediately — accepted → their changes become clean text; rejected → their
+// changes are struck and the prior text restored; countered → their changes struck + the counter
+// language added as a ChargePoint tracked insertion (your outgoing redline). Recomputed from an
+// `orig` snapshot each time, so changing your mind about a disposition is idempotent.
+function resolveDispositionInDocs(documents: Record<string, DocModel>, agreements: Agreement[], d: Deviation, status: DispositionStatus): Record<string, DocModel> {
+  if (status === 'open') return documents
+  const a = agreements.find((x) => x.id === d.agreement_id)
+  const candidateIds = [a?.current_version_id, 'V-2201-3'].filter((x): x is string => !!x)
+  const docId = candidateIds.find((id) => documents[id]?.clauses.some((c) => c.deviationId === d.id || c.id === d.source_clause_id))
+  if (!docId) return documents
+  const doc = documents[docId]
+  const clauses = doc.clauses.map((c) => {
+    if (!(c.deviationId === d.id || c.id === d.source_clause_id)) return c
+    const base = c.orig ?? c.runs
+    let runs
+    if (status === 'accepted') {
+      // accept their changes: insertions become normal text, deletions disappear
+      runs = base.filter((r) => !(r.party === 'counterparty' && r.type === 'del'))
+        .map((r) => (r.party === 'counterparty' && r.type === 'ins' ? { text: r.text, type: 'normal' as const } : r))
+    } else {
+      // reject their changes: insertions disappear, deletions are restored
+      runs = base.filter((r) => !(r.party === 'counterparty' && r.type === 'ins'))
+        .map((r) => (r.party === 'counterparty' && r.type === 'del' ? { text: r.text, type: 'normal' as const } : r))
+      if (status === 'countered') {
+        const raw = d.recommended_response.includes(':') ? d.recommended_response.slice(d.recommended_response.indexOf(':') + 1).trim() : d.recommended_response
+        const counter = raw.length > 220 ? raw.slice(0, 220) + '…' : raw
+        runs = [...runs, { text: ` ${counter}`, type: 'ins' as const, party: 'cp' as const, cid: nextId('ctr') }]
+      }
+    }
+    return { ...c, orig: base, runs }
+  })
+  return { ...documents, [docId]: { ...doc, clauses } }
+}
+
 // R49 — persist the default source folders across reloads (first persisted slice in the app).
 const SOURCES_KEY = 'clm.playbookSourceDefaults'
 function loadSourceDefaults(): PlaybookSourceDefaults {
@@ -302,26 +337,34 @@ export const useStore = create<CLMState>((set, get) => ({
 
   setDisposition: (deviationId, status) => {
     const uid = get().currentUserId
-    set((s) => ({
-      deviations: s.deviations.map((d) =>
-        d.id === deviationId ? { ...d, disposition_status: status, disposition_by: uid, disposition_date: now() } : d),
-    }))
+    set((s) => {
+      const d = s.deviations.find((x) => x.id === deviationId)
+      return {
+        deviations: s.deviations.map((x) =>
+          x.id === deviationId ? { ...x, disposition_status: status, disposition_by: uid, disposition_date: now() } : x),
+        // Real-time cleaning: the disposition resolves the tracked changes in the working doc immediately.
+        documents: d ? resolveDispositionInDocs(s.documents, s.agreements, d, status) : s.documents,
+      }
+    })
     const d = get().deviations.find((x) => x.id === deviationId)
     get().audit_push({ event_type: 'disposition_decided', agreement_id: d?.agreement_id, summary: `${d?.provision_name} (${d?.section_reference}) → ${status}.` })
   },
 
   applyAllRecommended: (agreementId) => {
     const uid = get().currentUserId
-    set((s) => ({
-      deviations: s.deviations.map((d) => {
+    set((s) => {
+      let documents = s.documents
+      const deviations = s.deviations.map((d) => {
         if (d.agreement_id !== agreementId || d.disposition_status !== 'open') return d
         const status: DispositionStatus =
           d.risk_category === 'accept' ? 'accepted'
           : d.risk_category === 'red_line' ? 'rejected'
           : 'countered'
+        documents = resolveDispositionInDocs(documents, s.agreements, d, status) // real-time cleaning
         return { ...d, disposition_status: status, disposition_by: uid, disposition_date: now() }
-      }),
-    }))
+      })
+      return { deviations, documents }
+    })
     get().audit_push({ event_type: 'disposition_decided', agreement_id: agreementId, summary: 'Applied all recommended dispositions.' })
   },
 
@@ -792,7 +835,9 @@ export const useStore = create<CLMState>((set, get) => ({
     const working = docs[workingId]
     if (!base || !working) { get().setToast('No tracked-changes document available to redline for this agreement.'); return }
     const redline = buildRedlineDoc(base, buildCleanCopy(working), sb.cumulative)
-    set((s) => (s.canvas.sendBack ? { canvas: { ...s.canvas, reviewMode: 'redline', sendBack: { ...s.canvas.sendBack, redline } } } : {}))
+    // Stay on the send-back screen — the redline is announced there ("Ready — N changes · Review it →");
+    // navigating away automatically was the confusing part of the old UX.
+    set((s) => (s.canvas.sendBack ? { canvas: { ...s.canvas, sendBack: { ...s.canvas.sendBack, redline } } } : {}))
     get().audit_push({ event_type: 'version_created', agreement_id: sb.agreementId, summary: `Generated clean copy + redline (${redline.changeCount} changes) ${sb.cumulative ? `cumulatively vs ${baseId} (original)` : `vs ${baseId}`}.` })
   },
   summarizeChanges: (audience) => {
