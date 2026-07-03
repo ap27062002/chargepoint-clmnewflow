@@ -1,7 +1,9 @@
 # Project state — resume here
 
 **App:** ChargePoint Legal CLM — agent-first, chat-driven CLM prototype (Unify build).
-**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-18` (git tag) · repo clean.
+**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-19` (git tag) · repo clean.
+
+**build-19 — Playbook Library.** Nav → all-playbooks card grid (tier mix, owner, "used by N agreements", pending-suggestions badge → queue) + resumable drafts + Create popover (NDA/MSA w/ default source folders, RBAC-gated). Card → existing detail; "← All playbooks" back; agent deep-links unchanged; breadcrumb "Playbooks". New `playbookMode: 'library'` (LeftRail sets it; `PlaybookLibrary` in PlaybookView.tsx).
 
 **build-18 — R85/R89/R107 completed deterministically (adversarial re-audit: all 3 DONE; its 5 nits fixed in 18.1).** Final scorecard on Eric's 20 partials: **15 done / 5 partial**. The 5 remaining: R57/R60/R112 (genuinely need `ANTHROPIC_API_KEY` — open-ended NL restructuring/rendering, Claude-as-primary-layer; the deterministic floors are honest and input-dependent), R62/R105 (MSA corpus added post-audit — believed done, not formally re-verified). R85: stateful user-creatable team folders (+business-wide access toggle) + TEMPLATE publishing + role-scoped Published library in Files. R89: `lib/useWindowed` on Audit(40)/Notifications(25)/Issues(15)/Repository(15) + memoized derivations (contracts already done). R107: clause bodies COMPOSED from selected precedents' real clause text (runtime-verified input-dependent: DE↔NY modal flips with selection), real NL rewrite transforms (tighten/expand/mutual/rider), Export(.html) from both template views. Re-audit outputs: tasks/wcljj3fpw.output (these 3), tasks/w3n2254gd.output (all 20).
 
