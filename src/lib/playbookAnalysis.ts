@@ -141,6 +141,8 @@ export function analyzePlaybook(base: DocModel | undefined, incoming: DocModel |
     const clause = incoming.clauses.find((c) => (c.ref || c.id) === diff.ref) ?? incoming.clauses.find((c) => c.heading === diff.heading)
     const tagged = clause?.deviationId
     const { provision, axis, label } = clause ? mapClauseToProvision(clause, playbook ?? { provisions: [] } as unknown as Playbook) : { provision: undefined, axis: undefined, label: diff.heading }
+    // Deferred provisions are NOT included in AI review — no analysis card, no issue.
+    if (provision?.tier === 'deferred') continue
     // Suppress cosmetic 'accept' changes that aren't a curated (tagged) issue, to avoid noise.
     const cls = classifyChange(diff, provision, axis)
     if (!tagged && cls.risk === 'accept') continue

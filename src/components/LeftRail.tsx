@@ -1,5 +1,5 @@
 import { clsx } from 'clsx'
-import { Sparkles, LayoutDashboard, BookOpen, FolderTree, FolderKanban } from 'lucide-react'
+import { Sparkles, LayoutDashboard, BookOpen, FolderTree, Lock } from 'lucide-react'
 import { useStore } from '@/store'
 import { can } from '@/lib/access'
 import type { Role } from '@/types'
@@ -9,15 +9,15 @@ type RailItem = {
   key: RailKey
   label: string
   icon: JSX.Element
+  locked?: boolean // restricted-access marker (Archive)
   show?: (role: Role) => boolean
 }
 
 const ITEMS: RailItem[] = [
   { key: 'agent', label: 'Agent', icon: <Sparkles size={18} /> },
   { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} />, show: (r) => can(r, 'pipeline') },
-  { key: 'repository', label: 'Files', icon: <FolderTree size={18} />, show: (r) => can(r, 'review') || can(r, 'pipeline') },
+  { key: 'repository', label: 'Archive', icon: <FolderTree size={18} />, locked: true, show: (r) => can(r, 'review') || can(r, 'pipeline') },
   { key: 'playbook', label: 'Playbook', icon: <BookOpen size={18} />, show: (r) => can(r, 'playbook_view') },
-  { key: 'projects', label: 'Projects', icon: <FolderKanban size={18} />, show: (r) => can(r, 'templates') },
 ]
 
 export function LeftRail() {
@@ -57,7 +57,7 @@ export function LeftRail() {
             )}
           >
             {i.icon}
-            <span>{i.label}</span>
+            <span className="flex items-center gap-0.5">{i.label}{i.locked && <Lock size={8} className="opacity-60" />}</span>
           </button>
         )
       })}

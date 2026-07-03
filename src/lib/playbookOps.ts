@@ -63,6 +63,29 @@ const ACCENTS: Record<string, string> = { blue: '#2563eb', green: '#1f8c3f', vio
 
 // The single entry point: transform `pb` per `instr`. Pure — returns a new playbook.
 export function applyPlaybookInstruction(pb: Playbook, instr: string, canPresentation: boolean): OpResult {
+  // ---- CONTENT edit via chat (Playbooks §4): "Tighten the fallback position on X" ----
+  const mTighten = instr.match(/tighten(?: the)?(?: fallback(?: position)?(?: on| for)?)? (.+)/i)
+  if (mTighten) {
+    const target = mTighten[1].replace(/[.?!]$/, '').trim().toLowerCase()
+    const flat: Provision[] = []
+    const walk = (ps: Provision[]) => ps.forEach((p) => { flat.push(p); if (p.children) walk(p.children) })
+    walk(pb.provisions)
+    const found = flat.find((p) => target.includes(p.provision_name.toLowerCase()) || p.provision_name.toLowerCase().includes(target) || target.split(' ').filter((w) => w.length > 4).some((w) => p.provision_name.toLowerCase().includes(w)))
+    if (found) {
+      const tightened = (t: string) => t
+        .replace(/independently developed information/i, 'independently developed information (demonstrated by contemporaneous written records)')
+        .replace(/rightfully received/i, 'rightfully received without restriction')
+        + ' Any party asserting an exclusion bears the burden of proving it by documentary evidence.'
+      const patch = (p: Provision): Provision => p === found
+        ? (p.fallback_tiers.length > 0
+            ? { ...p, fallback_tiers: [tightened(p.fallback_tiers[0]), ...p.fallback_tiers.slice(1)], modified_via_chat: true }
+            : { ...p, standard_position: tightened(p.standard_position), modified_via_chat: true })
+        : (p.children ? { ...p, children: p.children.map(patch) } : p)
+      return { ok: true, op: 'retier', presentation: false, message: `Tightened the ${found.fallback_tiers.length > 0 ? 'first fallback' : 'standard'} position on **${found.provision_name}** — exclusions now require contemporaneous written records and the asserting party bears the burden of proof. Marked "Modified via chat".`, playbook: { ...pb, provisions: pb.provisions.map(patch) } }
+    }
+    return { ok: false, op: 'retier', presentation: false, message: 'I could not find that provision — name it as it appears in the playbook.' }
+  }
+
   const op = classifyInstruction(instr)
   const t = lc(instr)
   if (PRESENTATION_OPS.includes(op) && !canPresentation) {

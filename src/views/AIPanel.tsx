@@ -9,7 +9,7 @@ interface Msg { role: 'user' | 'ai'; text: string }
 
 // Consolidated to Playbook guidance + an ad-hoc Claude action + prior-deal comparison (Eric §6).
 const CAPS = [
-  { icon: <BookOpen size={13} />, label: 'Playbook guidance', prompt: 'What does the playbook say about this clause?' },
+  { icon: <BookOpen size={13} />, label: 'Show playbook guidance for this clause', prompt: 'What does the playbook say about this clause?' },
   { icon: <FileEdit size={13} />, label: 'Suggest revisions favorable to us', prompt: 'Suggest revisions favorable to ChargePoint for this clause' },
   { icon: <GitCompareArrows size={13} />, label: 'Precedent — prior executed deals', prompt: 'What is our precedent on residuals and indemnity?' },
 ]

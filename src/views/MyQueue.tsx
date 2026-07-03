@@ -45,7 +45,7 @@ export function MyQueue() {
     <div className="h-full overflow-y-auto p-6">
       <div className="mb-5">
         <h1 className="text-xl font-bold text-slate-800">My Queue</h1>
-        <p className="text-[13px] text-slate-500">Everything waiting on you, {userById(uid)?.name.split(' ')[0]} — tagged provisions, assignments, and open decisions.</p>
+        <p className="text-[13px] text-slate-500">Where I'm Tagged — every agreement with an open comment or tag on you, sorted by age, {userById(uid)?.name.split(' ')[0]}. Jump links land on the comment in the document.</p>
       </div>
 
       {total === 0 && <Empty icon={<CheckCircle2 size={28} className="text-brand-400" />} title="You're all clear" sub="Nothing is currently waiting on you." />}

@@ -72,7 +72,7 @@ export const ndaPlaybook: Playbook = {
       fallback_tiers: ['Counterparty home-state law with venue in Delaware.', 'Neutral law (New York) with venue in New York.'],
       red_line: 'Foreign governing law or mandatory ICC arbitration seated outside the U.S.',
       rationale: 'Two fallback tiers. Negotiated in 33% of deals.', negotiated_pct: 33 },
-    { id: 'pv9', provision_name: 'Residuals', cross_cutting_category: 'confidentiality', tier: 'red_line', counterparty_introduced: true,
+    { id: 'pv9', provision_name: 'Residuals', cross_cutting_category: 'confidentiality', tier: 'deferred', deferred_to: 'Requesting business owner (InfoSec consulted)', counterparty_introduced: true,
       standard_position: 'No residuals clause. ChargePoint does not grant any right to use information "retained in unaided memory."',
       fallback_tiers: [], red_line: 'Any clause permitting use of residuals / information retained in the unaided memory of the recipient\'s personnel.',
       rationale: 'Strict red line — guts trade-secret protection. Introduced on the live Vishay deal (§1(f)); no executed ChargePoint agreement in the corpus contains it, so it has no accepted precedent. Promoted to a named red-line provision per the refinement loop. InfoSec concurrence required to ever vary.', negotiated_pct: 6 },
@@ -153,7 +153,7 @@ export const tickets: Ticket[] = [
 
   { id: 'TKT-1031', title: 'Northwind Energy — Charging-as-a-Service Partnership', type: 'multi_agreement', status: 'Red Line Analysis',
     counterparty_name: 'Northwind Energy', assigned_attorney_id: 'u_kirsten', initiator_id: 'u_marcus',
-    created_date: '2026-06-05', sla_target_date: '2026-07-10', priority: 'high', agreement_ids: ['AGR-2180', 'AGR-2181', 'AGR-2182'],
+    created_date: '2026-06-05', sla_target_date: '2026-07-10', priority: 'high', agreement_ids: ['AGR-2180', 'AGR-2181', 'AGR-2182', 'AGR-2183'],
     description: 'Strategic CaaS deal: master services agreement + data processing addendum + initial SOW.' },
 
   { id: 'TKT-1048', title: 'Question — residual clause exposure in evaluation NDAs', type: 'inquiry', status: 'In Progress',
@@ -161,6 +161,10 @@ export const tickets: Ticket[] = [
     created_date: '2026-06-24', sla_target_date: '2026-06-28', priority: 'normal', agreement_ids: [],
     description: 'Finance asks whether we have standard guidance on "residuals" language counterparties keep introducing.' },
 
+  { id: 'TKT-1049', title: 'RFP review — Metro Transit Authority charging RFP terms', type: 'inquiry', status: 'Open',
+    counterparty_name: 'Metro Transit Authority', assigned_attorney_id: 'u_kirsten', initiator_id: 'u_marcus',
+    created_date: '2026-06-23', sla_target_date: '2026-07-03', priority: 'normal', agreement_ids: [],
+    description: 'Business team needs legal review of the liability and insurance sections of the Metro Transit RFP before we respond. No agreement yet — general legal support.' },
   { id: 'TKT-1009', title: 'Mondelez — Mutual NDA', type: 'single_agreement', status: 'Executed',
     counterparty_name: 'Mondelez International', assigned_attorney_id: 'u_eric', initiator_id: 'u_marcus',
     created_date: '2026-05-02', sla_target_date: '2026-05-16', priority: 'normal', closed_date: '2026-05-19', agreement_ids: ['AGR-2150'],
@@ -194,6 +198,9 @@ export const agreements: Agreement[] = [
     status: 'pending_execution', current_version_id: 'V-2182-2', playbook_id: null, paper_origin: 'cp_paper',
     ball_in_court: 'cp_legal', red_line_count: 0, created_date: '2026-06-06', last_activity_date: '2026-06-23', turn_count: 1, contract_value: 850000 },
 
+  { id: 'AGR-2183', ticket_id: 'TKT-1031', title: 'Northwind Site Assessment Letter', agreement_type: 'Other',
+    status: 'draft', current_version_id: 'V-2183-1', playbook_id: null, paper_origin: 'cp_paper',
+    ball_in_court: 'cp_legal', red_line_count: 0, created_date: '2026-06-20', last_activity_date: '2026-06-20', turn_count: 0 },
   { id: 'AGR-2150', ticket_id: 'TKT-1009', title: 'Mondelez Mutual NDA', agreement_type: 'MNDA',
     status: 'executed', current_version_id: 'V-2150-4', playbook_id: 'pb_nda', paper_origin: 'cp_paper',
     ball_in_court: 'cp_legal', red_line_count: 5, created_date: '2026-05-02', executed_date: '2026-05-19', last_activity_date: '2026-05-19', turn_count: 3, contract_value: 0 },
@@ -221,9 +228,10 @@ export const versions: Version[] = [
   { id: 'V-2198-2', agreement_id: 'AGR-2198', version_number: 2, label: 'Draft 2', source: 'counterparty_response',
     document_ref: 'Airbus_MNDA_v2.docx', created_by: 'ai_engine', created_date: '2026-06-20', parent_version_id: 'V-2198-1', change_summary: 'Counterparty redline: 3yr term, subcontractor asymmetry, ICC arbitration.' },
 
-  { id: 'V-2180-1', agreement_id: 'AGR-2180', version_number: 1, label: 'V1', source: 'cp_draft', document_ref: 'Northwind_MSA_v1.docx', created_by: 'ai_engine', created_date: '2026-06-05', parent_version_id: null, change_summary: 'Initial MSA draft from CP MSA template.' },
-  { id: 'V-2180-2', agreement_id: 'AGR-2180', version_number: 2, label: 'Draft 2', source: 'counterparty_response', document_ref: 'Northwind_MSA_v2.docx', created_by: 'ai_engine', created_date: '2026-06-24', parent_version_id: 'V-2180-1', change_summary: 'Counterparty redline: uncapped indemnity, expanded IP license. 2 red lines flagged vs MSA playbook.' },
-  { id: 'V-2180-3', agreement_id: 'AGR-2180', version_number: 3, label: 'V3', source: 'cp_redline', document_ref: 'Northwind_MSA_v3.docx', created_by: 'ai_engine', created_date: '2026-06-24', parent_version_id: 'V-2180-2', change_summary: 'CP working copy — dispositions pending attorney review.' },
+  { id: 'V-2180-1', agreement_id: 'AGR-2180', version_number: 1, label: 'v1', source: 'cp_draft', document_ref: 'Northwind_MSA_v1.docx', created_by: 'ai_engine', created_date: '2026-06-12', parent_version_id: null, change_summary: 'Initial MSA draft from CP MSA template.' },
+  { id: 'V-2180-2', agreement_id: 'AGR-2180', version_number: 2, label: 'v2', source: 'counterparty_response', document_ref: 'Northwind_MSA_v2.docx', created_by: 'ai_engine', created_date: '2026-06-19', parent_version_id: 'V-2180-1', change_summary: 'Counterparty redline: uncapped indemnity, expanded IP license. 2 red lines flagged vs MSA playbook.' },
+  { id: 'V-2183-1', agreement_id: 'AGR-2183', version_number: 1, label: 'v1', source: 'cp_draft', document_ref: 'NWE_Site_Assessment_Letter.pdf', created_by: 'u_kirsten', created_date: '2026-06-20', parent_version_id: null, change_summary: 'Uploaded — no recognized agreement type; tagged generically as Document.' },
+  { id: 'V-2180-3', agreement_id: 'AGR-2180', version_number: 3, label: 'v3', source: 'cp_redline', document_ref: 'Northwind_MSA_v3.docx', created_by: 'ai_engine', created_date: '2026-06-26', parent_version_id: 'V-2180-2', change_summary: 'CP working copy — dispositions pending attorney review.' },
   { id: 'V-2181-1', agreement_id: 'AGR-2181', version_number: 1, label: 'V1', source: 'cp_draft', document_ref: 'Northwind_DPA_v1.docx', created_by: 'ai_engine', created_date: '2026-06-05', parent_version_id: null, change_summary: 'Initial DPA draft.' },
   { id: 'V-2181-2', agreement_id: 'AGR-2181', version_number: 2, label: 'V2', source: 'cp_redline', document_ref: 'Northwind_DPA_v2.docx', created_by: 'u_daniel', created_date: '2026-06-21', parent_version_id: 'V-2181-1', change_summary: 'CP revisions sent to Northwind — awaiting their response.' },
   { id: 'V-2182-1', agreement_id: 'AGR-2182', version_number: 1, label: 'V1', source: 'cp_draft', document_ref: 'Northwind_SOW_v1.docx', created_by: 'ai_engine', created_date: '2026-06-06', parent_version_id: null, change_summary: 'Initial SOW draft.' },
@@ -326,6 +334,15 @@ export const deviations: Deviation[] = [
 // COLLABORATION — threads
 // ============================================================================
 export const messages: Message[] = [
+  // Northwind MSA clause 8 — Daniel tagged 5 days ago, no response (admin tagged-aging demo)
+  { id: 'M-08', thread_type: 'agreement_level', ticket_id: 'TKT-1031', agreement_id: 'AGR-2180', author_id: 'u_kirsten',
+    body: '@Daniel Vohrer clause 8 term/auto-renewal interacts with the DPA retention schedule — confirm the survival window works for privacy before I counter.', tag: 'question',
+    provision_reference: '§8', created_date: '2026-06-22T09:30:00', mentions: ['u_daniel'], resolved: false },
+  // RFP support ticket thread (agreement-less legal support)
+  { id: 'M-RFP1', thread_type: 'deal_level', ticket_id: 'TKT-1049', agreement_id: null, author_id: 'u_marcus',
+    body: 'Metro Transit RFP response is due 10 Jul. Can legal review §4 (liability) and §7 (insurance minimums) of the RFP terms? PDF attached in email.', tag: 'question', created_date: '2026-06-23T10:05:00' },
+  { id: 'M-RFP2', thread_type: 'deal_level', ticket_id: 'TKT-1049', agreement_id: null, author_id: 'u_kirsten',
+    body: 'On it. First pass: their indemnity ask exceeds our standard cap — I will draft suggested exception language for the response. No agreement needed at this stage; keeping this as a support ticket.', tag: 'decision', created_date: '2026-06-24T14:10:00' },
   // R79 — the seeded inquiry (TKT-1048) opens to a real question→response thread, not an empty view.
   { id: 'M-INQ1', thread_type: 'deal_level', ticket_id: 'TKT-1048', agreement_id: null, author_id: 'u_marcus',
     body: 'Quick question — a counterparty keeps asking for a residuals clause in evaluation NDAs. What\'s our exposure and can we ever accept it?', tag: 'question', created_date: '2026-06-26T14:20:00' },
@@ -446,6 +463,9 @@ export const agreementTemplates: AgreementTemplate[] = [
   { id: 'TPL-9002', name: 'ChargePoint Master Services Agreement 2025', agreement_type: 'MSA', origin: 'precedent', status: 'in_review',
     project_id: null, version: 1, owner_id: 'u_eric', created_date: '2026-06-18', source_summary: 'Built from 8 negotiated MSAs.',
     sections: buildSectionsFor('MSA'), playbook_id: 'pb_msa' },
+  { id: 'TPL-9003', name: 'DPA Baseline', agreement_type: 'DPA', origin: 'uploaded', status: 'published',
+    project_id: null, version: 2, owner_id: 'u_daniel', created_date: '2026-05-20', source_summary: 'Uploaded form DPA, aligned to SCC 2021 + CCPA addendum.',
+    sections: buildSectionsFor('DPA'), playbook_id: null },
 ]
 export const templateProjects: TemplateProject[] = [
   { id: 'PRJ-9001', name: 'Technology License Agreement (new form)', goal: 'Build a new CP licensing template modeled on market standards + ChargePoint-specific concepts (network data, firmware, uptime).',

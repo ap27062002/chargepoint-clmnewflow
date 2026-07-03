@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { clsx } from 'clsx'
-import { ListChecks, FileText, MessageSquare, Sparkles, History, AtSign, CheckCircle2, FileQuestion, Wand2, BookOpen, GitCompareArrows, ArrowRight, PanelRightClose, Send, CheckCheck, Layers } from 'lucide-react'
+import { ListChecks, FileText, MessageSquare, Sparkles, History, AtSign, CheckCircle2, FileQuestion, Wand2, BookOpen, GitCompareArrows, ArrowRight, PanelRightClose, Send, CheckCheck, Layers, X as XIcon, MoreVertical, FileDown } from 'lucide-react'
 import { sendToAgent } from '@/agent/engine'
 import { can } from '@/lib/access'
 import type { Version } from '@/types'
@@ -14,7 +14,7 @@ import { RedlineDocView } from '@/views/RedlineDocView'
 import { StageTracker } from '@/views/StageTracker'
 import { Chip, Avatar, Button, Card } from '@/components/ui'
 import { MentionComposer } from '@/components/MentionComposer'
-import { sourceLabel, fmtDateTime } from '@/lib/labels'
+import { sourceLabel, fmtDate, fmtDateTime } from '@/lib/labels'
 import { diffVersions, clauseIdForDeviation, cleanCopyId } from '@/data/documents'
 import { userById } from '@/data/seed'
 
@@ -77,16 +77,34 @@ const diffMeta = {
   unchanged: { label: 'Unchanged', chip: 'bg-slate-100 text-slate-500 ring-slate-400/20' },
 }
 
-function VersionCompare({ versionList, documents }: { versionList: Version[]; documents: Record<string, DocModel> }) {
+function VersionCompare({ versionList, documents, fileBase }: { versionList: Version[]; documents: Record<string, DocModel>; fileBase: string }) {
   const withDocs = versionList.filter((v) => documents[v.id])
   const [aId, setAId] = useState(withDocs[0]?.id)
   const [bId, setBId] = useState(withDocs[withDocs.length - 1]?.id)
+  const [generating, setGenerating] = useState(false)
+  const setToast = useStore((s) => s.setToast)
   const da = documents[aId]
   const db = documents[bId]
   const diffs = da && db ? diffVersions(da, db) : []
+  const va = withDocs.find((v) => v.id === aId), vb = withDocs.find((v) => v.id === bId)
+  // Standalone redline export — zero connection to the send-to-counterparty flow.
+  const generateRedlineFile = () => {
+    if (generating) return
+    setGenerating(true)
+    const fname = `${fileBase}_${va?.label ?? 'a'}_vs_${vb?.label ?? 'b'}_Redline.docx`
+    setTimeout(() => {
+      setGenerating(false)
+      setToast(`Redline generated. Downloading ${fname}`)
+      const body = diffs.map((d) => `${d.heading}\n  BEFORE: ${d.aText}\n  AFTER: ${d.bText}`).join('\n\n')
+      const blob = new Blob([`REDLINE — ${fileBase} ${va?.label} vs ${vb?.label}\n\n${body}`], { type: 'application/msword' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a'); link.href = url; link.download = fname; link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 4000)
+    }, 900)
+  }
   const Picker = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
     <select value={value} onChange={(e) => onChange(e.target.value)} className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[12.5px] font-semibold text-slate-700 outline-none">
-      {withDocs.map((v) => <option key={v.id} value={v.id}>{v.label} · {sourceLabel[v.source]}</option>)}
+      {withDocs.map((v) => <option key={v.id} value={v.id}>{v.label} - {sourceLabel[v.source]} - {fmtDate(v.created_date)}</option>)}
     </select>
   )
   return (
@@ -94,6 +112,7 @@ function VersionCompare({ versionList, documents }: { versionList: Version[]; do
       <div className="mb-2 rounded-lg bg-slate-50 px-3 py-2 text-[11.5px] text-slate-500">This is an internal <b>audit-trail comparison</b> (history of changes) — not the redline you send. To send a clean copy + redline to the counterparty, use <b>Send back</b>.</div>
       <div className="mb-4 flex items-center gap-2">
         <Picker value={aId} onChange={setAId} /><ArrowRight size={15} className="text-slate-400" /><Picker value={bId} onChange={setBId} />
+        <Button size="sm" variant="primary" icon={<FileDown size={13} />} onClick={generateRedlineFile} disabled={generating}>{generating ? 'Generating…' : 'Generate Redline'}</Button>
         <span className="ml-auto text-[12px] font-semibold text-slate-400">{diffs.length} clause change{diffs.length === 1 ? '' : 's'}</span>
       </div>
       {diffs.length === 0
@@ -132,6 +151,83 @@ function NoPlaybook({ title, type }: { title: string; type: string }) {
   )
 }
 
+// Version model (Eric §7): only MAJOR versions live in the dropdown. Internal drafting
+// cycles are captured as audit history — this panel shows them, plus per-version
+// correction (reassign / renumber) for when auto-detection got it wrong (Intake §5).
+function EditHistoryPanel({ agreementId, versions, onClose }: { agreementId: string; versions: Version[]; onClose: () => void }) {
+  const agreements = useStore((s) => s.agreements)
+  const tickets = useStore((s) => s.tickets)
+  const reassignVersion = useStore((s) => s.reassignVersion)
+  const [kebab, setKebab] = useState<string | null>(null)
+  const [reassign, setReassign] = useState<string | null>(null)
+  const [target, setTarget] = useState('')
+  const [renumber, setRenumber] = useState('')
+  const ag = agreements.find((a) => a.id === agreementId)
+  const dealAgs = agreements.filter((a) => a.ticket_id === ag?.ticket_id)
+  const cur = versions[versions.length - 1]
+  const SAVES = [
+    { who: 'Kirsten Sachs', what: 'edited clause 4', when: 'Fri 2:14 PM' },
+    { who: 'Daniel Vohrer', what: 'commented on §3(e)', when: 'Wed 11:02 AM' },
+    { who: 'Kirsten Sachs', what: 'accepted 2 counterparty changes', when: 'Wed 9:48 AM' },
+    { who: 'Autosave', what: 'internal working save', when: 'Tue 6:31 PM' },
+  ]
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-6" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-pop">
+        <div className="mb-1 flex items-center justify-between">
+          <h3 className="text-[14px] font-bold text-slate-800">Edit history — {ag?.title}</h3>
+          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"><XIcon size={15} /></button>
+        </div>
+        <p className="mb-3 text-[11.5px] text-slate-400">Only major versions (sent to / received from the counterparty) appear in the version dropdown. Internal drafting cycles are captured here as audit history — not as new versions.</p>
+
+        <div className="mb-1 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">Internal saves within {cur?.label ?? 'the working version'}</div>
+        <div className="mb-4 space-y-1">
+          {SAVES.map((sv, i) => (
+            <div key={i} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 text-[12px] text-slate-600">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300" />
+              <span><b>{sv.who}</b> {sv.what}</span>
+              <span className="ml-auto shrink-0 text-[11px] text-slate-400">{sv.when}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="mb-1 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">Major versions</div>
+        <div className="space-y-1">
+          {versions.map((v) => (
+            <div key={v.id} className="relative flex items-center gap-2 rounded-lg border border-slate-100 px-3 py-2 text-[12.5px]">
+              <span className="font-bold text-slate-700">{v.label}</span>
+              <Chip className="bg-slate-100 text-slate-500 ring-slate-300/30">{sourceLabel[v.source]}</Chip>
+              <span className="text-[11px] text-slate-400">{fmtDate(v.created_date)} · {v.document_ref}</span>
+              <button onClick={() => setKebab(kebab === v.id ? null : v.id)} className="ml-auto rounded p-1 text-slate-300 hover:bg-slate-100 hover:text-slate-500"><MoreVertical size={13} /></button>
+              {kebab === v.id && (
+                <div className="absolute right-2 top-9 z-10 w-40 rounded-lg border border-slate-200 bg-white p-1 shadow-pop">
+                  <button onClick={() => { setReassign(v.id); setKebab(null); setTarget(dealAgs.find((a) => a.id !== agreementId)?.id ?? dealAgs[0]?.id ?? '') }}
+                    className="block w-full rounded-md px-2 py-1.5 text-left text-[12px] text-slate-600 hover:bg-slate-50">Reassign version…</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {reassign && (
+          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/50 p-3">
+            <div className="text-[12px] font-bold text-slate-700">Reassign {versions.find((v) => v.id === reassign)?.label} — wrong document or wrong number?</div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <select value={target} onChange={(e) => setTarget(e.target.value)} className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[12px] outline-none">
+                {dealAgs.map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}
+                {tickets.filter((t) => t.id !== ag?.ticket_id).slice(0, 2).map((t) => agreements.filter((a) => a.ticket_id === t.id).slice(0, 1).map((a) => <option key={a.id} value={a.id}>{a.title} ({t.counterparty_name})</option>))}
+              </select>
+              <input value={renumber} onChange={(e) => setRenumber(e.target.value)} placeholder="Renumber (e.g. 4)" className="w-32 rounded-lg border border-slate-300 px-2 py-1 text-[12px] outline-none" />
+              <Button size="sm" variant="primary" onClick={() => { reassignVersion(reassign, target, renumber ? Number(renumber) : undefined); setReassign(null) }}>Apply</Button>
+              <Button size="sm" variant="outline" onClick={() => setReassign(null)}>Cancel</Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // Send-back (Eric §3) — everything is PREPARED automatically; this is a review-and-confirm
 // screen, not a build-it-yourself pipeline. The doc was cleaned in real time as you dispositioned;
 // the redline auto-generates; the summary is one optional click; then Send.
@@ -148,6 +244,7 @@ function SendBackPanel({ agreementId }: { agreementId: string }) {
   const send = useStore((s) => s.sendRedline)
   const navigate = useStore((s) => s.navigate)
 
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const devs = allDevs.filter((d) => d.agreement_id === agreementId)
   const counts = {
     open: devs.filter((d) => d.disposition_status === 'open').length,
@@ -236,15 +333,40 @@ function SendBackPanel({ agreementId }: { agreementId: string }) {
 
         <div className="flex items-center justify-between rounded-xl border border-ai-200 bg-ai-50/40 px-4 py-3">
           <span className="text-[12.5px] text-slate-600">{sendBack.staged ? '✓ Sent — status is now In Negotiation, ball in their court.' : `Sends the clean copy + the redline${sendBack.summary ? ' + your cover summary' : ''} to the counterparty, staged under your account.`}</span>
-          <Button variant="ai" icon={<Send size={14} />} disabled={!sendBack.redline || sendBack.staged} onClick={() => send(agreementId)}>Send to counterparty</Button>
+          <Button variant="ai" icon={<Send size={14} />} disabled={!sendBack.redline || sendBack.staged} onClick={() => setConfirmOpen(true)}>Send to counterparty</Button>
         </div>
+
+        {/* Confirmation modal (Eric §9): pending-issues flag + the two attached files */}
+        {confirmOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-6" onClick={() => setConfirmOpen(false)}>
+            <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-white p-5 shadow-pop">
+              <h3 className="text-[14px] font-bold text-slate-800">Send to counterparty?</h3>
+              {counts.open > 0 && (
+                <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[12.5px] text-amber-800 ring-1 ring-amber-200">
+                  ⚠ {counts.open} unresolved item{counts.open === 1 ? '' : 's'} — proceed anyway?
+                </div>
+              )}
+              <div className="mt-3 text-[11px] font-bold uppercase tracking-wide text-slate-400">Attached files</div>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                <Chip className="bg-brand-50 text-brand-700 ring-brand-500/20"><FileText size={11} /> Clean version (.docx)</Chip>
+                <Chip className="bg-red-50 text-red-700 ring-red-500/20"><GitCompareArrows size={11} /> Redline vs {baseLabel} (.docx)</Chip>
+              </div>
+              <p className="mt-2 text-[12px] text-slate-500">Both the clean version and a redline against the last received version will be sent.</p>
+              <div className="mt-4 flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setConfirmOpen(false)}>Cancel</Button>
+                <Button variant="ai" icon={<Send size={13} />} onClick={() => { send(agreementId); setConfirmOpen(false) }}>Send</Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-// Two views only: Ask Claude (which carries the playbook-review walkthrough) and Comments.
-type RightTab = 'ai' | 'comments' | null
+// Right panel = the AI assistant ONLY (Eric doc-review §1). Comments live inline in the
+// document margin, anchored to their clauses.
+type RightTab = 'ai' | null
 
 export function AgreementReview({ agreementId }: { agreementId: string }) {
   const agreement = useStore((s) => s.agreements.find((a) => a.id === agreementId)!)
@@ -267,6 +389,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
   const hasDoc = !!activeDoc
 
   const askAiAboutSelection = (text: string) => { setRightTab('ai'); setAiSeed((prev) => ({ text, nonce: (prev?.nonce ?? 0) + 1 })) }
+  const [historyOpen, setHistoryOpen] = useState(false)
   const focusDeviation = (deviationId: string) => {
     const cid = clauseIdForDeviation(activeDoc, deviationId) ?? clauseIdForDeviation(documents['V-2201-2'], deviationId)
     if (cid) setFocusClause(cid)
@@ -300,14 +423,19 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-          <History size={13} />
-          {versions.map((v) => (
-            <button key={v.id} onClick={() => { setSelVer(v.id); navigate({ reviewMode: 'directive' }) }} title={`${sourceLabel[v.source]} — ${v.change_summary}`}
-              className={clsx('rounded px-1.5 py-0.5 font-semibold transition', v.id === activeVerId ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200')}>{v.label}</button>
-          ))}
+        <div className="flex flex-col items-end gap-0.5">
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+            <History size={13} />
+            {/* Major versions only — a version = something received from / sent to the counterparty. */}
+            <select value={activeVerId} onChange={(e) => { setSelVer(e.target.value); navigate({ reviewMode: 'directive' }) }}
+              className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[12px] font-semibold text-slate-700 outline-none">
+              {versions.map((v) => <option key={v.id} value={v.id}>{v.label} - {sourceLabel[v.source]} - {fmtDate(v.created_date)}</option>)}
+            </select>
+          </div>
+          <button onClick={() => setHistoryOpen(true)} className="text-[10.5px] font-semibold text-slate-400 underline-offset-2 hover:text-brand-600 hover:underline">View edit history</button>
         </div>
       </div>
+      {historyOpen && <EditHistoryPanel agreementId={agreementId} versions={versions} onClose={() => setHistoryOpen(false)} />}
 
       {/* body */}
       <div className="flex min-h-0 flex-1">
@@ -318,7 +446,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
         ) : mode === 'redline' ? (
           <div className="min-w-0 flex-1"><RedlineDocView agreementId={agreementId} /></div>
         ) : mode === 'compare' ? (
-          <div className="min-w-0 flex-1"><VersionCompare versionList={versions} documents={documents} /></div>
+          <div className="min-w-0 flex-1"><VersionCompare versionList={versions} documents={documents} fileBase={`${agreement.title.split(' ')[0]}_${agreement.agreement_type === 'Other' ? 'Document' : agreement.agreement_type}`} /></div>
         ) : mode === 'issues' ? (
           <div className="min-w-0 flex-1 overflow-y-auto"><IssuesView agreementId={agreementId} onViewInDoc={(id) => { navigate({ reviewMode: 'directive' }); focusDeviation(id) }} /></div>
         ) : (
@@ -336,18 +464,18 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
             {rightTab === null ? (
               <div className="flex w-12 shrink-0 flex-col items-center gap-2 bg-white py-3">
                 <button onClick={() => setRightTab('ai')} title="Ask Claude" className="flex h-9 w-9 items-center justify-center rounded-lg text-ai-600 hover:bg-ai-50"><Sparkles size={16} /></button>
-                <button onClick={() => setRightTab('comments')} title="Comments" className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><MessageSquare size={16} /></button>
               </div>
             ) : (
               <div className="flex w-[440px] shrink-0 flex-col bg-white">
-                <div className="flex shrink-0 items-center gap-0.5 border-b border-slate-100 px-2 py-2">
-                  <RailBtn k="ai" icon={<Sparkles size={14} />} label="Ask Claude" ai />
-                  <RailBtn k="comments" icon={<MessageSquare size={14} />} label="Comments" />
-                  <button onClick={() => setRightTab(null)} title="Collapse panel" className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><PanelRightClose size={15} /></button>
+                <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 text-[13px] font-bold text-ai-700"><Sparkles size={14} /> Ask Claude</div>
+                    <div className="text-[11px] text-slate-400">Playbook guidance, precedents, and drafting help.</div>
+                  </div>
+                  <button onClick={() => setRightTab(null)} title="Collapse panel" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><PanelRightClose size={15} /></button>
                 </div>
                 <div className="min-h-0 flex-1">
-                  {rightTab === 'ai' ? <AIPanel agreementTitle={agreement.title} seed={aiSeed} />
-                    : <CommentsPanel ticketId={agreement.ticket_id} agreementId={agreementId} provisionOptions={(activeDoc?.clauses ?? []).map((c) => c.heading).filter(Boolean)} />}
+                  <AIPanel agreementTitle={agreement.title} seed={aiSeed} />
                 </div>
               </div>
             )}

@@ -1,15 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
-import { Bold, Italic, Underline, List, Table, Pilcrow, Check, X, CornerUpLeft, Pencil, Eye, Plus, Sparkles, BookOpen, Users, Lock } from 'lucide-react'
+import { Bold, Italic, Underline, List, Table, Pilcrow, Check, X, CornerUpLeft, Pencil, Eye, Plus, Sparkles, BookOpen, Users, Lock, MessageSquare, MessageSquareOff, Info, Flag, MoreHorizontal } from 'lucide-react'
 import { useStore } from '@/store'
 import { sendToAgent } from '@/agent/engine'
 import { can } from '@/lib/access'
 import { Chip, Avatar } from '@/components/ui'
-import { riskMeta, dispositionMeta } from '@/lib/labels'
+import { riskMeta, dispositionMeta, sourceLabel, fmtDate } from '@/lib/labels'
 import { userById } from '@/data/seed'
 import type { DocRun } from '@/data/documents'
 import type { Deviation } from '@/types'
+import { MentionComposer } from '@/components/MentionComposer'
 
 function ChangeRun({ run, versionId, editable }: { run: DocRun; versionId: string; editable: boolean }) {
   const acceptChange = useStore((s) => s.acceptChange)
@@ -20,6 +21,15 @@ function ChangeRun({ run, versionId, editable }: { run: DocRun; versionId: strin
     : run.type === 'del'
       ? (run.party === 'counterparty' ? 'tc-del-cp' : 'tc-del')
       : ''
+  if (run.linkTo) {
+    return (
+      <a
+        className="cursor-pointer font-semibold text-brand-600 underline decoration-brand-300 underline-offset-2"
+        title="Dynamic cross-reference — click to jump"
+        onClick={(e) => { e.preventDefault(); const el = document.querySelector(`#clause-${run.linkTo}`); el?.scrollIntoView({ behavior: 'smooth', block: 'center' }); el?.classList.add('ring-2', 'ring-brand-400'); setTimeout(() => el?.classList.remove('ring-2', 'ring-brand-400'), 1500) }}
+      >{run.text}</a>
+    )
+  }
   if (!run.cid || !editable) return <span className={cls}>{run.text}</span>
   return (
     <span className="group relative whitespace-normal">
@@ -81,6 +91,32 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
   // the document, anchored to their clauses, with a filter (All / AI / Team). ----
   const setDisposition = useStore((s) => s.setDisposition)
   const resolveMention = useStore((s) => s.resolveMention)
+  const proposeCounter = useStore((s) => s.proposeCounter)
+  const keepCounter = useStore((s) => s.keepCounter)
+  const discardCounter = useStore((s) => s.discardCounter)
+  const pendingCounter = useStore((s) => s.pendingCounter)
+  const showComments = useStore((s) => s.showDocComments)
+  const setShowComments = useStore((s) => s.setShowDocComments)
+  const flagAnalysis = useStore((s) => s.flagAnalysis)
+  const setToast = useStore((s) => s.setToast)
+  const versions = useStore((s) => s.versions)
+  const tickets = useStore((s) => s.tickets)
+  const agreement = useStore((s) => s.agreements.find((x) => x.id === agreementId))
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [flagMenu, setFlagMenu] = useState<string | null>(null)
+  // Counter flow: when a counter is proposed, the cursor lands in the inserted text.
+  useEffect(() => {
+    if (pendingCounter && containerRef.current) {
+      const ins = containerRef.current.querySelector(`#clause-${pendingCounter.clauseId} .tc-ins`) as HTMLElement | null
+      if (ins) {
+        ins.focus()
+        const sel = window.getSelection(); const range = document.createRange()
+        range.selectNodeContents(ins); range.collapse(false); sel?.removeAllRanges(); sel?.addRange(range)
+        ins.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingCounter?.deviationId])
   const isVisibleClause = (c: { runs: DocRun[] }) => !(c.runs.length === 0 || c.runs.every((r) => r.type === 'del' || !r.text.trim()))
   const clauseIdFor = (d: Deviation): string | undefined =>
     doc?.clauses.find((c) => (c.deviationId === d.id || c.id === d.source_clause_id) && isVisibleClause(c))?.id
@@ -97,6 +133,9 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
     })?.id
   }
   const [marginFilter, setMarginFilter] = useState<'all' | 'ai' | 'team'>('all')
+  const [composerOpen, setComposerOpen] = useState(false)
+  const users = useStore((s) => s.users)
+  const postMessage = useStore((s) => s.postMessage)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const docDevs = devs.filter((d) => !!clauseIdFor(d))
   const teamMsgs = messages.filter((m) => m.thread_type === 'agreement_level' && m.agreement_id === agreementId && !!clauseForRef(m.provision_reference))
@@ -209,6 +248,14 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
           <span className="tc-del-cp font-semibold">deletion</span>
           <span className="text-slate-400">· counterparty blue · CP green</span>
         </div>
+        <div className="mx-1 h-4 w-px bg-slate-200" />
+        <button onClick={() => setShowComments(!showComments)} title={showComments ? 'Hide comments — clean document' : 'Show comments'}
+          className={clsx('flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-semibold transition', showComments ? 'text-slate-600 hover:bg-slate-100' : 'bg-slate-800 text-white')}>
+          {showComments ? <MessageSquare size={13} /> : <MessageSquareOff size={13} />} {showComments ? 'Hide comments' : 'Comments hidden'}
+        </button>
+        <button onClick={() => setDetailsOpen((v) => !v)} title="Document details" className={clsx('flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-semibold', detailsOpen ? 'bg-slate-100 text-slate-700' : 'text-slate-600 hover:bg-slate-100')}>
+          <Info size={13} /> Details
+        </button>
         {canEdit && (
           <div className="ml-auto flex items-center gap-1.5">
             {edit && (
@@ -240,19 +287,41 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
             : holderId
               ? <button onClick={() => checkoutDoc(agreementId)} className="rounded-md border border-amber-200 px-2 py-0.5 text-[11.5px] font-semibold text-amber-700 hover:bg-amber-50">Take the pen</button>
               : <button onClick={() => checkoutDoc(agreementId)} className="rounded-md border border-slate-200 px-2 py-0.5 text-[11.5px] font-semibold text-slate-600 hover:bg-slate-50">Check out</button>)}
+          <span className="text-[10px] font-bold uppercase tracking-wide text-slate-300">Demo variants</span>
           <div className="flex rounded-lg border border-slate-200 p-0.5">
-            <button onClick={() => setCollabMode(agreementId, 'live')} className={clsx('flex items-center gap-1 rounded-md px-2 py-0.5 text-[11.5px] font-semibold', collabMode === 'live' ? 'bg-brand-500 text-white' : 'text-slate-500')}><Users size={12} /> Live co-editing</button>
-            <button onClick={() => setCollabMode(agreementId, 'locked')} className={clsx('flex items-center gap-1 rounded-md px-2 py-0.5 text-[11.5px] font-semibold', collabMode === 'locked' ? 'bg-slate-800 text-white' : 'text-slate-500')}><Lock size={12} /> Single-editor lock</button>
+            <button onClick={() => setCollabMode(agreementId, 'live')} title="Variant A — Google-Docs-style presence" className={clsx('flex items-center gap-1 rounded-md px-2 py-0.5 text-[11.5px] font-semibold', collabMode === 'live' ? 'bg-brand-500 text-white' : 'text-slate-500')}><Users size={12} /> A · Presence</button>
+            <button onClick={() => setCollabMode(agreementId, 'locked')} title="Variant B — Word checkout model" className={clsx('flex items-center gap-1 rounded-md px-2 py-0.5 text-[11.5px] font-semibold', collabMode === 'locked' ? 'bg-slate-800 text-white' : 'text-slate-500')}><Lock size={12} /> B · Checkout</button>
           </div>
         </div>
       </div>
-      <div className={clsx('shrink-0 px-3 py-1 text-[11px]', lockedByOther ? 'bg-red-50 text-red-700' : collabMode === 'live' ? 'bg-brand-50/60 text-brand-700' : 'bg-amber-50 text-amber-700')}>
-        {lockedByOther
-          ? `🔒 Locked by ${userById(holderId!)?.name ?? 'another user'}${lock?.locked_at ? ` since ${lock.locked_at}` : ''} — this document is read-only for you until they release it. (Switch persona to ${userById(holderId!)?.name.split(' ')[0]} to edit, or "Take the pen".)`
-          : collabMode === 'live'
-            ? 'Live co-editing — everyone can view and comment; each clause is edit-locked to one editor at a time so two people never overwrite the same clause. No one is shut out.'
-            : `Single-editor lock — you hold the pen; everyone else is read-only until you Release. Guarantees integrity by allowing only one editor at a time.`}
+      <div className={clsx('flex shrink-0 items-center gap-2 px-3 py-1 text-[11px]', collabMode === 'locked' ? 'bg-amber-50 text-amber-800' : 'bg-brand-50/60 text-brand-700')}>
+        {collabMode === 'locked' ? (
+          <>
+            <Lock size={11} className="shrink-0" />
+            <span>Checked out by <b>{userById(holderId ?? 'u_kirsten')?.name ?? 'Kirsten Sachs'}</b> (in Word) since 10:42 AM. {lockedByOther || !holderId ? 'You have read-only access.' : 'Others have read-only access.'}</span>
+            <button onClick={() => { releaseDoc(agreementId); setToast('Formatting changes ingested'); setCollabMode(agreementId, 'live') }}
+              className="ml-auto rounded-md bg-amber-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-amber-700">Check in</button>
+          </>
+        ) : (
+          <span>Live presence — everyone can view and comment; colored cursors show who's where. Each clause is edit-locked to one editor at a time.</span>
+        )}
       </div>
+      {/* Details drawer — embedded metadata identifier (Intake §4) */}
+      {detailsOpen && (() => {
+        const v = versions.find((x) => x.id === versionId)
+        const tk = tickets.find((x) => x.id === agreement?.ticket_id)
+        const cpAbbr = (tk?.counterparty_name ?? 'CP').replace(/[^A-Za-z ]/g, '').split(' ').map((w) => w[0]).join('').slice(0, 3).toUpperCase()
+        const docIdMeta = `CLM-${cpAbbr}-${agreement?.agreement_type === 'Other' ? 'DOC' : agreement?.agreement_type}-00${v?.version_number ?? 1}`
+        return (
+          <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-4 py-2.5 text-[12px]">
+            <div className="grid grid-cols-[160px_1fr] gap-y-1">
+              <span className="font-semibold text-slate-400">File</span><span className="text-slate-700">{v?.document_ref ?? '—'} · {v ? sourceLabel[v.source] : ''} · {v ? fmtDate(v.created_date) : ''}</span>
+              <span className="font-semibold text-slate-400">Embedded document ID</span>
+              <span className="text-slate-700"><code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] ring-1 ring-slate-200">{docIdMeta}</code> <span className="text-slate-400">(metadata, not visible in document body). Used to auto-match returning counterparty versions.</span></span>
+            </div>
+          </div>
+        )
+      })()}
 
       <div ref={containerRef} onMouseUp={onSelect} onScroll={() => setAskBtn(null)} className="flex-1 overflow-y-auto py-6">
         {askBtn && createPortal(
@@ -276,23 +345,54 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
         <div className="doc-prose min-w-0 max-w-2xl flex-1 rounded-lg bg-white p-10 font-serif text-[13.5px] text-slate-800 shadow-panel">
           <h1>{doc.title}</h1>
           <p className="mb-5 text-center text-[11px] not-italic text-slate-400">{doc.subtitle}</p>
+          {/* Auto-generated Table of Contents (formatting-fidelity showcase) */}
+          {doc.toc && (
+            <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50/60 px-5 py-3 not-italic">
+              <div className="mb-1 text-center text-[11px] font-bold uppercase tracking-widest text-slate-400">Table of Contents</div>
+              {doc.toc.map((t, i) => (
+                <button key={i} onClick={() => flashClause(t.clauseId)} className="flex w-full items-baseline gap-1 py-0.5 text-left text-[12px] text-slate-600 hover:text-brand-700">
+                  <span className="whitespace-pre">{t.label}</span>
+                  <span className="flex-1 border-b border-dotted border-slate-300" />
+                  <span className="font-mono text-[10px] text-slate-400">{i + 2}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {doc.clauses.map((c) => {
             const dev = c.deviationId ? devs.find((d) => d.id === c.deviationId) : undefined
             // A rejected counterparty-introduced clause resolves to nothing — drop it from the clean doc.
             if (c.runs.length === 0 || c.runs.every((r) => r.type === 'del' || !r.text.trim())) return null
             const decided = dev && dev.disposition_status !== 'open'
+            const pending = pendingCounter?.clauseId === c.id && pendingCounter.versionId === versionId
+            const lvl = c.level ?? 1
             return (
-              <div key={c.id} id={`clause-${c.id}`} className="clause rounded-md px-2 py-1 transition">
+              <div key={c.id} id={`clause-${c.id}`} className={clsx('clause relative rounded-md px-2 py-1 transition', pending && 'bg-amber-50/40 ring-1 ring-amber-200')} style={{ marginLeft: (lvl - 1) * 18 }}>
                 {c.heading && (
                   <div className="flex items-center gap-2">
-                    <h2 className="!mb-1">{c.heading}</h2>
-                    {/* open issue → risk chip; decided → calm disposition chip (no lingering red) */}
-                    {dev && (decided
+                    <h2 className={clsx('!mb-1', lvl === 2 && '!text-[13px]', lvl >= 3 && '!text-[12.5px] !font-semibold')}>{c.heading}</h2>
+                    {/* open issue → risk chip; decided → calm disposition chip. Hidden with comments off. */}
+                    {showComments && dev && (decided
                       ? <Chip className={clsx('ring-1 ring-inset', dispositionMeta[dev.disposition_status].chip)}>{dev.disposition_status === 'accepted' ? '✓' : dev.disposition_status === 'countered' ? '↩' : '✕'} {dispositionMeta[dev.disposition_status].label}</Chip>
                       : <Chip className={clsx('ring-1 ring-inset', riskMeta[dev.risk_category].chip)}><span className={clsx('h-1.5 w-1.5 rounded-full', riskMeta[dev.risk_category].dot)} />{riskMeta[dev.risk_category].label}</Chip>)}
                   </div>
                 )}
-                {canEdit && edit && proseEdit ? (
+                {pending ? (
+                  <>
+                    {/* Counter flow: the AI counter language is IN the document as a tracked change,
+                        immediately editable — the caret lands in the underlined insertion. */}
+                    <p>
+                      {c.runs.map((r, i) => r.type === 'ins'
+                        ? <span key={i} className="tc-ins rounded-sm outline-none ring-amber-300 focus:ring-1" contentEditable suppressContentEditableWarning data-counter-ins>{r.text}</span>
+                        : <span key={i} className={r.type === 'del' ? 'tc-del' : ''} contentEditable={false}>{r.text}</span>)}
+                    </p>
+                    <div className="absolute -top-3 right-2 z-10 flex items-center gap-1 rounded-full bg-slate-900 p-0.5 shadow-pop">
+                      <button onClick={() => { const t = containerRef.current?.querySelector(`#clause-${c.id} [data-counter-ins]`)?.textContent ?? undefined; keepCounter(pendingCounter!.deviationId, t ?? undefined) }}
+                        className="flex items-center gap-1 rounded-full bg-brand-500 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-brand-600"><Check size={11} /> Keep counter</button>
+                      <button onClick={() => discardCounter(pendingCounter!.deviationId)}
+                        className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold text-slate-300 hover:bg-white/10"><X size={11} /> Discard</button>
+                    </div>
+                  </>
+                ) : canEdit && edit && proseEdit ? (
                   <p
                     contentEditable
                     suppressContentEditableWarning
@@ -300,16 +400,33 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
                     className="cursor-text rounded ring-1 ring-dashed ring-ai-200 focus:outline-none focus:ring-ai-400"
                   >{cleanText(c.runs)}</p>
                 ) : (
-                  <p>{c.runs.map((r, i) => <ChangeRun key={i} run={r} versionId={versionId} editable={canEdit && edit} />)}</p>
+                  // Attorneys can click straight into the document and type their own counter —
+                  // the body is contenteditable (mock-level) without touching any button.
+                  <p contentEditable={canEdit && !edit} suppressContentEditableWarning className={clsx(canEdit && !edit && 'cursor-text focus:outline-none')}>
+                    {c.runs.map((r, i) => <ChangeRun key={i} run={r} versionId={versionId} editable={canEdit && edit} />)}
+                  </p>
                 )}
                 {canEdit && edit && !proseEdit && c.heading && <ClauseEditor versionId={versionId} clauseId={c.id} />}
+                {/* Variant A — presence: a colleague's live cursor in the document */}
+                {collabMode === 'live' && collaborators[0] && c.id === doc.clauses[Math.min(4, doc.clauses.length - 1)].id && (
+                  <span className="pointer-events-none absolute -left-1 top-2 flex items-center not-italic">
+                    <span className="h-4 w-0.5 animate-pulse rounded" style={{ background: userById(collaborators[0])?.color ?? '#0369a1' }} />
+                    <span className="ml-0.5 rounded px-1 py-px text-[9px] font-bold text-white" style={{ background: userById(collaborators[0])?.color ?? '#0369a1' }}>{userById(collaborators[0])?.name.split(' ')[0]}</span>
+                  </span>
+                )}
               </div>
             )
           })}
+          {/* Footnotes (formatting-fidelity showcase) */}
+          {doc.footnotes && (
+            <div className="mt-8 border-t border-slate-200 pt-3">
+              {doc.footnotes.map((f, i) => <p key={i} className="!mb-1 text-[11px] not-italic text-slate-500">{f}</p>)}
+            </div>
+          )}
         </div>
 
         {/* Margin comments — AI analysis AND team comments, anchored to their clauses, filterable. */}
-        {(docDevs.length > 0 || teamMsgs.length > 0) && (
+        {showComments && (docDevs.length > 0 || teamMsgs.length > 0) && (
           <div className="hidden w-[280px] shrink-0 lg:block">
             {/* filter: what do you want to see in the margin? */}
             <div className="mb-2 flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-card">
@@ -319,10 +436,19 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
                   {label}
                 </button>
               ))}
+              <button onClick={() => setComposerOpen((v) => !v)} title="New comment on a clause"
+                className={clsx('ml-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[13px] font-bold', composerOpen ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-100')}>+</button>
             </div>
+            {composerOpen && (
+              <div className="mb-2 rounded-lg border border-slate-200 bg-white p-2 shadow-card">
+                <MentionComposer people={users} provisionOptions={doc.clauses.map((c) => c.heading).filter(Boolean)}
+                  placeholder="Comment on a clause… type @ to tag for sign-off" cta="Post"
+                  onPost={(m) => { postMessage({ thread_type: 'agreement_level', ticket_id: agreement?.ticket_id ?? '', agreement_id: agreementId, body: m.body, mentions: m.mentions, provision_reference: m.provision_reference }); setComposerOpen(false); setMarginFilter('all') }} />
+              </div>
+            )}
             {marginItems.length === 0 && (
               <div className="rounded-lg border border-dashed border-slate-200 bg-white/60 p-3 text-center text-[11px] text-slate-400">
-                {marginFilter === 'team' ? 'No team comments anchored to this document yet — add one from the Comments tab and pick a clause.' : 'Nothing to show here.'}
+                {marginFilter === 'team' ? 'No team comments anchored to this document yet — use + to add one on a clause.' : 'Nothing to show here.'}
               </div>
             )}
             <div ref={colRef} className="relative" style={{ minHeight: colH }}>
@@ -364,7 +490,21 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
                       <Sparkles size={11} className="shrink-0 text-ai-600" />
                       <span className="truncate text-[11.5px] font-bold text-slate-700">{d.provision_name}</span>
                       <span className="ml-auto shrink-0 font-mono text-[10px] text-slate-400">{d.section_reference}</span>
+                      <span className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => setFlagMenu(flagMenu === d.id ? null : d.id)} title="Flag: incorrect analysis" className="rounded p-0.5 text-slate-300 hover:bg-slate-100 hover:text-slate-500"><MoreHorizontal size={12} /></button>
+                        {flagMenu === d.id && (
+                          <span className="absolute right-0 top-5 z-20 block w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-pop">
+                            <span className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400"><Flag size={9} /> Flag: incorrect analysis</span>
+                            {['Should have been Redline', 'Should have been Fallback', 'False positive'].map((r) => (
+                              <button key={r} onClick={() => { flagAnalysis(d.id, r); setFlagMenu(null) }} className="block w-full rounded-md px-2 py-1 text-left text-[11px] text-slate-600 hover:bg-slate-50">{r}</button>
+                            ))}
+                          </span>
+                        )}
+                      </span>
                     </div>
+                    {pendingCounter?.deviationId === d.id && (
+                      <div className="mt-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-[10.5px] font-semibold text-amber-700 ring-1 ring-amber-200">↩ Counter proposed — edit the underlined text in the document, then Keep or Discard.</div>
+                    )}
                     {decided ? (
                       <div className="mt-1.5 flex items-center gap-1.5">
                         <Chip className={clsx('ring-1 ring-inset', dispositionMeta[d.disposition_status].chip)}>
@@ -383,15 +523,16 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
                           <>
                             <div className="mt-1.5 text-[10px] font-bold uppercase tracking-wide text-brand-600">Our standard</div>
                             <div className="text-[11px] leading-snug text-slate-600">{d.template_position}</div>
+                            <button onClick={(e) => { e.stopPropagation(); flashClause(it.clauseId) }} className="mt-1.5 flex items-center gap-1 text-[10.5px] font-semibold text-brand-600 hover:underline">→ Clause {d.section_reference} in the document</button>
                           </>
                         )}
-                        <button onClick={(e) => { e.stopPropagation(); setExpanded((p) => ({ ...p, [it.uid]: !isOpen })) }} className="mt-1 text-[10.5px] font-semibold text-slate-400 hover:text-slate-600">{isOpen ? 'Less' : 'More'}</button>
+                        <button onClick={(e) => { e.stopPropagation(); setExpanded((p) => ({ ...p, [it.uid]: !isOpen })) }} className="mt-1 text-[10.5px] font-semibold text-slate-400 hover:text-slate-600">{isOpen ? 'See less' : 'See more'}</button>
                         {roleCanEdit && !lockedByOther && (
                           <div className="mt-1.5 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                             {([['accepted', 'Accept', Check, 'bg-brand-500 border-brand-500 text-white', 'hover:bg-brand-50 hover:text-brand-700'],
                                ['countered', 'Counter', CornerUpLeft, 'bg-amber-500 border-amber-500 text-white', 'hover:bg-amber-50 hover:text-amber-700'],
                                ['rejected', 'Reject', X, 'bg-red-500 border-red-500 text-white', 'hover:bg-red-50 hover:text-red-700']] as const).map(([st, label, Icon, filled, tone]) => (
-                              <button key={st} onClick={() => setDisposition(d.id, st)} title={rec === st ? 'AI-recommended action' : undefined}
+                              <button key={st} onClick={() => (st === 'countered' ? proposeCounter(d.id) : setDisposition(d.id, st))} title={rec === st ? 'AI-recommended action' : undefined}
                                 className={clsx('flex flex-1 items-center justify-center gap-1 rounded-md border py-1 text-[10.5px] font-semibold transition',
                                   rec === st ? filled : clsx('border-slate-200 text-slate-500', tone))}>
                                 <Icon size={11} /> {label}{rec === st ? ' ✦' : ''}

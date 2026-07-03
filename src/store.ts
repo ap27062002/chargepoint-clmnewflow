@@ -125,6 +125,22 @@ interface CLMState {
   confirmCounterparty: (profile: CounterpartyProfile) => void
   generateNdaFromIntake: () => Ticket | null
   createInquiry: (question: string) => Ticket   // R79 — a ticket with no agreement, just a question→response
+  createTicketFull: (input: { title: string; kind: 'negotiation' | 'support'; counterparty?: string; files: string[]; attorneyId?: string }) => void // Dashboard §1 Open Ticket modal
+  advanceInquiry: (ticketId: string) => void // support tickets: Open → In Progress → Resolved
+  reassignVersion: (versionId: string, targetAgreementId: string, newNumber?: number) => void // intake §5 error correction
+  ingestVersion: (agreementId: string, fileName: string, asNewDocument?: boolean) => void // intake §1 — in-deal upload
+  decideDraftProvision: (draftId: string, provisionId: string, decision: 'accept' | 'reject' | 'defer') => void // playbooks §2 step 3
+  editProvisionText: (playbookId: string, provisionId: string, field: 'standard' | 'fallback' | 'red_line', idx: number, text: string) => void // playbooks §5 manual inline edit
+  addDocumentsToPlaybook: (playbookId: string) => void // playbooks §6 — feed more agreements post-creation
+  // ---- Counter flow (Eric E3): tracked-change insertion + keep/discard ----
+  pendingCounter: { deviationId: string; clauseId: string; versionId: string } | null
+  proposeCounter: (deviationId: string) => void
+  keepCounter: (deviationId: string, editedText?: string) => void
+  discardCounter: (deviationId: string) => void
+  showDocComments: boolean            // Show/Hide Comments toggle — persists across tabs
+  setShowDocComments: (v: boolean) => void
+  analysisFlags: { id: string; deviation_id: string; reason: string; status: 'open' | 'reviewed'; date: string }[]
+  flagAnalysis: (deviationId: string, reason: string) => void // "Flag: incorrect analysis" 
   addIntakeAgreementType: (type: AgreementType) => void // R81 — add a parallel agreement to the intake
   intakeExtraTypes: AgreementType[]             // R81 — extra agreement types requested alongside the NDA
 
@@ -193,6 +209,7 @@ interface CLMState {
   iterateTemplate: (projectId: string, instruction: string) => void
   saveTemplate: (projectId: string) => void
   buildPlaybookFromTemplate: (templateId: string) => void
+  uploadTemplate: (fileName: string) => void // Templates §1 — drag-drop a form agreement
 
   // chat
   pushChat: (m: ChatMessage) => void
@@ -203,10 +220,20 @@ interface CLMState {
 // Every row's counterparty_position is the actual §-clause text; editing a clause changes the issue.
 const _initDocs = seedDocuments()
 const _computedVishay = analyzePlaybook(_initDocs['V-2201-1'], _initDocs['V-2201-2'], ndaPlaybook, 'AGR-2201', 'V-2201-2')
+// Deferred playbook provisions are excluded from AI review — no analysis card anywhere,
+// including the curated seed fallback below (Eric, Playbooks §3).
+const _deferredNames = seedPlaybooks.flatMap((pb) => {
+  const flat: { provision_name: string; tier?: string }[] = []
+  const walk = (ps: typeof pb.provisions) => ps.forEach((p) => { flat.push(p); if (p.children) walk(p.children) })
+  walk(pb.provisions)
+  return flat.filter((p) => p.tier === 'deferred').map((p) => p.provision_name.toLowerCase())
+})
+const _isDeferredIssue = (name: string) => _deferredNames.some((n) => name.toLowerCase().includes(n) || n.includes(name.toLowerCase()))
+
 const initialDeviations: Deviation[] = [
   ..._computedVishay,
   // keep any curated Vishay issue the analyzer didn't reproduce (e.g. the untagged §2 oral-disclosure accept)
-  ...seedDeviations.filter((d) => d.agreement_id === 'AGR-2201' && !_computedVishay.some((c) => c.id === d.id)),
+  ...seedDeviations.filter((d) => d.agreement_id === 'AGR-2201' && !_computedVishay.some((c) => c.id === d.id) && !_isDeferredIssue(d.provision_name)),
   // other agreements (executed Mondelez, live Northwind) keep their curated deviations
   ...seedDeviations.filter((d) => d.agreement_id !== 'AGR-2201'),
 ]
@@ -216,6 +243,15 @@ const initialDeviations: Deviation[] = [
 // changes are struck and the prior text restored; countered → their changes struck + the counter
 // language added as a ChargePoint tracked insertion (your outgoing redline). Recomputed from an
 // `orig` snapshot each time, so changing your mind about a disposition is idempotent.
+// The counter language: the negotiated clean-copy clause when one exists, else the playbook
+// standard position (the template text we want restored).
+function counterTextFor(documents: Record<string, DocModel>, d: Deviation, clauseId: string): string {
+  const cleanDoc = documents[cleanCopyId(d.agreement_id)]
+  const counterClause = cleanDoc?.clauses.find((x) => x.id === clauseId)
+  if (counterClause) return effectiveText(counterClause)
+  return d.template_position ?? ''
+}
+
 function resolveDispositionInDocs(documents: Record<string, DocModel>, agreements: Agreement[], d: Deviation, status: DispositionStatus): Record<string, DocModel> {
   if (status === 'open') return documents
   const a = agreements.find((x) => x.id === d.agreement_id)
@@ -223,8 +259,6 @@ function resolveDispositionInDocs(documents: Record<string, DocModel>, agreement
   const docId = candidateIds.find((id) => documents[id]?.clauses.some((c) => c.deviationId === d.id || c.id === d.source_clause_id))
   if (!docId) return documents
   const doc = documents[docId]
-  // The negotiated final language lives in the clean working copy — counters converge to it.
-  const cleanDoc = documents[cleanCopyId(d.agreement_id)]
   const clauses = doc.clauses.map((c) => {
     if (!(c.deviationId === d.id || c.id === d.source_clause_id)) return c
     const base = c.orig ?? c.runs
@@ -234,13 +268,16 @@ function resolveDispositionInDocs(documents: Record<string, DocModel>, agreement
       runs = base.filter((r) => !(r.party === 'counterparty' && r.type === 'del'))
         .map((r) => (r.party === 'counterparty' && r.type === 'ins' ? { text: r.text, type: 'normal' as const } : r))
     } else if (status === 'countered') {
-      // counter: the clause becomes OUR proposed language — the REAL negotiated fallback text
-      // (from the clean copy), never guidance prose. If no counter language exists for this
-      // clause, fall back to rejecting their change.
-      const counterClause = cleanDoc?.clauses.find((x) => x.id === c.id)
-      const counterText = counterClause ? effectiveText(counterClause) : ''
+      // counter (Eric): the AI-suggested counter language is inserted INTO the document as a
+      // visible tracked change — the current text struck through, our language underlined.
+      // The counter text is REAL negotiated language (clean copy) — never guidance prose.
+      const counterText = counterTextFor(documents, d, c.id)
+      const oldText = base.filter((r) => r.type !== 'del').map((r) => r.text).join('').trim()
       runs = counterText
-        ? [{ text: counterText, type: 'normal' as const }]
+        ? [
+            { text: oldText + ' ', type: 'del' as const, party: 'cp' as const, cid: `pc-del-${d.id}` },
+            { text: counterText, type: 'ins' as const, party: 'cp' as const, cid: `pc-ins-${d.id}` },
+          ]
         : base.filter((r) => !(r.party === 'counterparty' && r.type === 'ins'))
             .map((r) => (r.party === 'counterparty' && r.type === 'del' ? { text: r.text, type: 'normal' as const } : r))
     } else {
@@ -283,6 +320,9 @@ export const useStore = create<CLMState>((set, get) => ({
   projects: seedProjects,
   templates: seedTemplates,
   routingStrategy: 'hybrid',
+  pendingCounter: null,
+  showDocComments: true,
+  analysisFlags: [],
   canvas: { view: 'dashboard', open: false },
   chat: [GREETING],
   agentThinking: false,
@@ -309,7 +349,8 @@ export const useStore = create<CLMState>((set, get) => ({
       // Multi-agreement deals land on the deal overview (all documents visible).
       set({ canvas: { view: 'ticket', open: true, solo: false, ticketId, agreementId: t.agreement_ids[0], agreementTab: 'overview' } })
     } else {
-      set({ canvas: { view: 'ticket', open: true, solo: false, ticketId, agreementId: t.agreement_ids[0], agreementTab: 'deal' } })
+      // Deal navigation §1 — land on the Deal Overview first, not on a document.
+      set({ canvas: { view: 'ticket', open: true, solo: false, ticketId, agreementId: t.agreement_ids[0], agreementTab: 'overview' } })
     }
   },
   // Document review owns the frame (Eric §2): agent collapses (solo), lands on the doc+issues directive split.
@@ -481,6 +522,158 @@ export const useStore = create<CLMState>((set, get) => ({
     newAgreements.forEach((a) => get().audit_push({ event_type: 'agreement_added', ticket_id: t.id, agreement_id: a.id, actor_id: 'ai_engine', summary: `${a.agreement_type} V1 generated from the template.` }))
     get().setToast(multi ? `Generated ${types.length} agreements (${types.join(' + ')}) for ${cp} — reviewing in parallel.` : `Generated ${cp} NDA (V1) and routed to ${get().users.find((u) => u.id === p.attorneyId)?.name.split(' ')[0]}.`)
     return { ...t, agreement_ids: newAgreements.map((a) => a.id) }
+  },
+  // ---- Counter flow: insert AI counter language into the doc as a visible tracked change.
+  proposeCounter: (deviationId) => {
+    const s0 = get()
+    const d = s0.deviations.find((x) => x.id === deviationId)
+    if (!d) return
+    const a = s0.agreements.find((x) => x.id === d.agreement_id)
+    const candidateIds = [a?.current_version_id, 'V-2201-3'].filter((x): x is string => !!x)
+    const docId = candidateIds.find((id) => s0.documents[id]?.clauses.some((c) => c.deviationId === d.id || c.id === d.source_clause_id))
+    if (!docId) return
+    const doc = s0.documents[docId]
+    const clause = doc.clauses.find((c) => c.deviationId === d.id || c.id === d.source_clause_id)!
+    const base = clause.orig ?? clause.runs
+    const counterText = counterTextFor(s0.documents, d, clause.id) || d.template_position
+    const oldText = base.filter((r) => r.type !== 'del').map((r) => r.text).join('').trim()
+    const runs = [
+      { text: oldText + ' ', type: 'del' as const, party: 'cp' as const, cid: `pc-del-${d.id}` },
+      { text: counterText, type: 'ins' as const, party: 'cp' as const, cid: `pc-ins-${d.id}` },
+    ]
+    set((s) => ({
+      documents: { ...s.documents, [docId]: { ...doc, clauses: doc.clauses.map((c) => (c.id === clause.id ? { ...c, orig: base, runs } : c)) } },
+      pendingCounter: { deviationId, clauseId: clause.id, versionId: docId },
+    }))
+  },
+  keepCounter: (deviationId, editedText) => {
+    const pc = get().pendingCounter
+    if (!pc || pc.deviationId !== deviationId) return
+    const doc = get().documents[pc.versionId]
+    if (doc && editedText?.trim()) {
+      set((s) => ({ documents: { ...s.documents, [pc.versionId]: { ...doc, clauses: doc.clauses.map((c) => (c.id === pc.clauseId ? { ...c, runs: c.runs.map((r) => (r.cid === `pc-ins-${deviationId}` ? { ...r, text: editedText.trim() } : r)) } : c)) } } }))
+    }
+    // set the disposition WITHOUT re-resolving the doc (the tracked counter stays visible)
+    set((s) => ({ deviations: s.deviations.map((d) => (d.id === deviationId ? { ...d, disposition_status: 'countered', disposition_by: s.currentUserId, disposition_date: now() } : d)), pendingCounter: null }))
+    const d = get().deviations.find((x) => x.id === deviationId)
+    get().audit_push({ event_type: 'disposition_decided', agreement_id: d?.agreement_id, summary: `${d?.provision_name} — countered (tracked change kept in document).` })
+  },
+  discardCounter: (deviationId) => {
+    const pc = get().pendingCounter
+    if (!pc || pc.deviationId !== deviationId) return
+    const doc = get().documents[pc.versionId]
+    if (doc) {
+      set((s) => ({ documents: { ...s.documents, [pc.versionId]: { ...doc, clauses: doc.clauses.map((c) => (c.id === pc.clauseId && c.orig ? { ...c, runs: c.orig } : c)) } } }))
+    }
+    set({ pendingCounter: null })
+  },
+  setShowDocComments: (v) => set({ showDocComments: v }),
+  flagAnalysis: (deviationId, reason) => {
+    set((s) => ({ analysisFlags: [...s.analysisFlags, { id: nextId('FLAG'), deviation_id: deviationId, reason, status: 'open' as const, date: now() }] }))
+    get().audit_push({ event_type: 'playbook_updated', summary: `AI analysis flagged for playbook audit (${reason}).` })
+    get().setToast('Flagged for playbook audit.')
+  },
+
+  // Playbooks §2 step 3 — per-provision Accept | Reject | Defer on a generated draft.
+  decideDraftProvision: (draftId, provisionId, decision) => {
+    set((s) => ({
+      playbookDrafts: s.playbookDrafts.map((d) => {
+        if (d.id !== draftId) return d
+        if (decision === 'reject') return { ...d, provisions: d.provisions.filter((p) => p.id !== provisionId) }
+        return { ...d, provisions: d.provisions.map((p) => p.id === provisionId
+          ? (decision === 'defer'
+              ? { ...p, tier: 'deferred' as const, deferred_to: p.deferred_to ?? 'Deal team decision', review_state: 'deferred' as const }
+              : { ...p, review_state: 'accepted' as const })
+          : p) }
+      }),
+    }))
+  },
+  // Playbooks §5 — click-to-edit provision text, coexisting with chat editing ("both").
+  editProvisionText: (playbookId, provisionId, field, idx, text) => {
+    const patch = (p: Provision): Provision => {
+      if (p.id === provisionId) {
+        if (field === 'standard') return { ...p, standard_position: text }
+        if (field === 'red_line') return { ...p, red_line: text }
+        return { ...p, fallback_tiers: p.fallback_tiers.map((f, i) => (i === idx ? text : f)) }
+      }
+      return p.children ? { ...p, children: p.children.map(patch) } : p
+    }
+    set((s) => ({ playbooks: s.playbooks.map((pb) => (pb.id === playbookId ? { ...pb, provisions: pb.provisions.map(patch), version: pb.version, edited_date: '2026-07-04' } : pb)) }))
+    get().audit_push({ event_type: 'playbook_updated', summary: `Provision text edited manually (${field}).` })
+    get().setToast('Provision updated.')
+  },
+  // Playbooks §6 — feed additional documents to refine an existing playbook.
+  addDocumentsToPlaybook: (playbookId) => {
+    set((s) => ({ playbooks: s.playbooks.map((pb) => (pb.id === playbookId ? { ...pb, edited_date: '2026-07-04' } : pb)) }))
+    get().audit_push({ event_type: 'playbook_updated', summary: '2 additional executed agreements analyzed — 2 provisions refined.' })
+    get().setToast('Playbook updated: 2 provisions refined.')
+  },
+
+  // Intake §1/§2 — file a returned counterparty version onto an agreement (creates the next
+  // major version; the working doc is cloned so review opens immediately).
+  ingestVersion: (agreementId, fileName, asNewDocument) => {
+    const s0 = get()
+    if (asNewDocument || !agreementId) {
+      get().setToast(`"${fileName}" staged as a new document — classify it from the deal overview.`)
+      return
+    }
+    const a = s0.agreements.find((x) => x.id === agreementId)
+    if (!a) return
+    const nextNum = s0.versions.filter((v) => v.agreement_id === agreementId).length + 1
+    const vid = `${agreementId}-v${nextNum}-${Date.now() % 10000}`
+    const newVer: Version = { id: vid, agreement_id: agreementId, version_number: nextNum, label: `v${nextNum}`, source: 'counterparty_response', document_ref: fileName, created_by: 'ai_engine', created_date: '2026-07-04', parent_version_id: a.current_version_id, change_summary: `Counterparty return ingested from "${fileName}" (auto-detected).` }
+    const baseDoc = s0.documents[a.current_version_id]
+    set((s) => ({
+      versions: [...s.versions, newVer],
+      agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, current_version_id: vid, status: 'redline_received' as const, ball_in_court: 'cp_legal' as const } : x)),
+      documents: baseDoc ? { ...s.documents, [vid]: { ...baseDoc, versionId: vid, subtitle: `${a.title} — v${nextNum} (Counterparty Response, 4 Jul 2026)` } } : s.documents,
+    }))
+    get().audit_push({ event_type: 'version_created', agreement_id: agreementId, summary: `Filed as ${a.agreement_type} v${nextNum} (Counterparty Response, 4 Jul 2026) from "${fileName}".` })
+    get().setToast(`Filed as ${a.agreement_type === 'Other' ? 'Document' : a.agreement_type} v${nextNum} (Counterparty Response, 4 Jul 2026).`)
+  },
+
+  reassignVersion: (versionId, targetAgreementId, newNumber) => {
+    set((s) => ({ versions: s.versions.map((v) => (v.id === versionId ? { ...v, agreement_id: targetAgreementId, version_number: newNumber ?? v.version_number, label: newNumber ? `v${newNumber}` : v.label } : v)) }))
+    const a = get().agreements.find((x) => x.id === targetAgreementId)
+    get().audit_push({ event_type: 'version_created', agreement_id: targetAgreementId, summary: `Version ${versionId} reassigned to ${a?.title ?? targetAgreementId}${newNumber ? ` as v${newNumber}` : ''} (manual correction).` })
+    get().setToast(`Version reassigned to ${a?.title ?? targetAgreementId}.`)
+  },
+
+  advanceInquiry: (ticketId) => {
+    set((s) => ({ tickets: s.tickets.map((t) => (t.id === ticketId ? { ...t, status: t.status === 'Open' ? 'In Progress' : 'Resolved' } : t)) }))
+    const t = get().tickets.find((x) => x.id === ticketId)
+    get().audit_push({ event_type: 'status_changed', ticket_id: ticketId, summary: `Support ticket → ${t?.status}.` })
+  },
+
+  // Dashboard §1 — Open Ticket modal. Tickets exist independently of agreements; support
+  // tickets carry no document but still get a deal page + Deal Discussion + stage tracking.
+  createTicketFull: ({ title, kind, counterparty, files, attorneyId }) => {
+    const guessType = (f: string): AgreementType => /msa|master/i.test(f) ? 'MSA' : /dpa|data/i.test(f) ? 'DPA' : /sow|statement/i.test(f) ? 'SOW' : /nda|disclosure/i.test(f) ? 'MNDA' : 'Other'
+    const t = get().createTicketFromAgent({
+      title, counterparty_name: counterparty ?? '—',
+      type: kind === 'support' ? 'inquiry' : files.length > 1 ? 'multi_agreement' : 'single_agreement',
+      agreement_type: kind === 'support' ? undefined : guessType(files[0] ?? ''),
+      assigned_attorney_id: attorneyId, priority: 'normal',
+      description: kind === 'support' ? 'General legal support — no agreement attached.' : `Created from the dashboard with ${files.length} file(s).`,
+    })
+    if (kind === 'negotiation' && files.length > 0) {
+      const baseNum = 9500 + get().agreements.length
+      const newAgs: Agreement[] = []
+      const newVers: Version[] = []
+      files.forEach((f, i) => {
+        const aid = `AGR-${baseNum + i}`
+        const type = guessType(f)
+        newAgs.push({ id: aid, ticket_id: t.id, title: f.replace(/\.(docx|pdf)$/i, '').replace(/[_-]+/g, ' '), agreement_type: type, status: 'draft', current_version_id: `${aid}-1`, playbook_id: type === 'MNDA' ? 'pb_nda' : type === 'MSA' ? 'pb_msa' : null, paper_origin: 'counterparty_paper', ball_in_court: 'cp_legal', red_line_count: 0, created_date: now(), last_activity_date: '2026-06-27', turn_count: 0 })
+        newVers.push({ id: `${aid}-1`, agreement_id: aid, version_number: 1, label: 'v1', source: 'counterparty_draft', document_ref: f, created_by: get().currentUserId, created_date: now(), parent_version_id: null, change_summary: `Uploaded at ticket creation (${f}).` })
+      })
+      set((s) => ({
+        agreements: [...newAgs, ...s.agreements],
+        versions: [...s.versions, ...newVers],
+        tickets: s.tickets.map((x) => (x.id === t.id ? { ...x, agreement_ids: newAgs.map((a) => a.id) } : x)),
+      }))
+    }
+    get().setToast(`Ticket ${t.id} created${files.length ? ` with ${files.length} document(s)` : ''}.`)
+    get().openTicket(t.id)
   },
   addIntakeAgreementType: (type) => set((s) => ({ intakeExtraTypes: s.intakeExtraTypes.includes(type) ? s.intakeExtraTypes.filter((x) => x !== type) : [...s.intakeExtraTypes, type] })),
   // R79 — a ticket that is a pure inquiry (no agreement), with an agent-drafted response.
@@ -1002,7 +1195,7 @@ export const useStore = create<CLMState>((set, get) => ({
     const canPresentation = can(role, 'playbook_presentation')
     const result = applyPlaybookInstruction(pb, instruction, canPresentation)
     if (!result.ok || !result.playbook) return result.message
-    const bumped = { ...result.playbook, version: pb.version + 1 }
+    const bumped = { ...result.playbook, version: pb.version + 1, edited_date: '2026-07-04' }
     set((s) => ({ playbooks: s.playbooks.map((p) => (p.id === playbookId ? bumped : p)) }))
     get().audit_push({ event_type: 'playbook_updated', summary: `${pb.name}: ${result.message.replace(/\*\*/g, '')} (v${bumped.version}).` })
     return result.message
@@ -1123,6 +1316,20 @@ export const useStore = create<CLMState>((set, get) => ({
     set((s) => ({ templates: s.templates.map((t) => (t.id === proj.draftTemplateId ? { ...t, status: 'published' } : t)), projects: s.projects.map((p) => (p.id === projectId ? { ...p, status: 'template_ready' } : p)) }))
     get().audit_push({ event_type: 'playbook_updated', summary: `Template "${proj.name}" saved to the library.` })
     get().setToast('Template saved to the library.')
+  },
+  uploadTemplate: (fileName) => {
+    const tplId = nextId('TPL')
+    const name = fileName.replace(/\.(docx|pdf)$/i, '').replace(/[_-]+/g, ' ').trim() || 'Uploaded template'
+    const type: AgreementType = /msa|master/i.test(fileName) ? 'MSA' : /dpa/i.test(fileName) ? 'DPA' : 'MNDA'
+    const tpl: AgreementTemplate = {
+      id: tplId, name, agreement_type: type, origin: 'uploaded', status: 'published', project_id: null,
+      version: 1, owner_id: get().currentUserId, created_date: now(),
+      sections: generateSectionBodies(buildSectionsFor(type)),
+      source_summary: `Uploaded form agreement (${fileName}).`, playbook_id: null,
+    }
+    set((s) => ({ templates: [tpl, ...s.templates], canvas: { ...s.canvas, view: 'projects', open: true, templateId: tplId, projectId: undefined } }))
+    get().audit_push({ event_type: 'playbook_updated', summary: `Template "${name}" uploaded to the library.` })
+    get().setToast(`Template "${name}" added to the library.`)
   },
   buildPlaybookFromTemplate: (templateId) => {
     const tpl = get().templates.find((t) => t.id === templateId); if (!tpl) return

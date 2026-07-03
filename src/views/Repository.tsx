@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { clsx } from 'clsx'
-import { ChevronRight, Folder, FolderOpen, FileText, History, FileSignature, FolderPlus, Sparkles } from 'lucide-react'
+import { ChevronRight, Folder, FolderOpen, FileText, History, FileSignature, FolderPlus, Sparkles, Lock } from 'lucide-react'
 import { useStore } from '@/store'
 import { Chip, Button } from '@/components/ui'
 import { can } from '@/lib/access'
@@ -80,9 +80,10 @@ export function Repository() {
     <div className="h-full overflow-y-auto p-6">
       <div className="mb-4 flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <h1 className="text-[17px] font-bold text-slate-800">Agreements repository</h1>
+          <h1 className="flex items-center gap-2 text-[17px] font-bold text-slate-800">Archive <Lock size={14} className="text-slate-400" /></h1>
+          <div className="mt-0.5 flex items-center gap-1 text-[11.5px] font-semibold text-amber-700"><Lock size={11} /> Restricted access. Senior attorneys and leadership only.</div>
           <p className="mt-0.5 text-[12.5px] text-slate-500">
-            {agreements.length} agreements across {folders.length} counterparties · {versionCount} total versions. Expand a counterparty, then an agreement, to see every version.
+            Executed and final agreements by counterparty — {agreements.length} agreements, {versionCount} versions. This is the archive, not the daily working surface; click a counterparty to open its deal overview.
           </p>
         </div>
         {canSuggest && ndaPlaybook && (
@@ -128,14 +129,23 @@ export function Repository() {
 
 function CounterpartyFolder({ name, agreements }: { name: string; agreements: Agreement[] }) {
   const [open, setOpen] = useState(true)
+  const tickets = useStore((s) => s.tickets)
+  const openTicket = useStore((s) => s.openTicket)
+  // Deal navigation §1 — clicking a counterparty lands on the Deal Overview page first.
+  const dealTicket = tickets.find((t) => t.id === agreements[0]?.ticket_id)
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
-      <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-slate-50">
-        <ChevronRight size={15} className={clsx('shrink-0 text-slate-400 transition', open && 'rotate-90')} />
-        {open ? <FolderOpen size={17} className="shrink-0 text-amber-500" /> : <Folder size={17} className="shrink-0 text-amber-500" />}
-        <span className="text-[13.5px] font-bold text-slate-800">{name}</span>
-        <Chip className="bg-slate-100 text-slate-500 ring-slate-300/30">{agreements.length} agreement{agreements.length > 1 ? 's' : ''}</Chip>
-      </button>
+      <div className="flex w-full items-center gap-2 px-4 py-2.5 hover:bg-slate-50">
+        <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-2">
+          <ChevronRight size={15} className={clsx('shrink-0 text-slate-400 transition', open && 'rotate-90')} />
+          {open ? <FolderOpen size={17} className="shrink-0 text-amber-500" /> : <Folder size={17} className="shrink-0 text-amber-500" />}
+        </button>
+        <button onClick={() => (dealTicket ? openTicket(dealTicket.id) : setOpen((v) => !v))} className="flex min-w-0 flex-1 items-center gap-2 text-left" title="Open the deal overview">
+          <span className="text-[13.5px] font-bold text-slate-800 hover:text-brand-700">{name}</span>
+          <Chip className="bg-slate-100 text-slate-500 ring-slate-300/30">{agreements.length} agreement{agreements.length > 1 ? 's' : ''}</Chip>
+        </button>
+        {dealTicket && <button onClick={() => openTicket(dealTicket.id)} className="shrink-0 text-[11.5px] font-semibold text-brand-600 hover:underline">Deal overview →</button>}
+      </div>
       {open && (
         <div className="border-t border-slate-100 py-1">
           {agreements.map((a) => <AgreementNode key={a.id} agreement={a} />)}

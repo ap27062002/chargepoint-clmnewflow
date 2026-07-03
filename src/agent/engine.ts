@@ -68,6 +68,90 @@ const intents: Intent[] = [
       }
     },
   },
+  // ===== Eric round-3: ticket creation, comments parity, agent intake =====
+  {
+    name: 'create_ticket', cap: 'intake',
+    test: (t) => has(t, 'create a ticket', 'open a ticket', 'new ticket', 'create ticket') && !has(t, 'negotiation ticket', 'support ticket'),
+    reply: () => ({
+      text: `Happy to open a ticket. **What kind is it?**\n\n- **Agreement negotiation** — there's a document to review/negotiate (attach it and I'll set up the deal page).\n- **General legal support** — a question or review with no agreement (RFPs, guidance).\n\nYou can also attach files with the paperclip and I'll classify them.`,
+      artifact: { kind: 'none' },
+      actions: [
+        { label: 'Agreement negotiation (Rivian pilot sample)', prompt: 'create a negotiation ticket for the Rivian charging pilot', variant: 'primary' },
+        { label: 'General legal support (RFP review)', prompt: 'create a general legal support ticket for an RFP review' },
+      ],
+    }),
+  },
+  {
+    name: 'create_ticket_negotiation', cap: 'intake',
+    test: (t) => has(t, 'negotiation ticket'),
+    reply: () => ({
+      text: `Done — I created the ticket, attached the sample agreement as **v1**, and routed it to **Kirsten Sachs** (commercial). Opening the deal page — Deal Overview first, then Deal Discussion and Agreement Review.`,
+      artifact: { kind: 'none' },
+      effect: () => useStore.getState().createTicketFull({ title: 'Rivian charging pilot — MSA negotiation', kind: 'negotiation', counterparty: 'Rivian', files: ['Rivian_MSA_draft.docx'], attorneyId: 'u_kirsten' }),
+      actions: [],
+    }),
+  },
+  {
+    name: 'create_ticket_support', cap: 'intake',
+    test: (t) => has(t, 'support ticket', 'legal support ticket'),
+    reply: () => ({
+      text: `Done — **General Legal Support** ticket created (no agreement attached). It gets a deal page with the **Deal Discussion** thread and simple **Open → In Progress → Resolved** tracking. Opening it now.`,
+      artifact: { kind: 'none' },
+      effect: () => useStore.getState().createTicketFull({ title: 'RFP review — legal support', kind: 'support', counterparty: 'Metro Transit Authority', files: [], attorneyId: 'u_kirsten' }),
+      actions: [],
+    }),
+  },
+  {
+    // Comments §4 — parity: same list as the Open Comments report.
+    name: 'open_comments_doc', cap: 'review',
+    test: (t) => has(t, 'open comments'),
+    reply: (t) => {
+      const s = useStore.getState()
+      const agId = has(t, 'northwind') || !has(t, 'vishay') ? 'AGR-2180' : 'AGR-2201'
+      const ag = s.agreements.find((a) => a.id === agId)
+      const rows = s.messages.filter((m) => m.agreement_id === agId && !m.resolved)
+      const lines = rows.map((m) => {
+        const days = Math.max(0, Math.round((new Date('2026-06-27').getTime() - new Date(m.created_date.slice(0, 10)).getTime()) / 86400000))
+        const who = (m.mentions ?? []).map((id) => userById(id)?.name.split(' ')[0]).join(', ')
+        return `- **${m.provision_reference ?? 'general'}** — "${m.body.slice(0, 90)}${m.body.length > 90 ? '…' : ''}" ${who ? `· @${who}` : ''} · **${days}d open**`
+      })
+      return {
+        text: rows.length
+          ? `**Open comments on the ${ag?.title ?? 'document'}** — ${rows.length}:\n\n${lines.join('\n')}\n\nUse **Open Comments** on the deal page to send reminders or export this as a report.`
+          : `No open comments on the ${ag?.title ?? 'document'} right now.`,
+        artifact: { kind: 'agreement', refId: agId, title: `${ag?.title} — open comments` },
+        actions: [],
+      }
+    },
+  },
+  {
+    // Intake §2 — agent intake path: which of the three Northwind documents?
+    name: 'intake_new_version', cap: 'review',
+    test: (t) => has(t, 'new version') && has(t, 'northwind'),
+    reply: () => ({
+      text: `Got the file. Northwind has **three documents** on this deal — which one does it belong to?\n\n1. **MSA** — Northwind Master Services Agreement (v3 current)\n2. **DPA** — Data Processing Addendum\n3. **SOW** — Initial SOW`,
+      artifact: { kind: 'none' },
+      actions: [
+        { label: 'File it as the MSA', prompt: 'file it as the northwind msa', variant: 'primary' },
+        { label: 'It belongs to the DPA', prompt: 'file it as the northwind dpa' },
+        { label: 'It belongs to the SOW', prompt: 'file it as the northwind sow' },
+      ],
+    }),
+  },
+  {
+    name: 'intake_file_doc', cap: 'review',
+    test: (t) => has(t, 'file it as the northwind'),
+    reply: (t) => {
+      const agId = has(t, 'dpa') ? 'AGR-2181' : has(t, 'sow') ? 'AGR-2182' : 'AGR-2180'
+      const type = has(t, 'dpa') ? 'DPA' : has(t, 'sow') ? 'SOW' : 'MSA'
+      return {
+        text: `Filed as **${type} v4 (Counterparty Response, 4 Jul 2026)** ✓\n\nMatched via **embedded ID CLM-NWE-${type}-00${type === 'MSA' ? 3 : 1}** (the identifier survives round-trips in document metadata — it's not visible in the body). The deal page and version history are updated; opening the document.`,
+        artifact: { kind: 'agreement', refId: agId, title: `Northwind ${type} — v4 ingested` },
+        effect: () => useStore.getState().ingestVersion(agId, 'NWE_MSA_returned_4Jul.docx'),
+        actions: [],
+      }
+    },
+  },
   // ===== build-12: Eric's use-case feedback =====
   {
     name: 'send_back', cap: 'disposition',
@@ -216,7 +300,7 @@ const intents: Intent[] = [
     test: (t) => has(t, 'create a template', 'new template', 'build a template', 'build a new template', 'create a new template', 'template project'),
     reply: () => ({
       text: `Opening **Projects** to build a new form template. Point me at **precedent** ChargePoint agreements + **third-party standards**, and I'll generate a template modeled on the standards but carrying our concepts — you iterate with me, save it to the library, and can build a playbook from it. Your Claude Projects flow, made enterprise.`,
-      artifact: { kind: 'projects', title: 'Template projects' },
+      artifact: { kind: 'projects', title: 'Templates' },
       actions: [],
     }),
   },
@@ -225,7 +309,7 @@ const intents: Intent[] = [
     test: (t) => has(t, 'template projects', 'open projects', 'templates folder', 'projects workspace', 'my templates', 'template library', 'open the projects'),
     reply: () => ({
       text: `Opening **Projects** — your template-building workspace and the library of saved templates (the NDA and MSA templates that seed the playbooks). Start a new project to build a form agreement from precedent.`,
-      artifact: { kind: 'projects', title: 'Template projects' },
+      artifact: { kind: 'projects', title: 'Templates' },
       actions: [],
     }),
   },
@@ -241,7 +325,8 @@ const intents: Intent[] = [
       const myTickets = s.tickets.filter((t) => t.assigned_attorney_id === uid && t.status !== 'Executed' && t.status !== 'Resolved')
       const agTitle = (id?: string | null) => s.agreements.find((a) => a.id === id)?.title ?? 'a deal'
       const onVishay = mentions.some((m) => m.agreement_id === 'AGR-2201')
-      const mentionLines = mentions.slice(0, 4).map((m) => `• **${agTitle(m.agreement_id)}**${m.provision_reference ? ` — ${m.provision_reference}` : ''}: “${m.body.length > 90 ? m.body.slice(0, 90) + '…' : m.body}” _(from ${userById(m.author_id)?.name.split(' ')[0]})_`).join('\n')
+      const ageOf = (c: string) => Math.max(0, Math.round((new Date('2026-06-27').getTime() - new Date(c.slice(0, 10)).getTime()) / 86400000))
+      const mentionLines = mentions.slice().sort((a, b) => ageOf(b.created_date) - ageOf(a.created_date)).slice(0, 5).map((m) => `• **${agTitle(m.agreement_id)}**${m.provision_reference ? ` — ${m.provision_reference}` : ''}: “${m.body.length > 90 ? m.body.slice(0, 90) + '…' : m.body}” _(from ${userById(m.author_id)?.name.split(' ')[0]} · **${ageOf(m.created_date)}d waiting**)_`).join('\n')
 
       // Contributors (InfoSec, Finance, …) don't own tickets — their plate is the sign-off requests they're tagged on.
       if (role === 'contributor' || (mentions.length > 0 && myTickets.length === 0)) {
@@ -627,8 +712,8 @@ const intents: Intent[] = [
     name: 'repository', cap: 'review',
     test: (t) => has(t, 'all agreements', 'all the agreements', 'all versions', 'repository', 'document library', 'all my agreements', 'every agreement', 'agreement folder', 'version history of all'),
     reply: () => ({
-      text: `The **Agreements repository** organizes every matter by counterparty, with the full version history (V1 → executed) under each agreement. Open it below to browse the folders or jump straight into any version's document.`,
-      artifact: { kind: 'repository', title: 'Agreements repository' },
+      text: `The **Archive** holds executed and final agreements by counterparty (restricted to senior attorneys and leadership), with the full version history under each. Open it below to browse — day-to-day work happens on the Dashboard and deal pages.`,
+      artifact: { kind: 'repository', title: 'Archive' },
       actions: [],
     }),
   },

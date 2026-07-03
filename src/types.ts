@@ -60,6 +60,7 @@ export type AgreementType =
   | 'SOW'
   | 'Reseller'
   | 'Roaming'
+  | 'Other' // untyped uploads — displayed with a generic "Document" tag
 
 export type AgreementStatus =
   | 'draft'
@@ -212,6 +213,8 @@ export interface Provision {
   children?: Provision[] // nested sub-provisions (e.g. Indemnification → scope/exclusions/limitations…)
   parent_id?: string
   sourceSection?: string      // R62 — the template section this provision was derived from
+  modified_via_chat?: boolean // Playbooks §4 — provision content was edited through the agent
+  review_state?: 'accepted' | 'deferred' // Playbooks §2 step-3 per-provision decision
   sourcePrecedents?: string[] // R50 — example agreement ids whose positions drove the tier/fallbacks
 }
 
@@ -247,6 +250,7 @@ export interface Playbook {
   agreement_type: AgreementType
   name: string
   version: number
+  edited_date?: string // Playbooks §7 — "v2, edited 4 Jul 2026" note after post-publish edits
   owner_id: string
   generated_from: string
   provisions: Provision[]
@@ -430,7 +434,7 @@ export interface CanvasState {
   contractsFilter?: ContractsFilterPreset // Change 3 — contracts list preset
   sendBack?: SendBackState               // versioning — clean copy + redline send-back
   playbookId?: string                    // active playbook (multi-playbook)
-  playbookMode?: 'library' | 'inventory' | 'create' | 'suggestions' // 'library' = the all-playbooks landing
+  playbookMode?: 'library' | 'audit' | 'inventory' | 'create' | 'suggestions' // 'library' = the all-playbooks landing
   playbookDraftId?: string
   projectId?: string                     // templates / projects
   templateId?: string

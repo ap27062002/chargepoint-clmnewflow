@@ -1,10 +1,45 @@
 import { useState } from 'react'
 import { clsx } from 'clsx'
-import { GitBranch, Timer, CheckSquare, Bell, Users, Plug, Check, Rocket, TrendingUp, Megaphone, GraduationCap, FolderTree, BookOpen } from 'lucide-react'
+import { GitBranch, Timer, CheckSquare, Bell, Users, Plug, Check, Rocket, TrendingUp, Megaphone, GraduationCap, FolderTree, BookOpen, Inbox } from 'lucide-react'
 import { Card, Chip, Avatar, SectionLabel, Button } from '@/components/ui'
 import { useStore } from '@/store'
 import { ROUTING_LABEL, type RoutingStrategy } from '@/lib/routing'
 import type { AgreementType } from '@/types'
+
+// Intake §3 — the three configurable intake channels, plus the decision Eric wants his
+// team to see explicitly: individual attorney inbox reading is DISABLED.
+function IntakeSettings() {
+  const setToast = useStore((s) => s.setToast)
+  const [channels, setChannels] = useState({ inbox: true, manual: true, agent: true })
+  const CH = [
+    { key: 'inbox' as const, name: 'Standing inbox — CLM@chargepoint.com', desc: 'Forward incoming counterparty versions to the standing address; the system auto-detects the deal + agreement (embedded ID first, content match as fallback) and files them.' },
+    { key: 'manual' as const, name: 'In-deal manual upload', desc: 'The "Upload New Version" button on the deal overview and agreement review — drag & drop with detection + validation questioning.' },
+    { key: 'agent' as const, name: 'Agent upload', desc: 'Drop a file into the agent chat ("New version of the Northwind agreement") — the agent asks which document it belongs to, then files it.' },
+  ]
+  return (
+    <div className="max-w-2xl space-y-3">
+      <div>
+        <h3 className="text-[14px] font-bold text-slate-800">Document intake channels</h3>
+        <p className="text-[12px] text-slate-500">How returning counterparty versions enter the system.</p>
+      </div>
+      {CH.map((c) => (
+        <div key={c.key} className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3.5">
+          <button onClick={() => { setChannels((p) => ({ ...p, [c.key]: !p[c.key] })); setToast(`${c.name.split(' — ')[0]} ${channels[c.key] ? 'disabled' : 'enabled'}.`) }}
+            className={clsx('mt-0.5 h-5 w-9 shrink-0 rounded-full p-0.5 transition', channels[c.key] ? 'bg-brand-500' : 'bg-slate-300')}>
+            <span className={clsx('block h-4 w-4 rounded-full bg-white transition', channels[c.key] && 'translate-x-4')} />
+          </button>
+          <div>
+            <div className="text-[13px] font-bold text-slate-700">{c.name}</div>
+            <div className="mt-0.5 text-[12px] leading-snug text-slate-500">{c.desc}</div>
+          </div>
+        </div>
+      ))}
+      <div className="rounded-xl border border-red-100 bg-red-50/40 px-3.5 py-2.5 text-[12.5px] text-red-800">
+        <b>Individual attorney inbox reading: disabled.</b> The system never reads personal mailboxes — versions arrive only through the channels above.
+      </div>
+    </div>
+  )
+}
 
 const TABS = [
   { key: 'routing', label: 'Routing', icon: <GitBranch size={15} /> },
@@ -13,6 +48,7 @@ const TABS = [
   { key: 'notifications', label: 'Notifications', icon: <Bell size={15} /> },
   { key: 'playbook_sources', label: 'Playbook sources', icon: <FolderTree size={15} /> },
   { key: 'users', label: 'Users & RBAC', icon: <Users size={15} /> },
+  { key: 'intake', label: 'Intake', icon: <Inbox size={15} /> },
   { key: 'adoption', label: 'Adoption', icon: <Rocket size={15} /> },
   { key: 'integrations', label: 'Integrations', icon: <Plug size={15} /> },
 ] as const
@@ -190,6 +226,7 @@ export function AdminView() {
 
       <div className="flex-1 overflow-y-auto p-6">
         {tab === 'routing' && <RoutingTab />}
+        {tab === 'intake' && <IntakeSettings />}
         {tab === 'sla' && (
           <div className="grid max-w-2xl gap-3">
             <SectionLabel>SLA cycle-time targets (business days)</SectionLabel>

@@ -67,7 +67,7 @@ export const CAP_LABEL: Record<Capability, string> = {
   intake: 'creating new agreements', playbook_view: 'the playbook', playbook_edit: 'editing playbooks',
   admin: 'the admin console', audit: 'the audit center', deal_summary: 'deal summaries & analytics',
   comment: 'commenting',
-  playbook_suggest: 'suggesting playbook additions', templates: 'the template projects workspace',
+  playbook_suggest: 'suggesting playbook additions', templates: 'the Templates workspace',
   playbook_presentation: 'the playbook look & feel (admin only)',
 }
 
@@ -87,7 +87,7 @@ export function startersFor(role: Role): Starter[] {
   switch (role) {
     case 'initiator':
       return [
-        { label: 'Submit a new contract request', sub: 'Create a ticket', prompt: 'create a new NDA' },
+        { label: 'Create a ticket', sub: 'Negotiation or general legal support', prompt: 'create a ticket' },
         { label: 'Track my requests', sub: 'Status of my tickets', prompt: "what's on my plate?" },
       ]
     case 'contributor':
@@ -106,15 +106,15 @@ export function startersFor(role: Role): Starter[] {
       return [
         { label: 'Open the admin console', sub: 'Routing · SLAs · integrations', prompt: 'open the admin console' },
         { label: 'Review playbook suggestions', sub: 'Attorney-proposed additions', prompt: 'review playbook suggestions' },
-        { label: 'Template projects', sub: 'Build new form templates', prompt: 'open template projects' },
+        { label: 'Templates', sub: 'Baseline form agreements', prompt: 'open templates' },
         { label: 'Review the audit log', sub: 'Immutable event history', prompt: 'show me the audit log' },
       ]
     case 'attorney':
     default:
       return [
-        { label: 'Review the Vishay redline', sub: '9 deviations · 2 red lines', prompt: 'review the Vishay redline' },
+        { label: 'Review the Vishay redline', sub: '8 issues · 1 red line', prompt: 'review the Vishay redline' },
         { label: "What's on my plate today?", sub: 'Tagged items & SLA queue', prompt: "what's on my plate?" },
-        { label: 'Draft a new NDA', sub: 'CP paper · from template', prompt: 'create a new NDA' },
+        { label: 'Create a ticket', sub: 'Negotiation or general legal support', prompt: 'create a ticket' },
         { label: 'Review 2 new changes in playbook', sub: '2 refinement updates to approve', prompt: 'show me the NDA playbook' },
       ]
   }

@@ -189,6 +189,59 @@ function TemplateDetail({ template }: { template: AgreementTemplate }) {
   )
 }
 
+// Templates landing — "Baseline form agreements. Used to start new tickets and as the
+// foundation for playbooks." Two creation paths: upload a form, or generate from examples.
+function TemplateLibrary() {
+  const templates = useStore((s) => s.templates)
+  const navigate = useStore((s) => s.navigate)
+  const createProject = useStore((s) => s.createProject)
+  const uploadTemplate = useStore((s) => s.uploadTemplate)
+  const [dragOver, setDragOver] = useState(false)
+  return (
+    <div className="mx-auto max-w-3xl">
+      <h2 className="text-[17px] font-bold text-slate-800">Template library</h2>
+      <p className="mt-0.5 text-[12.5px] text-slate-500">Baseline form agreements. Used to start new tickets and as the foundation for playbooks.</p>
+
+      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+        {templates.map((t) => (
+          <Card key={t.id} onClick={() => navigate({ templateId: t.id, projectId: undefined })} className="p-4">
+            <div className="flex items-center gap-2"><FileStack size={16} className="text-ai-500" /><span className="truncate text-[13px] font-bold text-slate-800">{t.name}</span></div>
+            <div className="mt-1 flex items-center gap-1.5">
+              <Chip className="bg-indigo-50 text-indigo-600 ring-indigo-500/20">{t.agreement_type}</Chip>
+              <Chip className={t.status === 'published' ? 'bg-brand-50 text-brand-700 ring-brand-500/20' : 'bg-amber-50 text-amber-700 ring-amber-500/20'}>{t.status.replace('_', ' ')}</Chip>
+            </div>
+            <div className="mt-2 truncate text-[11px] text-slate-400">{t.source_summary}</div>
+            <div className="mt-2 text-[12px] font-semibold text-brand-600">Open →</div>
+          </Card>
+        ))}
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
+        {/* Path 1: upload a form agreement */}
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files?.[0]; uploadTemplate(f?.name ?? 'Uploaded form agreement.docx') }}
+          onClick={() => uploadTemplate('Uploaded form agreement.docx')}
+          className={clsx('flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 text-center transition',
+            dragOver ? 'border-ai-400 bg-ai-50/50' : 'border-slate-300 bg-white hover:border-ai-300')}
+        >
+          <FileText size={22} className="mb-1.5 text-slate-400" />
+          <div className="text-[13px] font-bold text-slate-700">Upload template</div>
+          <div className="mt-0.5 text-[11.5px] text-slate-400">Drag & drop a form agreement (.docx) — it becomes a reusable baseline template.</div>
+        </div>
+        {/* Path 2: generate from examples */}
+        <div onClick={() => createProject('New template from examples', 'Analyze existing agreements and generate a brand-new baseline agreement.', 'MSA')}
+          className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-white p-6 text-center transition hover:border-ai-300">
+          <Wand2 size={22} className="mb-1.5 text-ai-500" />
+          <div className="text-[13px] font-bold text-slate-700">Create from examples</div>
+          <div className="mt-0.5 text-[11.5px] text-slate-400">Select existing agreements (or a folder) — the system analyzes them and generates a brand-new baseline agreement, saved as a template.</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function ProjectsView() {
   const projects = useStore((s) => s.projects)
   const templates = useStore((s) => s.templates)
@@ -204,12 +257,12 @@ export function ProjectsView() {
       {/* Left list */}
       <div className="flex w-[280px] shrink-0 flex-col border-r border-slate-200 bg-white">
         <div className="flex items-center justify-between px-4 pb-2 pt-4">
-          <h1 className="text-[15px] font-bold text-slate-800">Projects</h1>
+          <h1 className="text-[15px] font-bold text-slate-800">Templates</h1>
           <button onClick={() => createProject('New form template', 'Build a new form agreement from precedent + market standards.', 'MSA')}
             title="New project" className="flex h-7 w-7 items-center justify-center rounded-lg bg-ai-600 text-white hover:bg-ai-700"><Plus size={15} /></button>
         </div>
         <div className="flex-1 overflow-y-auto px-2 pb-3">
-          <div className="px-2 pb-1 pt-2 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">Building</div>
+          <div className="px-2 pb-1 pt-2 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">In progress</div>
           {projects.map((p) => (
             <button key={p.id} onClick={() => navigate({ projectId: p.id, templateId: undefined })}
               className={clsx('flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left', canvas.projectId === p.id && !canvas.templateId ? 'bg-ai-50' : 'hover:bg-slate-50')}>
@@ -217,7 +270,7 @@ export function ProjectsView() {
               <div className="min-w-0"><div className="truncate text-[12.5px] font-semibold text-slate-700">{p.name}</div><div className="text-[11px] text-slate-400">{p.agreement_type} · {p.status.replace('_', ' ')}</div></div>
             </button>
           ))}
-          <div className="px-2 pb-1 pt-3 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">Templates library</div>
+          <div className="px-2 pb-1 pt-3 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">Library</div>
           {templates.map((t) => (
             <button key={t.id} onClick={() => navigate({ templateId: t.id, projectId: undefined })}
               className={clsx('flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left', canvas.templateId === t.id ? 'bg-ai-50' : 'hover:bg-slate-50')}>
@@ -232,7 +285,7 @@ export function ProjectsView() {
       <div className="min-w-0 flex-1 overflow-y-auto p-6">
         {activeTemplate ? <TemplateDetail template={activeTemplate} />
           : activeProject ? <ProjectDetail project={activeProject} />
-          : <Empty icon={<FolderKanban size={30} className="text-ai-400" />} title="Build a new form template" sub="Point the agent at precedent agreements + market standards and it generates a new template — your Claude Projects flow, made enterprise. Pick a project or start a new one." />}
+          : <TemplateLibrary />}
       </div>
     </div>
   )

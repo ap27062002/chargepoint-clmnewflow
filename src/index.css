@@ -43,3 +43,7 @@ body {
 .markdown strong { font-weight: 600; }
 .markdown h3 { font-weight: 700; font-size: 13px; margin: 12px 0 6px; }
 .markdown code { background: #eef2ff; padding: 1px 5px; border-radius: 4px; font-size: 12px; font-family: ui-monospace, monospace; }
+
+/* Playbooks §4 — highlight a provision the agent just modified via chat */
+@keyframes flashOnce { 0% { background-color: #ede9fe; box-shadow: 0 0 0 2px #a78bfa; } 100% { background-color: transparent; box-shadow: none; } }
+.flash-once { animation: flashOnce 1.8s ease-out 1; }

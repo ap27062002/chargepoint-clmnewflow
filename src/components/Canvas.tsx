@@ -25,7 +25,7 @@ function useBreadcrumb(): string {
     dashboard: 'Leadership overview', admin: 'Admin console',
     audit: 'Audit center', notifications: 'Notification center', queue: 'My queue',
     deal_summary: 'Deal summary', intake: 'NDA drafting brief',
-    repository: 'Agreements repository', contracts: 'All contracts', projects: 'Template projects',
+    repository: 'Archive', contracts: 'All contracts', projects: 'Templates',
   }
   if (canvas.view === 'ticket' || canvas.view === 'agreement') {
     const t = tickets.find((x) => x.id === canvas.ticketId)

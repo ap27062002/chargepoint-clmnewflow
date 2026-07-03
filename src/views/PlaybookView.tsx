@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { clsx } from 'clsx'
-import { BookOpen, ChevronRight, ShieldCheck, TrendingUp, Plus, Sparkles, Check, X, Clock, Filter, Inbox, Wand2, Layers, Share2, FileDown } from 'lucide-react'
+import { BookOpen, ChevronRight, ShieldCheck, TrendingUp, Plus, Sparkles, Check, X, Clock, Filter, Inbox, Wand2, Layers, Share2, FileDown, Flag } from 'lucide-react'
 import { useStore } from '@/store'
 import { Card, Chip, Avatar, Button, SectionLabel, Empty } from '@/components/ui'
 import { fmtDate } from '@/lib/labels'
@@ -25,8 +25,16 @@ const ccLabel: Record<string, string> = {
 }
 
 // Recursive provision node — supports nesting (Eric §8: Indemnification parent + children).
-function ProvisionNode({ p, depth, renderPurpose = 'standard' }: { p: Provision; depth: number; renderPurpose?: 'standard' | 'external' | 'training' }) {
+function ProvisionNode({ p, depth, renderPurpose = 'standard', editablePlaybookId }: { p: Provision; depth: number; renderPurpose?: 'standard' | 'external' | 'training'; editablePlaybookId?: string }) {
   const tier = tierOf(p)
+  const editText = useStore((s) => s.editProvisionText)
+  const mayEdit = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'playbook_edit'))
+  const inline = !!editablePlaybookId && mayEdit
+  const edProps = (field: 'standard' | 'fallback' | 'red_line', idx: number, current: string) => inline ? {
+    contentEditable: true, suppressContentEditableWarning: true, title: 'Click to edit — saves on blur',
+    onBlur: (e: React.FocusEvent<HTMLDivElement>) => { const t = e.currentTarget.textContent?.trim() ?? ''; if (t && t !== current) editText(editablePlaybookId!, p.id, field, idx, t) },
+    className: 'cursor-text focus:outline-none focus:ring-2 focus:ring-ai-300',
+  } : {}
   const external = renderPurpose === 'external' // counterparty-facing: hide red-line internals
   const training = renderPurpose === 'training'
   const hasKids = !!p.children?.length
@@ -43,22 +51,24 @@ function ProvisionNode({ p, depth, renderPurpose = 'standard' }: { p: Provision;
           </div>
         </div>
         <Chip className={tierMeta[tier].chip}>{tierMeta[tier].label}{tier === 'fallback' && p.fallback_tiers.length > 1 ? ` ×${p.fallback_tiers.length}` : ''}</Chip>
+        {tier === 'deferred' && <span className="shrink-0 text-[10px] font-semibold text-violet-400">Not included in AI review</span>}
+        {p.modified_via_chat && <Chip className="bg-ai-50 text-ai-700 ring-ai-500/20"><Sparkles size={9} /> Modified via chat</Chip>}
         {(p.negotiated_pct ?? 0) > 0 && <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-400"><TrendingUp size={12} /> {p.negotiated_pct}%</span>}
       </button>
       {open && (
         <div className="space-y-2 pb-3" style={{ paddingLeft: 32 + depth * 20, paddingRight: 16 }}>
           {tier === 'deferred' && (
             <div className="flex items-start gap-2 rounded-lg bg-violet-50/70 px-3 py-2 text-[12px] leading-snug text-violet-800 ring-1 ring-violet-100">
-              <Clock size={13} className="mt-0.5 shrink-0" /><span><b>Deferred</b> — no single baseline. The agent escalates to <b>{p.deferred_to ?? 'the deal team'}</b> for a written decision.</span>
+              <Clock size={13} className="mt-0.5 shrink-0" /><span><b>Deferred</b> — no single baseline. The agent escalates to <b>{p.deferred_to ?? 'the deal team'}</b> for a written decision. <b className="text-violet-900">Not included in AI review</b> — no analysis card is produced for this provision.</span>
             </div>
           )}
           {p.standard_position && (
-            <div><div className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-brand-600"><ShieldCheck size={11} /> Standard</div>
-              <div className="rounded-lg bg-brand-50/60 px-3 py-2 text-[12.5px] leading-snug text-slate-700 ring-1 ring-brand-100">{p.standard_position}</div></div>
+            <div><div className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-brand-600"><ShieldCheck size={11} /> Standard {inline && <span className="font-normal normal-case text-slate-300">· click to edit</span>}</div>
+              <div {...edProps('standard', 0, p.standard_position)} className={clsx('rounded-lg bg-brand-50/60 px-3 py-2 text-[12.5px] leading-snug text-slate-700 ring-1 ring-brand-100', p.modified_via_chat && 'flash-once', inline && 'cursor-text focus:outline-none focus:ring-2 focus:ring-ai-300')}>{p.standard_position}</div></div>
           )}
           {p.fallback_tiers.map((f, i) => (
             <div key={i}><div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-amber-600">Fallback {i + 1}</div>
-              <div className="rounded-lg bg-amber-50/50 px-3 py-2 text-[12.5px] leading-snug text-slate-700 ring-1 ring-amber-100">{f}</div></div>
+              <div {...edProps('fallback', i, f)} className={clsx('rounded-lg bg-amber-50/50 px-3 py-2 text-[12.5px] leading-snug text-slate-700 ring-1 ring-amber-100', p.modified_via_chat && i === 0 && 'flash-once', inline && 'cursor-text focus:outline-none focus:ring-2 focus:ring-ai-300')}>{f}</div></div>
           ))}
           {p.red_line && !external && (
             <div><div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-red-600">Red line (do not accept)</div>
@@ -66,7 +76,7 @@ function ProvisionNode({ p, depth, renderPurpose = 'standard' }: { p: Provision;
           )}
           {external && <div className="text-[11px] italic text-slate-400">Internal red-line guidance hidden in the counterparty-facing view.</div>}
           {p.rationale && (external ? null : <div className={clsx('text-[11.5px]', training ? 'rounded-lg bg-ai-50/50 px-3 py-2 text-ai-800 ring-1 ring-ai-100' : 'italic text-slate-400')}>{training && <b>Why this position: </b>}{!training && 'Rationale: '}{p.rationale}</div>)}
-          {p.children?.map((c) => <div key={c.id} className="mt-1 rounded-lg border border-slate-100"><ProvisionNode p={c} depth={depth + 1} renderPurpose={renderPurpose} /></div>)}
+          {p.children?.map((c) => <div key={c.id} className="mt-1 rounded-lg border border-slate-100"><ProvisionNode p={c} depth={depth + 1} renderPurpose={renderPurpose} editablePlaybookId={editablePlaybookId} /></div>)}
         </div>
       )}
     </div>
@@ -78,6 +88,47 @@ const FILTERS: { key: ProvisionTier | 'all'; label: string }[] = [
 ]
 
 const sugKindChip: Record<string, string> = { default: 'bg-brand-50 text-brand-700 ring-brand-500/20', fallback: 'bg-amber-50 text-amber-700 ring-amber-500/20', red_line: 'bg-red-50 text-red-700 ring-red-500/20' }
+
+// Playbooks §8 — audit/evaluation: accuracy stat, user-flagged misses, run-evaluation.
+function PlaybookAudit({ playbookId }: { playbookId: string }) {
+  const flags = useStore((s) => s.analysisFlags)
+  const deviations = useStore((s) => s.deviations)
+  const setToast = useStore((s) => s.setToast)
+  const seeded = [
+    { id: 'FLAG-S1', provision: 'Injunctive Relief — bond language', reason: 'Should have been Fallback', status: 'reviewed', date: '2026-06-20' },
+    { id: 'FLAG-S2', provision: 'Affiliate liability rider', reason: 'False positive', status: 'open', date: '2026-06-24' },
+  ]
+  const userFlags = flags.map((f) => {
+    const d = deviations.find((x) => x.id === f.deviation_id)
+    return { id: f.id, provision: d?.provision_name ?? f.deviation_id, reason: f.reason, status: f.status, date: f.date.slice(0, 10) }
+  })
+  const rows = [...userFlags, ...seeded]
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-3 gap-3">
+        <Card className="p-4"><SectionLabel>Detection accuracy</SectionLabel><div className="mt-1 text-2xl font-bold text-brand-600">96%</div><div className="text-[11.5px] text-slate-400">across 42 reviewed agreements</div></Card>
+        <Card className="p-4"><SectionLabel>User-flagged misses</SectionLabel><div className="mt-1 text-2xl font-bold text-slate-800">{rows.length}</div><div className="text-[11.5px] text-slate-400">{rows.filter((r) => r.status === 'open').length} awaiting review</div></Card>
+        <Card className="p-4"><SectionLabel>Evaluation</SectionLabel>
+          <Button size="sm" variant="ai" className="mt-1.5" onClick={() => setToast('Evaluation queued — full evaluation module available in the admin portal.')}>Run evaluation</Button>
+          <div className="mt-1 text-[10.5px] text-slate-400">Full evaluation module available in the admin portal.</div>
+        </Card>
+      </div>
+      <Card className="overflow-hidden">
+        <div className="border-b border-slate-100 px-4 py-2.5"><SectionLabel>Flagged analyses — from "Flag: incorrect analysis" on review cards</SectionLabel></div>
+        {rows.map((r) => (
+          <div key={r.id} className="flex items-center gap-2.5 border-b border-slate-50 px-4 py-2.5 text-[12.5px] last:border-0">
+            <Flag size={13} className="shrink-0 text-amber-500" />
+            <span className="font-semibold text-slate-700">{r.provision}</span>
+            <Chip className="bg-amber-50 text-amber-700 ring-amber-500/20">{r.reason}</Chip>
+            <span className="ml-auto text-[11px] text-slate-400">{r.date}</span>
+            <Chip className={r.status === 'open' ? 'bg-red-50 text-red-600 ring-red-500/20' : 'bg-brand-50 text-brand-700 ring-brand-500/20'}>{r.status}</Chip>
+          </div>
+        ))}
+        {rows.length === 0 && <div className="px-4 py-6 text-center text-[12px] text-slate-400">No flags yet — use ⋯ on an AI review card.</div>}
+      </Card>
+    </div>
+  )
+}
 
 function SuggestionsPanel({ playbookId }: { playbookId: string }) {
   const suggestions = useStore((s) => s.playbookSuggestions).filter((x) => x.playbook_id === playbookId)
@@ -137,6 +188,10 @@ function PlaybookCreate() {
   const draft = drafts.find((d) => d.id === canvas.playbookDraftId) ?? drafts[0]
   const [refineInput, setRefineInput] = useState('')
   const [lastReply, setLastReply] = useState<string | null>(null)
+  const [dragOver, setDragOver] = useState(false)
+  const [dropped, setDropped] = useState(0)
+  const [describe, setDescribe] = useState('')
+  const decide = useStore((s) => s.decideDraftProvision)
   // R48 — the real, selectable folder of example agreements the derivation reads from.
   const folder = useStore((s) => (draft ? s.playbookSourceDefaults[draft.agreement_type] : undefined))
   const allExamples = folderAgreements(agreements, tickets)
@@ -148,26 +203,60 @@ function PlaybookCreate() {
       <Card className="p-4">
         <div className="flex items-center gap-2"><Wand2 size={16} className="text-ai-600" /><span className="text-[14px] font-bold text-slate-800">{draft.name}</span><Chip className="bg-ai-50 text-ai-700 ring-ai-500/20">{draft.stage}</Chip></div>
         <p className="mt-1 text-[12px] text-slate-500">“{draft.rawPrompt}”</p>
-        {/* R48 — real folder picker: template + a selectable list of example agreements (not a static chip). */}
-        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <div className="mb-1.5 flex items-center gap-1.5 text-[11.5px] font-semibold text-slate-600">
-            <BookOpen size={12} className="text-slate-400" /> Source folder: <span className="font-mono text-[11px] text-slate-500">{draft.sourcePath ?? folder?.path ?? '(none)'}</span>
-            <Chip className="ml-auto bg-white text-slate-500 ring-slate-200">Template: {draft.sourceTemplateId ?? `${draft.agreement_type} standard`}</Chip>
+        {/* Step 1 (Eric): a full-width DROP ZONE + folder select + a narrative description —
+            the Claude-project pattern. The checkbox picker is demoted to "Browse archive". */}
+        {draft.stage === 'collecting' && (
+          <div className="mt-3 space-y-2.5">
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); setDropped((p) => p + Math.max(1, e.dataTransfer.files?.length ?? 1)) }}
+              onClick={() => setDropped((p) => p + 1)}
+              className={clsx('flex w-full cursor-pointer flex-col items-center rounded-xl border-2 border-dashed px-4 py-7 text-center transition', dragOver ? 'border-ai-400 bg-ai-50/50' : 'border-slate-300 bg-white hover:border-ai-300')}
+            >
+              <Wand2 size={20} className="mb-1 text-ai-500" />
+              <div className="text-[13px] font-bold text-slate-700">Drop your template and negotiated agreements here</div>
+              <div className="mt-0.5 text-[11px] text-slate-400">{dropped > 0 ? `${dropped} file${dropped === 1 ? '' : 's'} received — plus the folder selection below.` : 'Or pick a folder / browse the archive below.'}</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11.5px] font-semibold text-slate-500">Select a folder:</span>
+              <select defaultValue={draft.sourcePath ?? folder?.path ?? ''} className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[12px] outline-none">
+                <option value={folder?.path ?? '/Legal/NDAs'}>{folder?.path ?? '/Legal/NDAs'}</option>
+                <option>/Legal/Executed/2025</option>
+                <option>/Legal/MSAs — enterprise</option>
+              </select>
+              <Chip className="ml-auto bg-white text-slate-500 ring-slate-200">Template: {draft.sourceTemplateId ?? `${draft.agreement_type} standard`}</Chip>
+            </div>
+            <div>
+              <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Describe what's in these documents</div>
+              <textarea value={describe} onChange={(e) => setDescribe(e.target.value)} rows={2}
+                placeholder="e.g. Our standard NDA template plus 11 executed NDAs from the last 18 months; the Mondelez and Clever Devices deals were heavily negotiated…"
+                className="w-full resize-none rounded-lg border border-slate-300 px-2.5 py-2 text-[12.5px] outline-none focus:border-ai-400" />
+            </div>
+            <details>
+              <summary className="cursor-pointer text-[11.5px] font-semibold text-slate-400 hover:text-slate-600">Browse archive — pick individual example agreements</summary>
+              <div className="mt-1.5 space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-2">
+                {allExamples.map((ex) => {
+                  const on = draft.exampleRefs.includes(ex.id)
+                  return (
+                    <button key={ex.id} onClick={() => toggleExample(ex.id)} className={clsx('flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[12px] transition', on ? 'bg-brand-50 text-slate-700 ring-1 ring-brand-200' : 'text-slate-500 hover:bg-white')}>
+                      <span className={clsx('flex h-4 w-4 shrink-0 items-center justify-center rounded border', on ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-300')}>{on && <Check size={11} />}</span>
+                      <span className="truncate font-medium">{ex.name}</span>
+                      <Chip className="ml-auto bg-white text-slate-400 ring-slate-200">{ex.agreement_type}</Chip>
+                    </button>
+                  )
+                })}
+              </div>
+            </details>
           </div>
-          <div className="space-y-1">
-            {allExamples.map((ex) => {
-              const on = draft.exampleRefs.includes(ex.id)
-              return (
-                <button key={ex.id} onClick={() => toggleExample(ex.id)} disabled={draft.stage !== 'collecting'} className={clsx('flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[12px] transition disabled:opacity-60', on ? 'bg-brand-50 text-slate-700 ring-1 ring-brand-200' : 'text-slate-500 hover:bg-white')}>
-                  <span className={clsx('flex h-4 w-4 shrink-0 items-center justify-center rounded border', on ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-300')}>{on && <Check size={11} />}</span>
-                  <span className="truncate font-medium">{ex.name}</span>
-                  <Chip className="ml-auto bg-white text-slate-400 ring-slate-200">{ex.agreement_type}</Chip>
-                </button>
-              )
-            })}
+        )}
+        {/* Step 2: what the analysis DETECTED, stated as deviations from the template */}
+        {draft.stage !== 'collecting' && (
+          <div className="mt-3 rounded-lg border border-ai-200 bg-ai-50/40 px-3 py-2.5 text-[12.5px] text-slate-700">
+            <Sparkles size={12} className="mr-1 inline text-ai-600" />
+            Analyzed <b>{Math.max(draft.exampleRefs.length, dropped, 2)} agreements</b> against the template. Detected: <b>Residuals clause appears in 50% of your NDAs</b>, deviating from your template · marking requirements negotiated in 27% · survival shortened in 41%.
           </div>
-          <div className="mt-1.5 text-[11px] text-slate-400">{draft.exampleRefs.length} example{draft.exampleRefs.length === 1 ? '' : 's'} selected — the agent reads each one's clause text and compares it against the template to derive positions.</div>
-        </div>
+        )}
         <div className="mt-3 space-y-2">
           {[['collecting', 'Point at the template + example agreements', draft.stage !== 'collecting'],
             ['analyzing', 'Analyze the examples vs the template', draft.stage === 'generated'],
@@ -187,8 +276,24 @@ function PlaybookCreate() {
       {draft.stage === 'generated' && (
         <>
           <Card className="overflow-hidden">
-            <div className="border-b border-slate-100 px-4 py-2.5"><SectionLabel>Generated provisions ({draft.provisions.length}) — review & refine by chat</SectionLabel></div>
-            {draft.provisions.map((p) => <ProvisionNode key={p.id} p={p} depth={0} />)}
+            <div className="border-b border-slate-100 px-4 py-2.5"><SectionLabel>Generated provisions ({draft.provisions.length}) — decide each: Accept · Reject · Defer</SectionLabel></div>
+            {draft.provisions.map((p) => (
+              <div key={p.id} className="border-b border-slate-100 last:border-0">
+                <ProvisionNode p={p} depth={0} />
+                <div className="flex items-center gap-1.5 bg-slate-50/60 px-4 py-1.5">
+                  {p.review_state === 'accepted' && <Chip className="bg-brand-50 text-brand-700 ring-brand-500/20"><Check size={10} /> Accepted into the playbook</Chip>}
+                  {p.review_state === 'deferred' && <Chip className="bg-violet-50 text-violet-700 ring-violet-500/20"><Clock size={10} /> Deferred — not included in AI review</Chip>}
+                  {!p.review_state && (
+                    <>
+                      <span className="text-[10.5px] font-bold uppercase tracking-wide text-slate-400">Decision:</span>
+                      <button onClick={() => decide(draft.id, p.id, 'accept')} className="rounded-md bg-brand-500 px-2.5 py-0.5 text-[11px] font-semibold text-white hover:bg-brand-600">Accept</button>
+                      <button onClick={() => decide(draft.id, p.id, 'reject')} className="rounded-md border border-slate-200 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500 hover:bg-red-50 hover:text-red-600">Reject</button>
+                      <button onClick={() => decide(draft.id, p.id, 'defer')} className="rounded-md border border-slate-200 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500 hover:bg-violet-50 hover:text-violet-600" title="Park it — no single position; excluded from AI review">Defer</button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
           </Card>
           {/* NL content refinement — add / remove / re-tier provisions in plain language (Eric §8). */}
           <Card className="p-4">
@@ -335,6 +440,7 @@ export function PlaybookView() {
   const [newFolder, setNewFolder] = useState<{ path: string; category: string; broad: boolean } | null>(null)
   // R52/R57/R58/R60 — chat-driven restructure performs a REAL transform on the published playbook.
   const restructurePlaybook = useStore((s) => s.restructurePlaybook)
+  const addDocs = useStore((s) => s.addDocumentsToPlaybook)
   const [restructOpen, setRestructOpen] = useState(false)
   const [restructMsgs, setRestructMsgs] = useState<{ role: 'user' | 'agent'; text: string }[]>([])
   const [restructInput, setRestructInput] = useState('')
@@ -386,6 +492,7 @@ export function PlaybookView() {
                 <Inbox size={13} /> Suggested {pendingCount > 0 && <span className="rounded-full bg-red-500 px-1.5 text-[10.5px] text-white">{pendingCount}</span>}
               </button>
               {canEdit && <button onClick={() => startDraft('New Playbook', pb.agreement_type, 'Create a playbook from a template + examples')} className={clsx('flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold', mode === 'create' ? 'bg-white text-slate-800' : 'bg-slate-800 text-slate-200 hover:bg-slate-700')}><Plus size={13} /> Create</button>}
+              <button onClick={() => openCanvas({ view: 'projects', open: true })} title="Baseline form agreements — used to start new tickets and as the foundation for playbooks" className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-2.5 py-1.5 text-[12px] font-semibold text-slate-200 hover:bg-slate-700"><Layers size={13} /> Templates</button>
               {/* R85 — publishing to a team folder is the owner's workflow (visual theme stays admin-only, R54). */}
               {canEdit && <div className="relative">
                 <button onClick={() => setPublishOpen((v) => !v)} className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-2.5 py-1.5 text-[12px] font-semibold text-slate-200 hover:bg-slate-700"><Share2 size={13} /> Publish</button>
@@ -432,12 +539,14 @@ export function PlaybookView() {
             <button onClick={() => openCanvas({ view: 'playbook', playbookMode: 'library' })} className="font-semibold text-slate-300 hover:text-white">← All playbooks</button>
             <span className="flex items-center gap-1.5"><Avatar userId={pb.owner_id} size={18} /> Owner: {userById(pb.owner_id)?.name}</span>
             <span>Generated {fmtDate(pb.created_date)}</span>
+            <span className="font-semibold text-slate-300">v{pb.version}{pb.edited_date ? `, edited ${fmtDate(pb.edited_date)}` : ''}</span>
             {mode !== 'inventory' && <button onClick={() => setPlaybook(pb.id)} className="text-slate-300 hover:text-white">← Back to inventory</button>}
           </div>
         </div>
       </Card>
 
       {mode === 'suggestions' ? <SuggestionsPanel playbookId={pb.id} />
+        : mode === 'audit' ? <PlaybookAudit playbookId={pb.id} />
         : mode === 'create' ? <PlaybookCreate />
         : (
           <>
@@ -469,15 +578,19 @@ export function PlaybookView() {
                   </button>
                 )
               })}
-              {canEdit && <button onClick={() => setRestructOpen((v) => !v)} className={clsx('ml-auto flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-semibold', restructOpen ? 'bg-ai-50 text-ai-700' : 'text-ai-600 hover:bg-ai-50')}><Wand2 size={12} /> Restructure via chat</button>}
+              <div className="ml-auto flex items-center gap-1">
+                {canEdit && <button onClick={() => addDocs(pb.id)} title="Feed additional executed agreements to refine this playbook" className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-semibold text-slate-500 hover:bg-slate-100"><Plus size={12} /> Add documents</button>}
+                <button onClick={() => openCanvas({ view: 'playbook', playbookId: pb.id, playbookMode: 'audit' })} className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-semibold text-slate-500 hover:bg-slate-100"><ShieldCheck size={12} /> Audit</button>
+                {canEdit && <button onClick={() => setRestructOpen((v) => !v)} title="Edits CONTENT (tighten/add/remove positions) and layout (nest/group/reorder/render)" className={clsx('flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-semibold', restructOpen ? 'bg-ai-50 text-ai-700' : 'text-ai-600 hover:bg-ai-50')}><Wand2 size={12} /> Edit via chat</button>}
+              </div>
             </div>
 
             {/* Chat-driven restructure — tell the agent how to render the playbook (Eric §8) */}
             {restructOpen && canEdit && (
               <Card className="mb-3 border-ai-200 bg-ai-50/30 p-3">
-                <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-ai-700"><Sparkles size={12} /> Restructure the layout in plain language</div>
+                <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-ai-700"><Sparkles size={12} /> Edit content or layout in plain language</div>
                 <div className="mb-2 flex flex-wrap gap-1.5">
-                  {['Make Governing Law a fallback', 'Nest Marking, Return and Protection Obligations under Confidentiality Mechanics', 'Put Residuals and Term first', 'Render as a counterparty-facing summary', 'Group by category', ...(canPresentation ? ['Set the theme to teal'] : [])].map((ex) => (
+                  {['Tighten the fallback position on exclusions from confidential information', 'Make Governing Law a fallback', 'Nest Marking, Return and Protection Obligations under Confidentiality Mechanics', 'Render as a counterparty-facing summary', 'Group by category', ...(canPresentation ? ['Set the theme to teal'] : [])].map((ex) => (
                     <button key={ex} onClick={() => applyRestructure(ex)} className="rounded-full border border-ai-200 bg-white px-2.5 py-0.5 text-[11.5px] font-medium text-ai-700 hover:bg-ai-50">{ex}</button>
                   ))}
                 </div>
@@ -511,7 +624,7 @@ export function PlaybookView() {
                 {Array.from(shown.reduce((map, p) => { const k = p.cross_cutting_category ?? 'other'; if (!map.has(k)) map.set(k, []); map.get(k)!.push(p); return map }, new Map<string, Provision[]>())).map(([cat, provs]) => (
                   <Card key={cat} className="overflow-hidden">
                     <div className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-[12px] font-bold text-slate-600">{ccLabel[cat] ?? 'Other'} · {provs.length}</div>
-                    {provs.map((p) => <ProvisionNode key={p.id} p={p} depth={0} renderPurpose={pb.render_purpose} />)}
+                    {provs.map((p) => <ProvisionNode key={p.id} p={p} depth={0} renderPurpose={pb.render_purpose} editablePlaybookId={pb.id} />)}
                   </Card>
                 ))}
               </div>
@@ -521,7 +634,7 @@ export function PlaybookView() {
                   <SectionLabel>Provisions ({shown.length}{filter !== 'all' ? ` of ${pb.provisions.length}` : ''})</SectionLabel>
                   <span className="text-[11px] text-slate-400">Existing agreements retain their original version</span>
                 </div>
-                {shown.map((p) => <ProvisionNode key={p.id} p={p} depth={0} renderPurpose={pb.render_purpose} />)}
+                {shown.map((p) => <ProvisionNode key={p.id} p={p} depth={0} renderPurpose={pb.render_purpose} editablePlaybookId={pb.id} />)}
                 {shown.length === 0 && <div className="py-8 text-center text-[12px] text-slate-400">No provisions in this category.</div>}
               </Card>
             )}
