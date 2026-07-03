@@ -1,7 +1,9 @@
 # Project state — resume here
 
 **App:** ChargePoint Legal CLM — agent-first, chat-driven CLM prototype (Unify build).
-**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-20` (git tag) · repo clean.
+**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-21` (git tag) · repo clean.
+
+**build-21 — fixed the "everything turns red" accept/send-back visuals.** Root cause: `ChangeRun`'s class ternary (latent since build-4) had no 'normal' branch — plain text got the red `tc-del` strikethrough. Fixes: normal runs unstyled; counterparty deletions BLUE (matching their insertions); counter no longer injects guidance prose — the clause becomes the real negotiated fallback language from the clean copy; rejected counterparty-added clauses drop from the doc; clause chips are disposition-aware (risk chip while open → calm ✓/↩/✕ once decided). Doc now converges to ZERO tracked marks = the clean copy; red/green lives only in the outgoing redline.
 
 **build-20 — review-in-chat + real-time doc cleaning + one-screen send back.** (1) Agreement-review right rail = 2 views only (Ask Claude / Comments); the playbook-review walkthrough is a collapsible chat widget inside Ask Claude. (2) Dispositions resolve the working doc in real time (`resolveDispositionInDocs` in store: accepted→clean text, rejected→struck+restored, countered→CP tracked insertion; idempotent via clause `orig` snapshots). (3) Send back = review-and-confirm: computed resolution chips + Apply-recommended-to-N, redline auto-generates (generateRedline no longer navigates away), advanced options collapsed, one Send button.
 
