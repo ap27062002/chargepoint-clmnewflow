@@ -1,7 +1,9 @@
 # Project state — resume here
 
 **App:** ChargePoint Legal CLM — agent-first, chat-driven CLM prototype (Unify build).
-**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-19` (git tag) · repo clean.
+**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-20` (git tag) · repo clean.
+
+**build-20 — review-in-chat + real-time doc cleaning + one-screen send back.** (1) Agreement-review right rail = 2 views only (Ask Claude / Comments); the playbook-review walkthrough is a collapsible chat widget inside Ask Claude. (2) Dispositions resolve the working doc in real time (`resolveDispositionInDocs` in store: accepted→clean text, rejected→struck+restored, countered→CP tracked insertion; idempotent via clause `orig` snapshots). (3) Send back = review-and-confirm: computed resolution chips + Apply-recommended-to-N, redline auto-generates (generateRedline no longer navigates away), advanced options collapsed, one Send button.
 
 **build-19 — Playbook Library.** Nav → all-playbooks card grid (tier mix, owner, "used by N agreements", pending-suggestions badge → queue) + resumable drafts + Create popover (NDA/MSA w/ default source folders, RBAC-gated). Card → existing detail; "← All playbooks" back; agent deep-links unchanged; breadcrumb "Playbooks". New `playbookMode: 'library'` (LeftRail sets it; `PlaybookLibrary` in PlaybookView.tsx).
 
