@@ -425,6 +425,7 @@ export interface CanvasState {
   agreementTab?: 'overview' | 'deal' | 'review'
   reviewMode?: 'issues' | 'document' | 'compare' | 'directive' | 'sendback' | 'redline'
   reviewFocusDeviationId?: string        // directive cursor — which issue the walkthrough is on
+  reviewFocusRef?: string                // jump-to-comment: provision_reference to flash in the document
   dealSummaryId?: string
   intakeCp?: string
   executionAgreementId?: string

@@ -457,10 +457,10 @@ export const DEFAULT_PLAYBOOK_SOURCES: PlaybookSourceDefaults = {
 }
 
 export const agreementTemplates: AgreementTemplate[] = [
-  { id: 'TPL-9001', name: 'ChargePoint Mutual NDA 2025 (North America)', agreement_type: 'MNDA', origin: 'precedent', status: 'published',
+  { id: 'TPL-9001', name: 'Standard NDA', agreement_type: 'MNDA', origin: 'precedent', status: 'published',
     project_id: null, version: 3, owner_id: 'u_eric', created_date: '2026-05-01', source_summary: 'Standardized from 11 executed NDAs.',
     sections: buildSectionsFor('MNDA'), playbook_id: 'pb_nda' },
-  { id: 'TPL-9002', name: 'ChargePoint Master Services Agreement 2025', agreement_type: 'MSA', origin: 'precedent', status: 'in_review',
+  { id: 'TPL-9002', name: 'Standard MSA', agreement_type: 'MSA', origin: 'precedent', status: 'in_review',
     project_id: null, version: 1, owner_id: 'u_eric', created_date: '2026-06-18', source_summary: 'Built from 8 negotiated MSAs.',
     sections: buildSectionsFor('MSA'), playbook_id: 'pb_msa' },
   { id: 'TPL-9003', name: 'DPA Baseline', agreement_type: 'DPA', origin: 'uploaded', status: 'published',

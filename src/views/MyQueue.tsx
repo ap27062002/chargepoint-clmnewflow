@@ -27,13 +27,14 @@ export function MyQueue() {
   const agreements = useStore((s) => s.agreements)
   const openTicket = useStore((s) => s.openTicket)
   const openAgreement = useStore((s) => s.openAgreement)
+  const navigate = useStore((s) => s.navigate)
   const resolveMention = useStore((s) => s.resolveMention)
   const approvals = useStore((s) => s.approvals)
   const decideApproval = useStore((s) => s.decideApproval)
   const openCanvas = useStore((s) => s.openCanvas)
   const myApprovals = approvals.filter((ap) => ap.state === 'pending' && ap.steps.some((st) => st.approver_id === uid && st.state === 'pending'))
 
-  const awaitingMe = messages.filter((m) => m.mentions?.includes(uid) && !m.resolved)
+  const awaitingMe = messages.filter((m) => m.mentions?.includes(uid) && !m.resolved).slice().sort((a, b) => new Date(a.created_date).getTime() - new Date(b.created_date).getTime()) // oldest (highest age) first
   const requestedByMe = messages.filter((m) => m.author_id === uid && m.mentions?.length && !m.resolved)
   const myTickets = tickets.filter((t) => t.assigned_attorney_id === uid && t.status !== 'Executed' && t.status !== 'Resolved')
   const myAgreementIds = new Set(agreements.filter((a) => myTickets.some((t) => t.id === a.ticket_id)).map((a) => a.id))
@@ -80,7 +81,7 @@ export function MyQueue() {
                 </div>
                 <div className="mt-1.5 text-[13px] text-slate-700">{m.body}</div>
                 <div className="mt-2 flex gap-2">
-                  <button onClick={() => openAgreement(m.agreement_id!, 'review')} className="flex items-center gap-1 text-[12px] font-semibold text-brand-600 hover:underline">Open agreement <ArrowRight size={12} /></button>
+                  <button onClick={() => { openAgreement(m.agreement_id!, 'review'); navigate({ reviewFocusRef: m.provision_reference }) }} className="flex items-center gap-1 text-[12px] font-semibold text-brand-600 hover:underline">Jump to comment <ArrowRight size={12} /></button>
                   <button onClick={() => resolveMention(m.id)} className="text-[12px] font-semibold text-slate-400 hover:text-slate-600">Mark responded</button>
                 </div>
               </Card>

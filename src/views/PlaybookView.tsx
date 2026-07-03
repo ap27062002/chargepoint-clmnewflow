@@ -195,7 +195,7 @@ function PlaybookCreate() {
   // R48 — the real, selectable folder of example agreements the derivation reads from.
   const folder = useStore((s) => (draft ? s.playbookSourceDefaults[draft.agreement_type] : undefined))
   const allExamples = folderAgreements(agreements, tickets)
-  if (!draft) return <Empty icon={<Wand2 size={28} className="text-ai-400" />} title="Create a playbook in plain language" sub="Ask the agent to “create a playbook”, or start from a template in Projects." />
+  if (!draft) return <Empty icon={<Wand2 size={28} className="text-ai-400" />} title="Create a playbook in plain language" sub="Ask the agent to “create a playbook”, or start from a template in Templates." />
   const runRefine = (instr: string) => { if (!instr.trim()) return; const reply = refine(draft.id, instr.trim()); setLastReply(reply); setRefineInput('') }
   const toggleExample = (id: string) => setDraftExampleRefs(draft.id, draft.exampleRefs.includes(id) ? draft.exampleRefs.filter((x) => x !== id) : [...draft.exampleRefs, id])
   return (

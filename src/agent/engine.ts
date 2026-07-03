@@ -73,7 +73,7 @@ const intents: Intent[] = [
     name: 'create_ticket', cap: 'intake',
     test: (t) => has(t, 'create a ticket', 'open a ticket', 'new ticket', 'create ticket') && !has(t, 'negotiation ticket', 'support ticket'),
     reply: () => ({
-      text: `Happy to open a ticket. **What kind is it?**\n\n- **Agreement negotiation** — there's a document to review/negotiate (attach it and I'll set up the deal page).\n- **General legal support** — a question or review with no agreement (RFPs, guidance).\n\nYou can also attach files with the paperclip and I'll classify them.`,
+      text: `Happy to open a ticket. Tell me **what kind**, **what it's about**, and **who it's with** — in one line if you like, e.g. *"negotiation ticket for Rivian pilot MSA with Rivian"* or *"support ticket for an RFP review with Metro Transit"*. Attach files with the paperclip and I'll classify them as v1.`,
       artifact: { kind: 'none' },
       actions: [
         { label: 'Agreement negotiation (Rivian pilot sample)', prompt: 'create a negotiation ticket for the Rivian charging pilot', variant: 'primary' },
@@ -84,22 +84,35 @@ const intents: Intent[] = [
   {
     name: 'create_ticket_negotiation', cap: 'intake',
     test: (t) => has(t, 'negotiation ticket'),
-    reply: () => ({
-      text: `Done — I created the ticket, attached the sample agreement as **v1**, and routed it to **Kirsten Sachs** (commercial). Opening the deal page — Deal Overview first, then Deal Discussion and Agreement Review.`,
-      artifact: { kind: 'none' },
-      effect: () => useStore.getState().createTicketFull({ title: 'Rivian charging pilot — MSA negotiation', kind: 'negotiation', counterparty: 'Rivian', files: ['Rivian_MSA_draft.docx'], attorneyId: 'u_kirsten' }),
-      actions: [],
-    }),
+    reply: (t) => {
+      // conversational elicitation: parse title ("for …") and counterparty ("with …") from the message
+      const cp = t.match(/with ([a-z][\w .&-]+?)(?:[.,!]|$)/i)?.[1]?.trim()
+      const title = t.match(/for (?:the )?(.+?)(?: with [\w .&-]+)?(?:[.,!]|$)/i)?.[1]?.trim()
+      const cpName = cp ? cp.replace(/\b\w/g, (c) => c.toUpperCase()) : 'Rivian'
+      const ticketTitle = title ? title.charAt(0).toUpperCase() + title.slice(1) : 'Rivian charging pilot — MSA negotiation'
+      return {
+        text: `Done — created **"${ticketTitle}"** with **${cpName}**, attached the uploaded agreement as **v1**, and routed it to **Kirsten Sachs** (commercial). Opening the deal page — Deal Overview first.`,
+        artifact: { kind: 'none' },
+        effect: () => useStore.getState().createTicketFull({ title: ticketTitle, kind: 'negotiation', counterparty: cpName, files: ['Uploaded_agreement_v1.docx'], attorneyId: 'u_kirsten' }),
+        actions: [],
+      }
+    },
   },
   {
     name: 'create_ticket_support', cap: 'intake',
     test: (t) => has(t, 'support ticket', 'legal support ticket'),
-    reply: () => ({
-      text: `Done — **General Legal Support** ticket created (no agreement attached). It gets a deal page with the **Deal Discussion** thread and simple **Open → In Progress → Resolved** tracking. Opening it now.`,
-      artifact: { kind: 'none' },
-      effect: () => useStore.getState().createTicketFull({ title: 'RFP review — legal support', kind: 'support', counterparty: 'Metro Transit Authority', files: [], attorneyId: 'u_kirsten' }),
-      actions: [],
-    }),
+    reply: (t) => {
+      const cp = t.match(/with ([a-z][\w .&-]+?)(?:[.,!]|$)/i)?.[1]?.trim()
+      const title = t.match(/for (?:an? )?(.+?)(?: with [\w .&-]+)?(?:[.,!]|$)/i)?.[1]?.trim()
+      const cpName = cp ? cp.replace(/\b\w/g, (c) => c.toUpperCase()) : 'Metro Transit Authority'
+      const ticketTitle = title ? title.charAt(0).toUpperCase() + title.slice(1) : 'RFP review — legal support'
+      return {
+        text: `Done — **General Legal Support** ticket **"${ticketTitle}"** created with **${cpName}** (no agreement attached). It gets a deal page with the **Deal Discussion** thread and **Open → In Progress → Resolved** tracking. Opening it now.`,
+        artifact: { kind: 'none' },
+        effect: () => useStore.getState().createTicketFull({ title: ticketTitle, kind: 'support', counterparty: cpName, files: [], attorneyId: 'u_kirsten' }),
+        actions: [],
+      }
+    },
   },
   {
     // Comments §4 — parity: same list as the Open Comments report.
@@ -299,7 +312,7 @@ const intents: Intent[] = [
     name: 'create_template_project', cap: 'templates',
     test: (t) => has(t, 'create a template', 'new template', 'build a template', 'build a new template', 'create a new template', 'template project'),
     reply: () => ({
-      text: `Opening **Projects** to build a new form template. Point me at **precedent** ChargePoint agreements + **third-party standards**, and I'll generate a template modeled on the standards but carrying our concepts — you iterate with me, save it to the library, and can build a playbook from it. Your Claude Projects flow, made enterprise.`,
+      text: `Opening **Templates** to build a new form template. Point me at **precedent** ChargePoint agreements + **third-party standards**, and I'll generate a template modeled on the standards but carrying our concepts — you iterate with me, save it to the library, and can build a playbook from it. Your Claude Projects flow, made enterprise.`,
       artifact: { kind: 'projects', title: 'Templates' },
       actions: [],
     }),
@@ -308,7 +321,7 @@ const intents: Intent[] = [
     name: 'templates_folder', cap: 'templates',
     test: (t) => has(t, 'template projects', 'open projects', 'templates folder', 'projects workspace', 'my templates', 'template library', 'open the projects'),
     reply: () => ({
-      text: `Opening **Projects** — your template-building workspace and the library of saved templates (the NDA and MSA templates that seed the playbooks). Start a new project to build a form agreement from precedent.`,
+      text: `Opening **Templates** — your template-building workspace and the library of saved templates (the NDA and MSA templates that seed the playbooks). Start a new template to build a form agreement from precedent.`,
       artifact: { kind: 'projects', title: 'Templates' },
       actions: [],
     }),

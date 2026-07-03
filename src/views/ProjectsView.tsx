@@ -19,6 +19,8 @@ function ProjectDetail({ project }: { project: TemplateProject }) {
   const templates = useStore((s) => s.templates)
   const toggleSource = useStore((s) => s.toggleProjectSource)
   const generate = useStore((s) => s.generateTemplateDraft)
+  const [generating, setGenerating] = useState(false)
+  const runGenerate = (id: string) => { setGenerating(true); setTimeout(() => { generate(id); setGenerating(false) }, 1100) }
   const iterate = useStore((s) => s.iterateTemplate)
   const save = useStore((s) => s.saveTemplate)
   const buildPlaybook = useStore((s) => s.buildPlaybookFromTemplate)
@@ -59,7 +61,18 @@ function ProjectDetail({ project }: { project: TemplateProject }) {
         </div>
         {!draft && (
           <div className="mt-3 flex justify-end">
-            <Button variant="ai" icon={<Wand2 size={14} />} onClick={() => generate(project.id)}>Generate the template</Button>
+            <div className="mb-2 flex items-center gap-2 text-[12px] text-slate-500">
+              <span className="font-semibold">Or select a folder:</span>
+              <select className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[12px] outline-none" defaultValue="">
+                <option value="" disabled>Pick an archive folder…</option>
+                <option>/Legal/Executed/2025</option>
+                <option>/Legal/NDAs</option>
+                <option>/Legal/MSAs — enterprise</option>
+              </select>
+              <span className="text-[11px] text-slate-400">selects all agreements in that folder</span>
+            </div>
+            <Button variant="ai" icon={<Wand2 size={14} />} disabled={generating} onClick={() => runGenerate(project.id)}>{generating ? 'Analyzing examples…' : 'Generate the template'}</Button>
+            {generating && <div className="mt-2 flex items-center gap-2 text-[12px] text-ai-700"><span className="h-3 w-3 animate-spin rounded-full border-2 border-ai-300 border-t-ai-600" /> Reading the selected agreements and deriving a baseline…</div>}
           </div>
         )}
       </Card>
@@ -259,7 +272,7 @@ export function ProjectsView() {
         <div className="flex items-center justify-between px-4 pb-2 pt-4">
           <h1 className="text-[15px] font-bold text-slate-800">Templates</h1>
           <button onClick={() => createProject('New form template', 'Build a new form agreement from precedent + market standards.', 'MSA')}
-            title="New project" className="flex h-7 w-7 items-center justify-center rounded-lg bg-ai-600 text-white hover:bg-ai-700"><Plus size={15} /></button>
+            title="New template project" className="flex h-7 w-7 items-center justify-center rounded-lg bg-ai-600 text-white hover:bg-ai-700"><Plus size={15} /></button>
         </div>
         <div className="flex-1 overflow-y-auto px-2 pb-3">
           <div className="px-2 pb-1 pt-2 text-[10.5px] font-bold uppercase tracking-wide text-slate-400">In progress</div>

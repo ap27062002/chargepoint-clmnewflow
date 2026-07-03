@@ -11,6 +11,7 @@ import { userById } from '@/data/seed'
 import type { DocRun } from '@/data/documents'
 import type { Deviation } from '@/types'
 import { MentionComposer } from '@/components/MentionComposer'
+import { OpenCommentsModal } from '@/components/OpenComments'
 
 function ChangeRun({ run, versionId, editable }: { run: DocRun; versionId: string; editable: boolean }) {
   const acceptChange = useStore((s) => s.acceptChange)
@@ -59,7 +60,7 @@ function ClauseEditor({ versionId, clauseId }: { versionId: string; clauseId: st
   )
 }
 
-export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi }: { versionId: string; agreementId: string; focusClauseId?: string; onAskAi?: (text: string) => void }) {
+export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef, onAskAi }: { versionId: string; agreementId: string; focusClauseId?: string; focusRef?: string; onAskAi?: (text: string) => void }) {
   const doc = useStore((s) => s.documents[versionId])
   const devs = useStore((s) => s.deviations).filter((d) => d.agreement_id === agreementId)
   const roleCanEdit = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'disposition'))
@@ -103,6 +104,7 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
   const tickets = useStore((s) => s.tickets)
   const agreement = useStore((s) => s.agreements.find((x) => x.id === agreementId))
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
   const [flagMenu, setFlagMenu] = useState<string | null>(null)
   // Counter flow: when a counter is proposed, the cursor lands in the inserted text.
   useEffect(() => {
@@ -219,6 +221,15 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
     window.getSelection()?.removeAllRanges()
   }
 
+  // Jump-to-comment: a provision_reference from the queue/dashboard lands on the clause.
+  useEffect(() => {
+    if (focusRef) {
+      const cid = clauseForRef(focusRef)
+      if (cid) setTimeout(() => flashClause(cid), 250)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusRef, doc?.versionId])
+
   useEffect(() => {
     if (focusClauseId && containerRef.current) {
       const el = containerRef.current.querySelector(`#clause-${focusClauseId}`)
@@ -256,6 +267,10 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
         <button onClick={() => setDetailsOpen((v) => !v)} title="Document details" className={clsx('flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-semibold', detailsOpen ? 'bg-slate-100 text-slate-700' : 'text-slate-600 hover:bg-slate-100')}>
           <Info size={13} /> Details
         </button>
+        <button onClick={() => setReportOpen(true)} title="Open-comments report for this document" className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-semibold text-slate-600 hover:bg-slate-100">
+          <MessageSquare size={13} /> Open comments
+        </button>
+        {reportOpen && <OpenCommentsModal ticketId={agreement?.ticket_id ?? ''} agreementId={agreementId} title={doc.title} onClose={() => setReportOpen(false)} />}
         {canEdit && (
           <div className="ml-auto flex items-center gap-1.5">
             {edit && (
@@ -310,7 +325,9 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, onAskAi 
       {detailsOpen && (() => {
         const v = versions.find((x) => x.id === versionId)
         const tk = tickets.find((x) => x.id === agreement?.ticket_id)
-        const cpAbbr = (tk?.counterparty_name ?? 'CP').replace(/[^A-Za-z ]/g, '').split(' ').map((w) => w[0]).join('').slice(0, 3).toUpperCase()
+        const CP_ABBR: Record<string, string> = { 'Northwind Energy': 'NWE', 'Vishay Intertechnology': 'VIS', 'Metro Transit Authority': 'MTA', 'Mondelez International': 'MDZ' }
+        const cpName = tk?.counterparty_name ?? 'CP'
+        const cpAbbr = CP_ABBR[cpName] ?? cpName.replace(/[^A-Za-z ]/g, '').split(' ').map((w) => w[0]).join('').slice(0, 3).toUpperCase()
         const docIdMeta = `CLM-${cpAbbr}-${agreement?.agreement_type === 'Other' ? 'DOC' : agreement?.agreement_type}-00${v?.version_number ?? 1}`
         return (
           <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-4 py-2.5 text-[12px]">

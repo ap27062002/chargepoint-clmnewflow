@@ -454,7 +454,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
             {/* SPLIT: document (left) + review directive / ask claude / comments (right) — Eric §2 */}
             <div className="flex min-w-0 flex-1 flex-col border-r border-slate-200">
               {hasDoc
-                ? <DocumentViewer versionId={activeVerId!} agreementId={agreementId} focusClauseId={focusClause?.trim()} onAskAi={askAiAboutSelection} />
+                ? <DocumentViewer versionId={activeVerId!} agreementId={agreementId} focusClauseId={focusClause?.trim()} focusRef={canvas.reviewFocusRef} onAskAi={askAiAboutSelection} />
                 : <div className="flex h-full flex-col items-center justify-center px-8 text-center text-sm text-slate-400">
                     <FileText size={28} className="mb-2 text-slate-300" />
                     {versions.find((v) => v.id === activeVerId)?.label ?? 'This version'} — no tracked-changes document to display.

@@ -32,6 +32,7 @@ export function Dashboard() {
   const openTicket = useStore((s) => s.openTicket)
   const openAgreement = useStore((s) => s.openAgreement)
   const openCanvas = useStore((s) => s.openCanvas)
+  const navigate = useStore((s) => s.navigate)
   const setToast = useStore((s) => s.setToast)
   const [modalOpen, setModalOpen] = useState(false)
   const [q, setQ] = useState('')
@@ -165,7 +166,7 @@ export function Dashboard() {
           <div className="space-y-1.5">
             {myTags.length === 0 && <div className="py-3 text-center text-[12px] text-slate-400">Nothing is waiting on you. 🎉</div>}
             {myTags.slice(0, 4).map(({ msg, ag, tk, age }) => (
-              <button key={msg.id} onClick={() => (ag ? openAgreement(ag.id, 'review') : tk ? openTicket(tk.id) : undefined)}
+              <button key={msg.id} onClick={() => { if (ag) { openAgreement(ag.id, 'review'); navigate({ reviewFocusRef: msg.provision_reference }) } else if (tk) openTicket(tk.id) }}
                 className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-slate-50">
                 <Avatar userId={msg.author_id} size={18} />
                 <div className="min-w-0 flex-1">
