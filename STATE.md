@@ -1,7 +1,9 @@
 # Project state — resume here
 
 **App:** ChargePoint Legal CLM — agent-first, chat-driven CLM prototype (Unify build).
-**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-25` (git tag) · repo clean.
+**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-26` (git tag) · repo clean.
+
+**build-26 — 3 UX fixes.** "Hide comments" hides TEAM comments only (AI issues list + issue chips always stay; Team pill reads "hidden"); playbook create step-3 decision is 4-way **Approve | Reject | Fallback | Defer** (Fallback → drafted text becomes fallback_tiers[0], "Approved as a Fallback" chip); Playbook library header has **Add template** (Upload / Create from examples popover).
 
 **build-25 — Templates nav item + create-time content editing + upload via "+".** Templates is a first-class LeftRail item (duplicate playbook-header button removed); playbook provision text is click-to-edit on DRAFTS too (`editDraftProvisionText` — content editable at create AND review time, inline + chat in both); the Templates "+" opens a two-path popover (Upload template / Create from examples).
 
