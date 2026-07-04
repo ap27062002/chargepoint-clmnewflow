@@ -140,7 +140,9 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
   const postMessage = useStore((s) => s.postMessage)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const docDevs = devs.filter((d) => !!clauseIdFor(d))
-  const teamMsgs = messages.filter((m) => m.thread_type === 'agreement_level' && m.agreement_id === agreementId && !!clauseForRef(m.provision_reference))
+  const allTeamMsgs = messages.filter((m) => m.thread_type === 'agreement_level' && m.agreement_id === agreementId && !!clauseForRef(m.provision_reference))
+  // "Hide comments" hides TEAM comments only — the AI issues list always stays.
+  const teamMsgs = showComments ? allTeamMsgs : []
   type MarginItem = { uid: string; clauseId: string; kind: 'ai'; dev: Deviation } | { uid: string; clauseId: string; kind: 'team'; msg: (typeof teamMsgs)[number] }
   const marginItems: MarginItem[] = [
     ...(marginFilter !== 'team' ? docDevs.map((d) => ({ uid: 'ai-' + d.id, clauseId: clauseIdFor(d)!, kind: 'ai' as const, dev: d })) : []),
@@ -387,8 +389,8 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
                 {c.heading && (
                   <div className="flex items-center gap-2">
                     <h2 className={clsx('!mb-1', lvl === 2 && '!text-[13px]', lvl >= 3 && '!text-[12.5px] !font-semibold')}>{c.heading}</h2>
-                    {/* open issue → risk chip; decided → calm disposition chip. Hidden with comments off. */}
-                    {showComments && dev && (decided
+                    {/* open issue → risk chip; decided → calm disposition chip */}
+                    {dev && (decided
                       ? <Chip className={clsx('ring-1 ring-inset', dispositionMeta[dev.disposition_status].chip)}>{dev.disposition_status === 'accepted' ? '✓' : dev.disposition_status === 'countered' ? '↩' : '✕'} {dispositionMeta[dev.disposition_status].label}</Chip>
                       : <Chip className={clsx('ring-1 ring-inset', riskMeta[dev.risk_category].chip)}><span className={clsx('h-1.5 w-1.5 rounded-full', riskMeta[dev.risk_category].dot)} />{riskMeta[dev.risk_category].label}</Chip>)}
                   </div>
@@ -443,18 +445,18 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
         </div>
 
         {/* Margin comments — AI analysis AND team comments, anchored to their clauses, filterable. */}
-        {showComments && (docDevs.length > 0 || teamMsgs.length > 0) && (
+        {(docDevs.length > 0 || allTeamMsgs.length > 0) && (
           <div className="hidden w-[280px] shrink-0 lg:block">
             {/* filter: what do you want to see in the margin? */}
             <div className="mb-2 flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-card">
-              {([['all', `All (${docDevs.length + teamMsgs.length})`], ['ai', `AI analysis (${docDevs.length})`], ['team', `Team (${teamMsgs.length})`]] as const).map(([k, label]) => (
+              {([['all', `All (${docDevs.length + teamMsgs.length})`], ['ai', `AI analysis (${docDevs.length})`], ['team', showComments ? `Team (${teamMsgs.length})` : 'Team (hidden)']] as const).map(([k, label]) => (
                 <button key={k} onClick={() => setMarginFilter(k)}
                   className={clsx('flex-1 rounded-md py-1 text-[10.5px] font-semibold transition', marginFilter === k ? (k === 'team' ? 'bg-slate-800 text-white' : 'bg-ai-600 text-white') : 'text-slate-500 hover:bg-slate-50')}>
                   {label}
                 </button>
               ))}
-              <button onClick={() => setComposerOpen((v) => !v)} title="New comment on a clause"
-                className={clsx('ml-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[13px] font-bold', composerOpen ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-100')}>+</button>
+              {showComments && <button onClick={() => setComposerOpen((v) => !v)} title="New comment on a clause"
+                className={clsx('ml-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[13px] font-bold', composerOpen ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-100')}>+</button>}
             </div>
             {composerOpen && (
               <div className="mb-2 rounded-lg border border-slate-200 bg-white p-2 shadow-card">

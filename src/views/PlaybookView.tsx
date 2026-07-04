@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { clsx } from 'clsx'
-import { BookOpen, ChevronRight, ShieldCheck, TrendingUp, Plus, Sparkles, Check, X, Clock, Filter, Inbox, Wand2, Layers, Share2, FileDown, Flag } from 'lucide-react'
+import { BookOpen, ChevronRight, ShieldCheck, TrendingUp, Plus, Sparkles, Check, X, Clock, Filter, Inbox, Wand2, Layers, Share2, FileDown, Flag, FileText } from 'lucide-react'
 import { useStore } from '@/store'
 import { Card, Chip, Avatar, Button, SectionLabel, Empty } from '@/components/ui'
 import { fmtDate } from '@/lib/labels'
@@ -285,14 +285,17 @@ function PlaybookCreate() {
               <div key={p.id} className="border-b border-slate-100 last:border-0">
                 <ProvisionNode p={p} depth={0} editableDraftId={draft.id} />
                 <div className="flex items-center gap-1.5 bg-slate-50/60 px-4 py-1.5">
-                  {p.review_state === 'accepted' && <Chip className="bg-brand-50 text-brand-700 ring-brand-500/20"><Check size={10} /> Accepted into the playbook</Chip>}
+                  {p.review_state === 'accepted' && (p.tier === 'fallback'
+                    ? <Chip className="bg-amber-50 text-amber-700 ring-amber-500/20"><Check size={10} /> Approved as a Fallback</Chip>
+                    : <Chip className="bg-brand-50 text-brand-700 ring-brand-500/20"><Check size={10} /> Approved into the playbook</Chip>)}
                   {p.review_state === 'deferred' && <Chip className="bg-violet-50 text-violet-700 ring-violet-500/20"><Clock size={10} /> Deferred — not included in AI review</Chip>}
                   {!p.review_state && (
                     <>
                       <span className="text-[10.5px] font-bold uppercase tracking-wide text-slate-400">Decision:</span>
-                      <button onClick={() => decide(draft.id, p.id, 'accept')} className="rounded-md bg-brand-500 px-2.5 py-0.5 text-[11px] font-semibold text-white hover:bg-brand-600">Accept</button>
-                      <button onClick={() => decide(draft.id, p.id, 'reject')} className="rounded-md border border-slate-200 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500 hover:bg-red-50 hover:text-red-600">Reject</button>
-                      <button onClick={() => decide(draft.id, p.id, 'defer')} className="rounded-md border border-slate-200 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500 hover:bg-violet-50 hover:text-violet-600" title="Park it — no single position; excluded from AI review">Defer</button>
+                      <button onClick={() => decide(draft.id, p.id, 'accept')} title="Approve as a baseline position" className="rounded-md bg-brand-500 px-2.5 py-0.5 text-[11px] font-semibold text-white hover:bg-brand-600">Approve</button>
+                      <button onClick={() => decide(draft.id, p.id, 'reject')} title="Drop this clause from the playbook" className="rounded-md border border-slate-200 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500 hover:bg-red-50 hover:text-red-600">Reject</button>
+                      <button onClick={() => decide(draft.id, p.id, 'fallback')} title="Approve, but as a negotiable fallback position rather than the baseline" className="rounded-md border border-slate-200 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500 hover:bg-amber-50 hover:text-amber-600">Fallback</button>
+                      <button onClick={() => decide(draft.id, p.id, 'defer')} title="Park it — no single position; excluded from AI review" className="rounded-md border border-slate-200 px-2.5 py-0.5 text-[11px] font-semibold text-slate-500 hover:bg-violet-50 hover:text-violet-600">Defer</button>
                     </>
                   )}
                 </div>
@@ -324,6 +327,9 @@ const flatProvisions = (ps: Provision[]): Provision[] => ps.flatMap((p) => [p, .
 // The all-playbooks LIBRARY — what the nav lands on. Cards for every playbook + resumable
 // drafts + a prominent Create. Clicking a card opens the existing detail view.
 function PlaybookLibrary() {
+  const uploadTemplate = useStore((s) => s.uploadTemplate)
+  const createProject = useStore((s) => s.createProject)
+  const [addTplOpen, setAddTplOpen] = useState(false)
   const playbooks = useStore((s) => s.playbooks)
   const drafts = useStore((s) => s.playbookDrafts)
   const suggestions = useStore((s) => s.playbookSuggestions)
@@ -349,7 +355,27 @@ function PlaybookLibrary() {
           <p className="mt-0.5 text-[12.5px] text-slate-500">{playbooks.length} playbooks · your negotiation positions, fallbacks and red lines per agreement type. The agent uses these to classify every counterparty deviation.</p>
         </div>
         {canEdit && (
-          <div className="relative shrink-0">
+          <div className="relative flex shrink-0 items-start gap-2">
+            <div className="relative">
+              <Button variant="outline" icon={<FileText size={14} />} onClick={() => setAddTplOpen((v) => !v)}>Add template</Button>
+              {addTplOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setAddTplOpen(false)} />
+                  <div className="absolute right-0 z-20 mt-1 w-64 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
+                    <button onClick={() => { setAddTplOpen(false); uploadTemplate('Uploaded form agreement.docx') }}
+                      className="flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-slate-50">
+                      <FileText size={14} className="mt-0.5 shrink-0 text-slate-400" />
+                      <span><span className="block text-[12.5px] font-semibold text-slate-700">Upload template</span><span className="text-[11px] text-slate-400">Drop or pick a form agreement (.docx)</span></span>
+                    </button>
+                    <button onClick={() => { setAddTplOpen(false); createProject('New template from examples', 'Analyze existing agreements and generate a brand-new baseline agreement.', 'MSA') }}
+                      className="flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-slate-50">
+                      <Wand2 size={14} className="mt-0.5 shrink-0 text-ai-500" />
+                      <span><span className="block text-[12.5px] font-semibold text-slate-700">Create from examples</span><span className="text-[11px] text-slate-400">Generate a baseline from existing agreements</span></span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
             <Button variant="ai" icon={<Plus size={14} />} onClick={() => setCreateOpen((v) => !v)}>Create playbook</Button>
             {createOpen && (
               <>

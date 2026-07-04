@@ -129,7 +129,7 @@ interface CLMState {
   advanceInquiry: (ticketId: string) => void // support tickets: Open → In Progress → Resolved
   reassignVersion: (versionId: string, targetAgreementId: string, newNumber?: number) => void // intake §5 error correction
   ingestVersion: (agreementId: string, fileName: string, asNewDocument?: boolean) => void // intake §1 — in-deal upload
-  decideDraftProvision: (draftId: string, provisionId: string, decision: 'accept' | 'reject' | 'defer') => void // playbooks §2 step 3
+  decideDraftProvision: (draftId: string, provisionId: string, decision: 'accept' | 'reject' | 'fallback' | 'defer') => void // playbooks §2 step 3 — approve / reject / make-fallback / defer each new clause
   editDraftProvisionText: (draftId: string, provisionId: string, field: 'standard' | 'fallback' | 'red_line', idx: number, text: string) => void // edit content at CREATE time too
   editProvisionText: (playbookId: string, provisionId: string, field: 'standard' | 'fallback' | 'red_line', idx: number, text: string) => void // playbooks §5 manual inline edit
   addDocumentsToPlaybook: (playbookId: string) => void // playbooks §6 — feed more agreements post-creation
@@ -584,7 +584,11 @@ export const useStore = create<CLMState>((set, get) => ({
         return { ...d, provisions: d.provisions.map((p) => p.id === provisionId
           ? (decision === 'defer'
               ? { ...p, tier: 'deferred' as const, deferred_to: p.deferred_to ?? 'Deal team decision', review_state: 'deferred' as const }
-              : { ...p, review_state: 'accepted' as const })
+              : decision === 'fallback'
+                // approved, but as a FALLBACK position (not baseline): the drafted text
+                // becomes the first fallback tier
+                ? { ...p, tier: 'fallback' as const, fallback_tiers: p.fallback_tiers.length ? p.fallback_tiers : [p.standard_position], review_state: 'accepted' as const }
+                : { ...p, review_state: 'accepted' as const })
           : p) }
       }),
     }))
