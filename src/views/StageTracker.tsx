@@ -15,7 +15,8 @@ export function StageTracker({ agreementId }: { agreementId: string }) {
   const receiveRedline = useStore((s) => s.receiveCounterpartyRedline)
   const decideApproval = useStore((s) => s.decideApproval)
   const uid = useStore((s) => s.currentUserId)
-  const canAdvance = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'disposition'))
+  const role = useStore((s) => s.users.find((u) => u.id === s.currentUserId)!.role)
+  const canAdvance = can(role, 'disposition')
   const stepperRef = useRef<HTMLDivElement>(null)
   const curIdx = agreement ? AGREEMENT_LIFECYCLE.indexOf(agreement.status) : -1
   // Keep the current stage visible when the stepper overflows behind the Advance button.
@@ -57,7 +58,9 @@ export function StageTracker({ agreementId }: { agreementId: string }) {
             <Undo2 size={13} /> Counterparty sent further redlines
           </button>
         )}
-        {agreement.status !== 'executed' && next && (
+        {/* "Send back to counterparty" is hidden for the attorney persona specifically —
+            every other transition (advance, execute & sign) is unaffected. */}
+        {agreement.status !== 'executed' && next && !(next === 'negotiation' && role === 'attorney') && (
           canAdvance ? (
             <button onClick={() => (next === 'negotiation' ? openSendBack(agreementId) : advance(agreementId))}
               className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-[12.5px] font-semibold text-white transition hover:bg-brand-600">

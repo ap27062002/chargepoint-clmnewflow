@@ -109,7 +109,6 @@ function VersionCompare({ versionList, documents, fileBase }: { versionList: Ver
   )
   return (
     <div className="h-full overflow-y-auto p-5">
-      <div className="mb-2 rounded-lg bg-slate-50 px-3 py-2 text-[11.5px] text-slate-500">This is an internal <b>audit-trail comparison</b> (history of changes) — not the redline you send. To send a clean copy + redline to the counterparty, use <b>Send back</b>.</div>
       <div className="mb-4 flex items-center gap-2">
         <Picker value={aId} onChange={setAId} /><ArrowRight size={15} className="text-slate-400" /><Picker value={bId} onChange={setBId} />
         <Button size="sm" variant="primary" icon={<FileDown size={13} />} onClick={generateRedlineFile} disabled={generating}>{generating ? 'Generating…' : 'Generate Redline'}</Button>

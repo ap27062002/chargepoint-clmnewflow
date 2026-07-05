@@ -140,6 +140,7 @@ function SuggestionsPanel({ playbookId }: { playbookId: string }) {
   const canEdit = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'playbook_edit'))
   const pending = suggestions.filter((x) => x.state === 'pending')
   const decided = suggestions.filter((x) => x.state !== 'pending')
+  // 'decided' also covers deferred — parked, not urgent, but not lost either.
   const Row = ({ x }: { x: PlaybookSuggestion }) => (
     <Card className="p-3.5">
       <div className="flex items-center gap-2">
@@ -147,15 +148,18 @@ function SuggestionsPanel({ playbookId }: { playbookId: string }) {
         <Chip className={sugKindChip[x.kind]}>{x.kind.replace('_', ' ')}</Chip>
         {x.state === 'approved' && <Chip className="bg-brand-50 text-brand-700 ring-brand-500/20"><Check size={10} /> Approved</Chip>}
         {x.state === 'rejected' && <Chip className="bg-slate-100 text-slate-500 ring-slate-300/30">Rejected</Chip>}
+        {x.state === 'deferred' && <Chip className="bg-violet-50 text-violet-700 ring-violet-500/20"><Clock size={10} /> Deferred</Chip>}
         <span className="ml-auto flex items-center gap-1 text-[11px] text-slate-400"><Avatar userId={x.suggested_by} size={16} /> {userById(x.suggested_by)?.name.split(' ')[0]}</span>
       </div>
       <div className="mt-1.5 rounded-lg bg-slate-50 px-3 py-2 text-[12.5px] text-slate-700">{x.proposed_text}</div>
       {x.rationale && <div className="mt-1 text-[11.5px] italic text-slate-400">{x.rationale}</div>}
       {x.source_agreement_id && <div className="mt-1 text-[11px] text-slate-400">From {x.source_agreement_id}{x.source_section ? ` ${x.source_section}` : ''}</div>}
       {x.state === 'pending' && canEdit && (
-        <div className="mt-2 flex gap-2">
-          <Button size="sm" variant="ai" icon={<Check size={13} />} onClick={() => decide(x.id, true)}>Approve & add</Button>
-          <Button size="sm" variant="outline" icon={<X size={13} />} onClick={() => decide(x.id, false)}>Reject</Button>
+        <div className="mt-2 flex gap-1.5">
+          <button onClick={() => decide(x.id, 'accept')} title="Approve as suggested" className="rounded-md bg-brand-500 px-2.5 py-1 text-[12px] font-semibold text-white hover:bg-brand-600">Accept</button>
+          <button onClick={() => decide(x.id, 'reject')} title="Drop this suggestion" className="rounded-md border border-slate-200 px-2.5 py-1 text-[12px] font-semibold text-slate-500 hover:bg-red-50 hover:text-red-600">Reject</button>
+          <button onClick={() => decide(x.id, 'redline')} title="Approve, but designate it a strict red line" className="rounded-md border border-slate-200 px-2.5 py-1 text-[12px] font-semibold text-slate-500 hover:bg-red-50 hover:text-red-700">Redline</button>
+          <button onClick={() => decide(x.id, 'defer')} title="Park it — no decision yet" className="rounded-md border border-slate-200 px-2.5 py-1 text-[12px] font-semibold text-slate-500 hover:bg-violet-50 hover:text-violet-600">Defer</button>
         </div>
       )}
     </Card>
@@ -470,7 +474,6 @@ export function PlaybookView() {
   const [newFolder, setNewFolder] = useState<{ path: string; category: string; broad: boolean } | null>(null)
   // R52/R57/R58/R60 — chat-driven restructure performs a REAL transform on the published playbook.
   const restructurePlaybook = useStore((s) => s.restructurePlaybook)
-  const addDocs = useStore((s) => s.addDocumentsToPlaybook)
   const [restructOpen, setRestructOpen] = useState(false)
   const [restructMsgs, setRestructMsgs] = useState<{ role: 'user' | 'agent'; text: string }[]>([])
   const [restructInput, setRestructInput] = useState('')
@@ -518,9 +521,12 @@ export function PlaybookView() {
               </div>
             </div>
             <div className="flex items-center gap-1.5">
-              <button onClick={() => openCanvas({ view: 'playbook', playbookId: pb.id, playbookMode: 'suggestions' })} className={clsx('flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold', mode === 'suggestions' ? 'bg-white text-slate-800' : 'bg-slate-800 text-slate-200 hover:bg-slate-700')}>
-                <Inbox size={13} /> Suggested {pendingCount > 0 && <span className="rounded-full bg-red-500 px-1.5 text-[10.5px] text-white">{pendingCount}</span>}
-              </button>
+              {/* Not relevant mid-draft — a brand-new playbook has no suggestions queue yet. */}
+              {mode !== 'create' && (
+                <button onClick={() => openCanvas({ view: 'playbook', playbookId: pb.id, playbookMode: 'suggestions' })} className={clsx('flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold', mode === 'suggestions' ? 'bg-white text-slate-800' : 'bg-slate-800 text-slate-200 hover:bg-slate-700')}>
+                  <Inbox size={13} /> Suggested {pendingCount > 0 && <span className="rounded-full bg-red-500 px-1.5 text-[10.5px] text-white">{pendingCount}</span>}
+                </button>
+              )}
               {canEdit && <button onClick={() => startDraft('New Playbook', pb.agreement_type, 'Create a playbook from a template + examples')} className={clsx('flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold', mode === 'create' ? 'bg-white text-slate-800' : 'bg-slate-800 text-slate-200 hover:bg-slate-700')}><Plus size={13} /> Create</button>}
               {/* R85 — publishing to a team folder is the owner's workflow (visual theme stays admin-only, R54). */}
               {canEdit && <div className="relative">
@@ -608,8 +614,6 @@ export function PlaybookView() {
                 )
               })}
               <div className="ml-auto flex items-center gap-1">
-                {canEdit && <button onClick={() => addDocs(pb.id)} title="Feed additional executed agreements to refine this playbook" className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-semibold text-slate-500 hover:bg-slate-100"><Plus size={12} /> Add documents</button>}
-                <button onClick={() => openCanvas({ view: 'playbook', playbookId: pb.id, playbookMode: 'audit' })} className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-semibold text-slate-500 hover:bg-slate-100"><ShieldCheck size={12} /> Audit</button>
                 {canEdit && <button onClick={() => setRestructOpen((v) => !v)} title="Edits CONTENT (tighten/add/remove positions) and layout (nest/group/reorder/render)" className={clsx('flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-semibold', restructOpen ? 'bg-ai-50 text-ai-700' : 'text-ai-600 hover:bg-ai-50')}><Wand2 size={12} /> Edit via chat</button>}
               </div>
             </div>

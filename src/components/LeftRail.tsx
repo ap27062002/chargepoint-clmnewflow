@@ -28,8 +28,10 @@ export function LeftRail() {
   const closeCanvas = useStore((s) => s.closeCanvas)
   const navigate = useStore((s) => s.navigate)
   const role = useStore((s) => s.users.find((u) => u.id === s.currentUserId)!.role)
-
-  const visible = ITEMS.filter((i) => !i.show || i.show(role))
+  // Tomas, Priya, Dana, Marcus (contributor/administrator/initiator) are light-touch users —
+  // they work entirely through the agent chat + their dashboard, not the full workspace nav.
+  const RESTRICTED: Role[] = ['contributor', 'administrator', 'initiator']
+  const visible = ITEMS.filter((i) => (RESTRICTED.includes(role) ? i.key === 'agent' || i.key === 'dashboard' : !i.show || i.show(role)))
 
   const go = (k: RailKey) => {
     if (k === 'agent') closeCanvas()

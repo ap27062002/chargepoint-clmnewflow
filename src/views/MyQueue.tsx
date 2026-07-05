@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
 import { clsx } from 'clsx'
-import { AtSign, Clock, GitPullRequestArrow, CheckCircle2, ArrowRight, Inbox, ShieldCheck } from 'lucide-react'
+import { AtSign, Clock, CheckCircle2, ArrowRight, Inbox, ShieldCheck } from 'lucide-react'
 import { useStore } from '@/store'
 import { Card, Chip, Avatar, SectionLabel, Empty } from '@/components/ui'
-import { statusChip, slaStatus, riskMeta, fmtDateTime } from '@/lib/labels'
+import { statusChip, slaStatus, fmtDateTime } from '@/lib/labels'
 import { userById } from '@/data/seed'
 
 function Section({ icon, title, count, children }: { icon: JSX.Element; title: string; count: number; children: ReactNode }) {
@@ -23,8 +23,6 @@ export function MyQueue() {
   const uid = useStore((s) => s.currentUserId)
   const messages = useStore((s) => s.messages)
   const tickets = useStore((s) => s.tickets)
-  const deviations = useStore((s) => s.deviations)
-  const agreements = useStore((s) => s.agreements)
   const openTicket = useStore((s) => s.openTicket)
   const openAgreement = useStore((s) => s.openAgreement)
   const navigate = useStore((s) => s.navigate)
@@ -37,10 +35,8 @@ export function MyQueue() {
   const awaitingMe = messages.filter((m) => m.mentions?.includes(uid) && !m.resolved).slice().sort((a, b) => new Date(a.created_date).getTime() - new Date(b.created_date).getTime()) // oldest (highest age) first
   const requestedByMe = messages.filter((m) => m.author_id === uid && m.mentions?.length && !m.resolved)
   const myTickets = tickets.filter((t) => t.assigned_attorney_id === uid && t.status !== 'Executed' && t.status !== 'Resolved')
-  const myAgreementIds = new Set(agreements.filter((a) => myTickets.some((t) => t.id === a.ticket_id)).map((a) => a.id))
-  const openDevs = deviations.filter((d) => d.disposition_status === 'open' && myAgreementIds.has(d.agreement_id))
 
-  const total = awaitingMe.length + requestedByMe.length + myTickets.length + openDevs.length + myApprovals.length
+  const total = awaitingMe.length + requestedByMe.length + myTickets.length + myApprovals.length
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -127,20 +123,6 @@ export function MyQueue() {
           </Section>
         )}
 
-        {openDevs.length > 0 && (
-          <Section icon={<GitPullRequestArrow size={15} />} title="Open deviations to decide" count={openDevs.length}>
-            {openDevs.map((d) => (
-              <Card key={d.id} onClick={() => openAgreement(d.agreement_id, 'review')} className="flex items-center justify-between p-3">
-                <div className="flex items-center gap-2">
-                  <Chip className={clsx('ring-1 ring-inset', riskMeta[d.risk_category].chip)}><span className={clsx('h-1.5 w-1.5 rounded-full', riskMeta[d.risk_category].dot)} />{riskMeta[d.risk_category].label}</Chip>
-                  <span className="text-[13px] font-semibold text-slate-700">{d.provision_name}</span>
-                  <span className="font-mono text-[11px] text-slate-400">{d.section_reference}</span>
-                </div>
-                <ArrowRight size={14} className="text-slate-300" />
-              </Card>
-            ))}
-          </Section>
-        )}
       </div>
     </div>
   )

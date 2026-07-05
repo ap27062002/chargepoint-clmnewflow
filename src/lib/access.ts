@@ -29,7 +29,7 @@ export const ROLE_LABEL: Record<Role, string> = {
 const ACCESS: Record<Role, Capability[]> = {
   initiator:      ['queue', 'notifications', 'intake', 'review', 'pipeline'],
   attorney:       ['queue', 'notifications', 'intake', 'review', 'disposition', 'comment', 'pipeline', 'playbook_view', 'audit', 'deal_summary', 'templates', 'playbook_suggest'],
-  contributor:    ['queue', 'notifications', 'review', 'comment'],
+  contributor:    ['queue', 'notifications', 'review', 'comment', 'pipeline'],
   playbook_owner: ['queue', 'notifications', 'playbook_view', 'playbook_edit', 'pipeline', 'audit', 'deal_summary', 'review', 'templates', 'playbook_suggest'],
   administrator:  ['queue', 'notifications', 'admin', 'pipeline', 'audit', 'playbook_view', 'playbook_edit', 'playbook_presentation', 'deal_summary', 'templates'],
 }
@@ -93,7 +93,6 @@ export function startersFor(role: Role): Starter[] {
     case 'contributor':
       return [
         { label: "What I'm tagged on", sub: 'Provisions needing my input', prompt: "what's on my plate?" },
-        { label: 'Review the Vishay redline', sub: 'Read-only · comment', prompt: 'review the Vishay redline' },
       ]
     case 'playbook_owner':
       return [

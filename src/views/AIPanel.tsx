@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Send, BookOpen, GitCompareArrows, FileEdit } from 'lucide-react'
+import { Send, BookOpen, Highlighter } from 'lucide-react'
 import { Markdown } from '@/components/Markdown'
 import { AiTag } from '@/components/ui'
 import { sendToAgent } from '@/agent/engine'
@@ -7,11 +7,8 @@ import { precedentAnswer } from '@/lib/precedent'
 
 interface Msg { role: 'user' | 'ai'; text: string }
 
-// Consolidated to Playbook guidance + an ad-hoc Claude action + prior-deal comparison (Eric §6).
 const CAPS = [
   { icon: <BookOpen size={13} />, label: 'Show playbook guidance for this clause', prompt: 'What does the playbook say about this clause?' },
-  { icon: <FileEdit size={13} />, label: 'Suggest revisions favorable to us', prompt: 'Suggest revisions favorable to ChargePoint for this clause' },
-  { icon: <GitCompareArrows size={13} />, label: 'Precedent — prior executed deals', prompt: 'What is our precedent on residuals and indemnity?' },
 ]
 
 // Precedent questions route to the REAL executed-contract corpus (R44) — no fabricated deals.
@@ -43,6 +40,13 @@ export function AIPanel({ agreementTitle, seed }: { agreementTitle: string; seed
     setInput('')
   }
 
+  // Ad hoc analysis of whatever the user last highlighted in the document (via the ✨ Ask AI
+  // button on a selection) — re-runs the analysis on demand rather than only auto-firing once.
+  const analyzeHighlight = () => {
+    if (lastSel) ask(`Give me an ad hoc analysis of this highlighted clause: "${lastSel}"`)
+    else setMsgs((m) => [...m, { role: 'ai', text: 'Highlight a clause in the document, then click **Ask AI** on the selection (or come back here) — I\'ll analyze it against the playbook and precedent right away.' }])
+  }
+
   // "Ask AI" from a document selection seeds a question here.
   useEffect(() => {
     if (seed?.text) { setLastSel(seed.text); ask(`Explain this clause: "${seed.text}"`) }
@@ -66,6 +70,9 @@ export function AIPanel({ agreementTitle, seed }: { agreementTitle: string; seed
                   <span className="text-ai-500">{c.icon}</span>{c.label}
                 </button>
               ))}
+              <button onClick={analyzeHighlight} className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-2 text-left text-[12.5px] font-medium text-slate-600 transition hover:border-ai-200 hover:bg-ai-50/50">
+                <span className="text-ai-500"><Highlighter size={13} /></span>Analyze a highlighted clause
+              </button>
             </div>
           </>
         ) : (

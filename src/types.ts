@@ -521,7 +521,7 @@ export interface SendBackState {
 
 // ----- Playbook suggestions + NL creation (build-12, Eric §7,§8) ------------
 export type SuggestionKind = 'default' | 'fallback' | 'red_line'
-export type SuggestionState = 'pending' | 'approved' | 'rejected'
+export type SuggestionState = 'pending' | 'approved' | 'rejected' | 'deferred'
 export interface PlaybookSuggestion {
   id: string
   playbook_id: string

@@ -6,7 +6,7 @@ import type {
   ApprovalRequest, ApprovalType, Envelope, EnvelopeMode, AgreementType,
   AgreementStatus, BallInCourt, ContractStatus,
   IntakePayload, InferredField, CounterpartyProfile, ContractsFilterPreset,
-  SummaryAudience, PlaybookSuggestion, SuggestionKind, PlaybookDraft, Provision, ProvisionTier,
+  SummaryAudience, PlaybookSuggestion, SuggestionKind, SuggestionState, PlaybookDraft, Provision, ProvisionTier,
   TemplateProject, AgreementTemplate, TemplateIteration,
 } from '@/types'
 import { lookupCounterparty, inferDealContext } from '@/data/counterparties'
@@ -187,7 +187,7 @@ interface CLMState {
   // playbook — suggestions, NL creation, restructure
   setPlaybook: (playbookId: string) => void
   suggestToPlaybook: (s: { playbook_id: string; provision_name: string; kind: SuggestionKind; proposed_text: string; rationale?: string; source_agreement_id?: string; source_section?: string }) => void
-  decidePlaybookSuggestion: (id: string, approve: boolean) => void
+  decidePlaybookSuggestion: (id: string, decision: 'accept' | 'reject' | 'redline' | 'defer') => void
   startPlaybookDraft: (name: string, agreement_type: AgreementType, rawPrompt: string, opts?: { sourceTemplateId?: string; sourcePath?: string; exampleRefs?: string[] }) => string
   advancePlaybookDraft: (draftId: string) => void
   publishPlaybookDraft: (draftId: string) => void
@@ -1088,10 +1088,16 @@ export const useStore = create<CLMState>((set, get) => ({
     get().audit_push({ event_type: 'playbook_suggested', summary: `Suggested "${sug.provision_name}" (${sug.kind}) for the playbook.` })
     get().setToast('Sent to the playbook owner for approval.')
   },
-  decidePlaybookSuggestion: (id, approve) => {
+  decidePlaybookSuggestion: (id, decision) => {
     const uid = get().currentUserId
     const sug = get().playbookSuggestions.find((x) => x.id === id)
-    set((s) => ({ playbookSuggestions: s.playbookSuggestions.map((x) => (x.id === id ? { ...x, state: approve ? 'approved' : 'rejected', decided_by: uid, decided_date: now() } : x)) }))
+    const stateFor: Record<typeof decision, SuggestionState> = {
+      accept: 'approved', redline: 'approved', reject: 'rejected', defer: 'deferred',
+    }
+    set((s) => ({ playbookSuggestions: s.playbookSuggestions.map((x) => (x.id === id ? { ...x, state: stateFor[decision], decided_by: uid, decided_date: now() } : x)) }))
+    const approve = decision === 'accept' || decision === 'redline'
+    // "Redline" overrides the suggestion's classification to a strict red line, regardless of how it was originally proposed.
+    const kind: SuggestionKind = decision === 'redline' ? 'red_line' : sug?.kind ?? 'default'
     if (approve && sug) {
       set((s) => ({ playbooks: s.playbooks.map((pb) => {
         if (pb.id !== sug.playbook_id) return pb
@@ -1099,8 +1105,8 @@ export const useStore = create<CLMState>((set, get) => ({
         const applyTo = (list: Provision[]): Provision[] => list.map((p) => {
           if (sug.target_provision_id && p.id === sug.target_provision_id) {
             changed = true
-            if (sug.kind === 'fallback') return { ...p, fallback_tiers: [...p.fallback_tiers, sug.proposed_text] }
-            if (sug.kind === 'red_line') return { ...p, red_line: sug.proposed_text }
+            if (kind === 'fallback') return { ...p, fallback_tiers: [...p.fallback_tiers, sug.proposed_text] }
+            if (kind === 'red_line') return { ...p, red_line: sug.proposed_text }
             return { ...p, standard_position: sug.proposed_text }
           }
           return p.children ? { ...p, children: applyTo(p.children) } : p
@@ -1110,19 +1116,20 @@ export const useStore = create<CLMState>((set, get) => ({
         if (!changed) {
           provisions = [...provisions, {
             id: 'pv_' + sug.id.toLowerCase(), provision_name: sug.provision_name,
-            standard_position: sug.kind === 'default' ? sug.proposed_text : `Per the added ${sug.kind.replace('_', ' ')}.`,
-            fallback_tiers: sug.kind === 'fallback' ? [sug.proposed_text] : [],
-            red_line: sug.kind === 'red_line' ? sug.proposed_text : 'Deviations flagged for attorney review.',
+            standard_position: kind === 'default' ? sug.proposed_text : `Per the added ${kind.replace('_', ' ')}.`,
+            fallback_tiers: kind === 'fallback' ? [sug.proposed_text] : [],
+            red_line: kind === 'red_line' ? sug.proposed_text : 'Deviations flagged for attorney review.',
             rationale: sug.rationale || 'Added from an attorney suggestion.',
-            tier: sug.kind === 'red_line' ? 'red_line' : sug.kind === 'fallback' ? 'fallback' : 'baseline',
+            tier: kind === 'red_line' ? 'red_line' : kind === 'fallback' ? 'fallback' : 'baseline',
           }]
         }
         return { ...pb, provisions, version: pb.version + 1 }
       }) }))
-      get().audit_push({ event_type: 'playbook_updated', summary: `Applied suggestion "${sug.provision_name}" to the playbook.` })
+      get().audit_push({ event_type: 'playbook_updated', summary: `Applied suggestion "${sug.provision_name}" to the playbook${decision === 'redline' ? ' as a red line' : ''}.` })
     }
-    get().audit_push({ event_type: 'playbook_suggestion_decided', summary: `Suggestion ${approve ? 'approved & applied' : 'rejected'}.` })
-    get().setToast(approve ? 'Approved — added to the playbook.' : 'Suggestion rejected.')
+    const labels: Record<typeof decision, string> = { accept: 'approved & applied', redline: 'approved as a red line & applied', reject: 'rejected', defer: 'deferred' }
+    get().audit_push({ event_type: 'playbook_suggestion_decided', summary: `Suggestion ${labels[decision]}.` })
+    get().setToast(decision === 'defer' ? 'Deferred — parked for later.' : decision === 'reject' ? 'Suggestion rejected.' : 'Approved — added to the playbook.')
   },
   startPlaybookDraft: (name, agreement_type, rawPrompt, opts) => {
     const id = nextId('PD')

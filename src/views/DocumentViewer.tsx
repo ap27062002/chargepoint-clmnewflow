@@ -10,7 +10,6 @@ import { riskMeta, dispositionMeta } from '@/lib/labels'
 import { userById } from '@/data/seed'
 import type { DocRun } from '@/data/documents'
 import type { Deviation } from '@/types'
-import { MentionComposer } from '@/components/MentionComposer'
 
 function ChangeRun({ run, versionId, editable }: { run: DocRun; versionId: string; editable: boolean }) {
   const acceptChange = useStore((s) => s.acceptChange)
@@ -90,7 +89,6 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
   // ---- Word-style margin comments: BOTH the AI analysis and the team's comments live next to
   // the document, anchored to their clauses, with a filter (All / AI / Team). ----
   const setDisposition = useStore((s) => s.setDisposition)
-  const resolveMention = useStore((s) => s.resolveMention)
   const proposeCounter = useStore((s) => s.proposeCounter)
   const keepCounter = useStore((s) => s.keepCounter)
   const discardCounter = useStore((s) => s.discardCounter)
@@ -129,25 +127,17 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
       return (!!r && (r === norm || norm.includes(r) || r.includes(norm))) || (!!h && (h.includes(norm) || norm.includes(h)))
     })?.id
   }
-  const [marginFilter, setMarginFilter] = useState<'all' | 'ai' | 'team'>('all')
-  const [composerOpen, setComposerOpen] = useState(false)
-  const users = useStore((s) => s.users)
-  const postMessage = useStore((s) => s.postMessage)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const docDevs = devs.filter((d) => !!clauseIdFor(d))
-  const allTeamMsgs = messages.filter((m) => m.thread_type === 'agreement_level' && m.agreement_id === agreementId && !!clauseForRef(m.provision_reference))
-  // "Hide comments" hides TEAM comments only — the AI issues list always stays.
-  const teamMsgs = showComments ? allTeamMsgs : []
-  type MarginItem = { uid: string; clauseId: string; kind: 'ai'; dev: Deviation } | { uid: string; clauseId: string; kind: 'team'; msg: (typeof teamMsgs)[number] }
-  const marginItems: MarginItem[] = [
-    ...(marginFilter !== 'team' ? docDevs.map((d) => ({ uid: 'ai-' + d.id, clauseId: clauseIdFor(d)!, kind: 'ai' as const, dev: d })) : []),
-    ...(marginFilter !== 'ai' ? teamMsgs.map((m) => ({ uid: 'tm-' + m.id, clauseId: clauseForRef(m.provision_reference)!, kind: 'team' as const, msg: m })) : []),
-  ]
+  // Margin shows AI analysis only — team-comment hide/unhide is handled by the toolbar's
+  // Hide/Show comments CTA (comments themselves live in Deal Discussion / My Queue).
+  type MarginItem = { uid: string; clauseId: string; kind: 'ai'; dev: Deviation }
+  const marginItems: MarginItem[] = docDevs.map((d) => ({ uid: 'ai-' + d.id, clauseId: clauseIdFor(d)!, kind: 'ai' as const, dev: d }))
   const colRef = useRef<HTMLDivElement>(null)
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [tops, setTops] = useState<Record<string, number>>({})
   const [colH, setColH] = useState(0)
-  const itemsKey = marginFilter + '|' + marginItems.map((it) => it.uid + (it.kind === 'ai' ? it.dev.disposition_status : it.msg.resolved ? 'r' : 'o') + (expanded[it.uid] ? 'x' : '')).join(',')
+  const itemsKey = marginItems.map((it) => it.uid + it.dev.disposition_status + (expanded[it.uid] ? 'x' : '')).join(',')
   // Anchor each card to its clause's vertical position (stacked so cards never overlap).
   useLayoutEffect(() => {
     const col = colRef.current, cont = containerRef.current
@@ -407,59 +397,15 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
           )}
         </div>
 
-        {/* Margin comments — AI analysis AND team comments, anchored to their clauses, filterable. */}
-        {(docDevs.length > 0 || allTeamMsgs.length > 0) && (
+        {/* Margin — AI analysis only; team-comment hide/unhide lives in the toolbar CTA above. */}
+        {docDevs.length > 0 && (
           <div className="hidden w-[280px] shrink-0 lg:block">
-            {/* filter: what do you want to see in the margin? */}
-            <div className="mb-2 flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-card">
-              {([['all', `All (${docDevs.length + teamMsgs.length})`], ['ai', `AI analysis (${docDevs.length})`], ['team', showComments ? `Team (${teamMsgs.length})` : 'Team (hidden)']] as const).map(([k, label]) => (
-                <button key={k} onClick={() => setMarginFilter(k)}
-                  className={clsx('flex-1 rounded-md py-1 text-[10.5px] font-semibold transition', marginFilter === k ? (k === 'team' ? 'bg-slate-800 text-white' : 'bg-ai-600 text-white') : 'text-slate-500 hover:bg-slate-50')}>
-                  {label}
-                </button>
-              ))}
-              {showComments && <button onClick={() => setComposerOpen((v) => !v)} title="New comment on a clause"
-                className={clsx('ml-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[13px] font-bold', composerOpen ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-100')}>+</button>}
+            <div className="mb-2 rounded-lg border border-slate-200 bg-white p-0.5 shadow-card">
+              <span className="block flex-1 rounded-md bg-ai-600 py-1 text-center text-[10.5px] font-semibold text-white">AI analysis ({docDevs.length})</span>
             </div>
-            {composerOpen && (
-              <div className="mb-2 rounded-lg border border-slate-200 bg-white p-2 shadow-card">
-                <MentionComposer people={users} provisionOptions={doc.clauses.map((c) => c.heading).filter(Boolean)}
-                  placeholder="Comment on a clause… type @ to tag for sign-off" cta="Post"
-                  onPost={(m) => { postMessage({ thread_type: 'agreement_level', ticket_id: agreement?.ticket_id ?? '', agreement_id: agreementId, body: m.body, mentions: m.mentions, provision_reference: m.provision_reference }); setComposerOpen(false); setMarginFilter('all') }} />
-              </div>
-            )}
-            {marginItems.length === 0 && (
-              <div className="rounded-lg border border-dashed border-slate-200 bg-white/60 p-3 text-center text-[11px] text-slate-400">
-                {marginFilter === 'team' ? 'No team comments anchored to this document yet — use + to add one on a clause.' : 'Nothing to show here.'}
-              </div>
-            )}
             <div ref={colRef} className="relative" style={{ minHeight: colH }}>
               {marginItems.map((it) => {
                 const common = { ref: (el: HTMLDivElement | null) => { cardRefs.current[it.uid] = el }, style: { position: 'absolute' as const, top: tops[it.uid] ?? 0, left: 0, right: 0 } }
-                if (it.kind === 'team') {
-                  const m = it.msg
-                  const isOpen = !!expanded[it.uid]
-                  return (
-                    <div key={it.uid} {...common} onClick={() => flashClause(it.clauseId)}
-                      className="cursor-pointer rounded-lg border border-slate-200 bg-white p-2.5 shadow-card transition hover:shadow-panel">
-                      <div className="flex items-center gap-1.5">
-                        <Avatar userId={m.author_id} size={18} />
-                        <span className="truncate text-[11.5px] font-bold text-slate-700">{userById(m.author_id)?.name}</span>
-                        <span className="ml-auto shrink-0 font-mono text-[10px] text-slate-400">{m.provision_reference}</span>
-                      </div>
-                      <div className="mt-1.5 text-[11px] leading-snug text-slate-600" style={isOpen ? undefined : { display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{m.body}</div>
-                      <div className="mt-1.5 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                        {m.mentions && m.mentions.length > 0 && (m.resolved
-                          ? <Chip className="bg-brand-50 text-brand-700 ring-brand-500/20">✓ Sign-off received</Chip>
-                          : <>
-                              <Chip className="bg-amber-50 text-amber-700 ring-amber-500/20">@ {m.mentions.map((id) => userById(id)?.name.split(' ')[0]).join(', ')}</Chip>
-                              <button onClick={() => resolveMention(m.id)} className="text-[10.5px] font-semibold text-brand-600 hover:underline">Mark responded</button>
-                            </>)}
-                        {m.body.length > 130 && <button onClick={() => setExpanded((p) => ({ ...p, [it.uid]: !isOpen }))} className="ml-auto text-[10.5px] font-semibold text-slate-400 hover:text-slate-600">{isOpen ? 'Less' : 'More'}</button>}
-                      </div>
-                    </div>
-                  )
-                }
                 const d = it.dev
                 const decided = d.disposition_status !== 'open'
                 const rm = riskMeta[d.risk_category]
