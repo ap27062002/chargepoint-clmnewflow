@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Sparkles, Send, BookOpen, GitCompareArrows, FileEdit } from 'lucide-react'
+import { Send, BookOpen, GitCompareArrows, FileEdit } from 'lucide-react'
 import { Markdown } from '@/components/Markdown'
 import { AiTag } from '@/components/ui'
 import { sendToAgent } from '@/agent/engine'
@@ -55,17 +55,7 @@ export function AIPanel({ agreementTitle, seed }: { agreementTitle: string; seed
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-slate-100 px-3 py-2.5">
-        <div className="flex items-center gap-1.5 text-[12px] font-bold text-ai-700"><Sparkles size={13} /> AI Assistant</div>
-        <div className="mt-1 flex flex-wrap gap-1 text-[10px] text-slate-400">
-          Context: <span className="rounded bg-slate-100 px-1.5 py-0.5">Full agreement</span>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5">Playbook</span>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5">9 deviations</span>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5">Comments</span>
-          <span className="rounded bg-slate-100 px-1.5 py-0.5">Prior deals</span>
-        </div>
-      </div>
-
+      {/* Header lives one level up (the "Ask Claude" panel wrapper in AgreementReview) — no second header here. */}
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3">
         {msgs.length === 0 ? (
           <>

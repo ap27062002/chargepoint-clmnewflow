@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { clsx } from 'clsx'
-import { AlertTriangle, FileText, Search, Plus, Table, Scale, DollarSign, Flame, UserX, Clock, ListChecks, ChevronRight, AtSign, Bot, BellRing } from 'lucide-react'
+import { AlertTriangle, FileText, Search, Plus, Scale, DollarSign, Flame, UserX, Clock, ChevronRight, AtSign, Bot, BellRing } from 'lucide-react'
 import { useStore } from '@/store'
 import { Card, Chip, Avatar, Button, SectionLabel, Kpi } from '@/components/ui'
 import { agreementStatusMeta, fmtDate } from '@/lib/labels'
@@ -82,7 +82,6 @@ export function Dashboard() {
           <p className="text-[13px] text-slate-500">{leader ? 'All active matters across the legal team' : `Matters visible to you as ${ROLE_LABEL[cu.role]}`} — as of Jun 27, 2026.</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" icon={<Table size={15} />} onClick={() => openContracts('all')}>All contracts</Button>
           <Button variant="primary" icon={<Plus size={15} />} onClick={() => setModalOpen(true)}>Open Ticket</Button>
         </div>
       </div>
@@ -134,7 +133,6 @@ export function Dashboard() {
       <Card className="mb-4 overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
           <SectionLabel>By counterparty</SectionLabel>
-          <button onClick={() => openContracts('all')} className="flex items-center gap-1 text-[12px] font-semibold text-ai-600 hover:underline"><ListChecks size={13} /> All contracts</button>
         </div>
         <table className="w-full text-left text-[12.5px]">
           <thead><tr className="border-b border-slate-100 text-[10.5px] uppercase tracking-wide text-slate-400">

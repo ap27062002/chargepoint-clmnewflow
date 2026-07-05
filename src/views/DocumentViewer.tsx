@@ -1,17 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
-import { Bold, Italic, Underline, List, Table, Pilcrow, Check, X, CornerUpLeft, Pencil, Eye, Plus, Sparkles, BookOpen, Users, Lock, MessageSquare, MessageSquareOff, Info, Flag, MoreHorizontal } from 'lucide-react'
+import { Bold, Italic, Underline, List, Table, Pilcrow, Check, X, CornerUpLeft, Pencil, Plus, Sparkles, BookOpen, Users, Lock, MessageSquare, MessageSquareOff, Flag, MoreHorizontal } from 'lucide-react'
 import { useStore } from '@/store'
 import { sendToAgent } from '@/agent/engine'
 import { can } from '@/lib/access'
 import { Chip, Avatar } from '@/components/ui'
-import { riskMeta, dispositionMeta, sourceLabel, fmtDate } from '@/lib/labels'
+import { riskMeta, dispositionMeta } from '@/lib/labels'
 import { userById } from '@/data/seed'
 import type { DocRun } from '@/data/documents'
 import type { Deviation } from '@/types'
 import { MentionComposer } from '@/components/MentionComposer'
-import { OpenCommentsModal } from '@/components/OpenComments'
 
 function ChangeRun({ run, versionId, editable }: { run: DocRun; versionId: string; editable: boolean }) {
   const acceptChange = useStore((s) => s.acceptChange)
@@ -100,11 +99,7 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
   const setShowComments = useStore((s) => s.setShowDocComments)
   const flagAnalysis = useStore((s) => s.flagAnalysis)
   const setToast = useStore((s) => s.setToast)
-  const versions = useStore((s) => s.versions)
-  const tickets = useStore((s) => s.tickets)
   const agreement = useStore((s) => s.agreements.find((x) => x.id === agreementId))
-  const [detailsOpen, setDetailsOpen] = useState(false)
-  const [reportOpen, setReportOpen] = useState(false)
   const [flagMenu, setFlagMenu] = useState<string | null>(null)
   // Counter flow: when a counter is proposed, the cursor lands in the inserted text.
   useEffect(() => {
@@ -256,23 +251,10 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
         ))}
         <button disabled className="rounded p-1.5 opacity-40"><Table size={14} /></button>
         <div className="mx-1 h-4 w-px bg-slate-200" />
-        <div className="flex items-center gap-2 pl-1 text-[11px]">
-          <span className="tc-ins-cp font-semibold">insertion</span>
-          <span className="tc-del-cp font-semibold">deletion</span>
-          <span className="text-slate-400">· counterparty blue · CP green</span>
-        </div>
-        <div className="mx-1 h-4 w-px bg-slate-200" />
         <button onClick={() => setShowComments(!showComments)} title={showComments ? 'Hide comments — clean document' : 'Show comments'}
           className={clsx('flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-semibold transition', showComments ? 'text-slate-600 hover:bg-slate-100' : 'bg-slate-800 text-white')}>
           {showComments ? <MessageSquare size={13} /> : <MessageSquareOff size={13} />} {showComments ? 'Hide comments' : 'Comments hidden'}
         </button>
-        <button onClick={() => setDetailsOpen((v) => !v)} title="Document details" className={clsx('flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-semibold', detailsOpen ? 'bg-slate-100 text-slate-700' : 'text-slate-600 hover:bg-slate-100')}>
-          <Info size={13} /> Details
-        </button>
-        <button onClick={() => setReportOpen(true)} title="Open-comments report for this document" className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-semibold text-slate-600 hover:bg-slate-100">
-          <MessageSquare size={13} /> Open comments
-        </button>
-        {reportOpen && <OpenCommentsModal ticketId={agreement?.ticket_id ?? ''} agreementId={agreementId} title={doc.title} onClose={() => setReportOpen(false)} />}
         {canEdit && (
           <div className="ml-auto flex items-center gap-1.5">
             {edit && (
@@ -282,7 +264,7 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
               </div>
             )}
             <button onClick={() => setEdit((v) => !v)} className={clsx('inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] font-semibold transition', edit ? 'bg-ai-600 text-white' : 'text-ai-700 hover:bg-ai-50')}>
-              {edit ? (proseEdit ? <><Pencil size={13} /> Editing text — type in the document</> : <><Pencil size={13} /> Reviewing changes — hover to accept/reject</>) : <><Eye size={13} /> Reviewing — enable editing</>}
+              {edit ? (proseEdit ? <><Pencil size={13} /> Editing text — type in the document</> : <><Pencil size={13} /> Reviewing changes — hover to accept/reject</>) : <><Pencil size={13} /> Edit</>}
             </button>
           </div>
         )}
@@ -323,25 +305,6 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
           <span>Live presence — everyone can view and comment; colored cursors show who's where. Each clause is edit-locked to one editor at a time.</span>
         )}
       </div>
-      {/* Details drawer — embedded metadata identifier (Intake §4) */}
-      {detailsOpen && (() => {
-        const v = versions.find((x) => x.id === versionId)
-        const tk = tickets.find((x) => x.id === agreement?.ticket_id)
-        const CP_ABBR: Record<string, string> = { 'Northwind Energy': 'NWE', 'Vishay Intertechnology': 'VIS', 'Metro Transit Authority': 'MTA', 'Mondelez International': 'MDZ' }
-        const cpName = tk?.counterparty_name ?? 'CP'
-        const cpAbbr = CP_ABBR[cpName] ?? cpName.replace(/[^A-Za-z ]/g, '').split(' ').map((w) => w[0]).join('').slice(0, 3).toUpperCase()
-        const docIdMeta = `CLM-${cpAbbr}-${agreement?.agreement_type === 'Other' ? 'DOC' : agreement?.agreement_type}-00${v?.version_number ?? 1}`
-        return (
-          <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-4 py-2.5 text-[12px]">
-            <div className="grid grid-cols-[160px_1fr] gap-y-1">
-              <span className="font-semibold text-slate-400">File</span><span className="text-slate-700">{v?.document_ref ?? '—'} · {v ? sourceLabel[v.source] : ''} · {v ? fmtDate(v.created_date) : ''}</span>
-              <span className="font-semibold text-slate-400">Embedded document ID</span>
-              <span className="text-slate-700"><code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] ring-1 ring-slate-200">{docIdMeta}</code> <span className="text-slate-400">(metadata, not visible in document body). Used to auto-match returning counterparty versions.</span></span>
-            </div>
-          </div>
-        )
-      })()}
-
       <div ref={containerRef} onMouseUp={onSelect} onScroll={() => setAskBtn(null)} className="flex-1 overflow-y-auto py-6">
         {askBtn && createPortal(
           <div

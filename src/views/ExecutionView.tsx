@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { clsx } from 'clsx'
 import { FileSignature, Check, Clock, Send, ShieldCheck, Archive, ScrollText, PenLine } from 'lucide-react'
@@ -44,7 +45,7 @@ function SignerRow({ env, role }: { env: Envelope; role: 'cp_signer' | 'counterp
 }
 
 // The 3-step execution card for ONE agreement — reused by ExecutionView (single) and DealExecutionView (many).
-export function SingleAgreementExecution({ agreementId, compact }: { agreementId: string; compact?: boolean }) {
+export function SingleAgreementExecution({ agreementId, compact, envelopeMeta }: { agreementId: string; compact?: boolean; envelopeMeta?: { envelope_group_id?: string; mode?: import('@/types').EnvelopeMode } }) {
   const agreement = useStore((s) => s.agreements.find((a) => a.id === agreementId))
   const approvals = useStore((s) => s.approvals).filter((ap) => ap.agreement_id === agreementId)
   const envelope = useStore((s) => s.envelopes).find((e) => e.agreement_id === agreementId)
@@ -53,13 +54,16 @@ export function SingleAgreementExecution({ agreementId, compact }: { agreementId
   const decideApproval = useStore((s) => s.decideApproval)
   const startEnvelope = useStore((s) => s.startEnvelope)
   const advanceEnvelope = useStore((s) => s.advanceEnvelope)
-  const finalizeVersion = useStore((s) => s.finalizeVersion)
   const openCanvas = useStore((s) => s.openCanvas)
+  const ticket = useStore((s) => s.tickets.find((t) => t.id === agreement?.ticket_id))
+  const [receiverName, setReceiverName] = useState('')
+  const [receiverEmail, setReceiverEmail] = useState('')
   if (!agreement) return null
 
   const versions = allVersions.filter((v) => v.agreement_id === agreementId).sort((a, b) => a.version_number - b.version_number)
   const latestId = versions[versions.length - 1]?.id
   const finalizedId = (agreement.current_version_id && versions.some((v) => v.id === agreement.current_version_id)) ? agreement.current_version_id : latestId
+  const defaultReceiverName = `${ticket?.counterparty_name && ticket.counterparty_name !== '—' ? ticket.counterparty_name : agreement.title.split(' ')[0]} signatory`
   const approval = approvals[0]
   const approved = !approval || approval.state === 'granted'
   const executed = agreement.status === 'executed'
@@ -69,23 +73,6 @@ export function SingleAgreementExecution({ agreementId, compact }: { agreementId
 
   return (
     <Card className={compact ? 'p-4' : 'p-5'}>
-      {/* Finalize the version that goes to signature — latest by default (Eric §3). */}
-      {versions.length > 1 && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-          <FileSignature size={14} className="text-slate-400" />
-          <span className="text-[12.5px] font-semibold text-slate-600">Execution version</span>
-          {executed ? (
-            <Chip className="bg-brand-50 text-brand-700 ring-brand-500/20"><Check size={11} /> {versions.find((v) => v.id === finalizedId)?.label ?? 'Final'} executed</Chip>
-          ) : (
-            <>
-              <select value={finalizedId} onChange={(e) => finalizeVersion(agreementId, e.target.value)} className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[12.5px] font-semibold text-slate-700 outline-none">
-                {versions.map((v) => <option key={v.id} value={v.id}>{v.label}{v.id === latestId ? ' (latest)' : ''}</option>)}
-              </select>
-              <span className="text-[11.5px] text-slate-400">This version is what gets signed. Latest is selected by default.</span>
-            </>
-          )}
-        </div>
-      )}
       <Step n={1} title="Attorney / approval chain" state={approvalStep}>
         {!approval ? (
           <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2.5">
@@ -114,9 +101,13 @@ export function SingleAgreementExecution({ agreementId, compact }: { agreementId
         {!approved ? (
           <div className="rounded-lg bg-slate-50 px-3 py-2.5 text-[12.5px] text-slate-400">Waiting on approval before routing for signature.</div>
         ) : !envelope ? (
-          <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2.5">
-            <span className="text-[12.5px] text-slate-500">Clean execution copy ready. AI can't sign — you route the envelope.</span>
-            <Button size="sm" variant="ai" icon={<Send size={13} />} onClick={() => startEnvelope(agreementId)}>Send for signature</Button>
+          <div className="rounded-lg bg-slate-50 px-3 py-2.5">
+            <div className="mb-2 text-[12.5px] text-slate-500">Clean execution copy ready — who signs on the other side?</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input value={receiverName} onChange={(e) => setReceiverName(e.target.value)} placeholder={defaultReceiverName} className="w-44 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[12.5px] outline-none focus:border-ai-400" />
+              <input value={receiverEmail} onChange={(e) => setReceiverEmail(e.target.value)} placeholder="legal@counterparty.com" className="w-52 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[12.5px] outline-none focus:border-ai-400" />
+              <Button size="sm" variant="ai" icon={<Send size={13} />} onClick={() => startEnvelope(agreementId, { name: receiverName || defaultReceiverName, email: receiverEmail || 'legal@counterparty.com' }, envelopeMeta)}>Send for signature</Button>
+            </div>
           </div>
         ) : (
           <div className="space-y-2">

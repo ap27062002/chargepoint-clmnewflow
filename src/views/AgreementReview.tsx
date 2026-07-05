@@ -396,11 +396,11 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
     setFocusClause((prev) => (prev === cid ? cid + ' ' : cid)) // force re-trigger even if same
   }
 
+  // Send-back is reached via the green stage-tracker CTA, not a tab here (avoids a duplicate control).
   const TABS = [
     { key: 'directive', label: 'Review', icon: <ListChecks size={14} /> },
     { key: 'issues', label: 'List', icon: <FileText size={14} /> },
     { key: 'compare', label: 'Compare', icon: <GitCompareArrows size={14} /> },
-    { key: 'sendback', label: 'Send back', icon: <Send size={14} /> },
   ] as const
   const activeTab = mode === 'redline' ? 'sendback' : mode
   const onTab = (k: string) => { if (k === 'sendback') openSendBack(agreementId); else navigate({ reviewMode: k as typeof rawMode }) }

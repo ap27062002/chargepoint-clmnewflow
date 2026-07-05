@@ -12,18 +12,26 @@ export function DealExecutionView() {
   const tickets = useStore((s) => s.tickets)
   const agreements = useStore((s) => s.agreements)
   const envelopes = useStore((s) => s.envelopes)
-  const startEnvelopesForTicket = useStore((s) => s.startEnvelopesForTicket)
 
   const ticket = tickets.find((t) => t.id === ticketId)
   const ags = agreements.filter((a) => a.ticket_id === ticketId && a.status !== 'executed')
   const ready = (st: string) => st === 'pending_execution'
   const [selected, setSelected] = useState<string[]>(ags.filter((a) => ready(a.status)).map((a) => a.id))
   const [mode, setMode] = useState<EnvelopeMode>('individual')
+  // "Routed" just opens the signature step for a document — it does NOT create the envelope yet.
+  // The envelope is only created once the receiver's name/email is entered (SingleAgreementExecution).
+  const [openedIds, setOpenedIds] = useState<string[]>([])
+  const [groupMeta, setGroupMeta] = useState<{ groupId: string; mode: EnvelopeMode } | null>(null)
 
   if (!ticket) return null
-  const routed = ags.filter((a) => envelopes.some((e) => e.agreement_id === a.id))
+  const routed = ags.filter((a) => openedIds.includes(a.id) || envelopes.some((e) => e.agreement_id === a.id))
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
-  const route = () => { if (selected.length) startEnvelopesForTicket(ticketId, selected, mode) }
+  const route = () => {
+    if (!selected.length) return
+    const groupId = 'grp_' + Math.abs([...(ticketId + mode + selected.join(''))].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)).toString(16)
+    setGroupMeta({ groupId, mode })
+    setOpenedIds((ids) => [...new Set([...ids, ...selected])])
+  }
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -82,7 +90,7 @@ export function DealExecutionView() {
               {routed.map((a) => (
                 <div key={a.id}>
                   <div className="mb-1 text-[12.5px] font-bold text-slate-700">{a.title}</div>
-                  <SingleAgreementExecution agreementId={a.id} compact />
+                  <SingleAgreementExecution agreementId={a.id} compact envelopeMeta={groupMeta ? { envelope_group_id: groupMeta.groupId, mode: groupMeta.mode } : undefined} />
                 </div>
               ))}
             </div>

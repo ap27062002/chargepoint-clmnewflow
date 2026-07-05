@@ -170,9 +170,8 @@ interface CLMState {
   setRoutingStrategy: (s: RoutingStrategy) => void
   createApproval: (agreementId: string, type: ApprovalType) => ApprovalRequest | null
   decideApproval: (approvalId: string, approverId: string, grant: boolean) => void
-  startEnvelope: (agreementId: string) => Envelope
+  startEnvelope: (agreementId: string, receiver?: { name: string; email: string }, meta?: { envelope_group_id?: string; mode?: EnvelopeMode }) => Envelope
   advanceEnvelope: (envelopeId: string) => void
-  startEnvelopesForTicket: (ticketId: string, agreementIds: string[], mode: EnvelopeMode) => void
   runSlaCheck: () => void
 
   // versioning — track-changes hygiene + send-back (clean copy + redline)
@@ -933,14 +932,15 @@ export const useStore = create<CLMState>((set, get) => ({
     get().audit_push({ event_type: grant ? 'approval_granted' : 'approval_denied', agreement_id: ap?.agreement_id, summary: `Approval ${grant ? 'granted' : 'denied'} by ${get().users.find((u) => u.id === approverId)?.name}.` })
   },
 
-  startEnvelope: (agreementId) => {
+  startEnvelope: (agreementId, receiver, meta) => {
     const a = get().agreements.find((x) => x.id === agreementId)!
     const env: Envelope = {
       id: 'env_' + Math.abs([...agreementId].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)).toString(16),
       agreement_id: agreementId, ticket_id: a.ticket_id, state: 'pending_cp', created_date: now(),
+      envelope_group_id: meta?.envelope_group_id, mode: meta?.mode,
       signers: [
         { role: 'cp_signer', name: 'Eric Batill (ChargePoint)', email: 'eric.batill@chargepoint.com', state: 'sent' },
-        { role: 'counterparty_signer', name: `${a.title.split(' ')[0]} signatory`, email: 'legal@counterparty.com', state: 'waiting' },
+        { role: 'counterparty_signer', name: receiver?.name.trim() || `${a.title.split(' ')[0]} signatory`, email: receiver?.email.trim() || 'legal@counterparty.com', state: 'waiting' },
       ],
     }
     set((s) => ({
@@ -1007,13 +1007,6 @@ export const useStore = create<CLMState>((set, get) => ({
       }
     }
     set((s) => ({ notifications: [...fresh, ...s.notifications], slaChecked: true }))
-  },
-
-  startEnvelopesForTicket: (ticketId, agreementIds, mode) => {
-    const groupId = 'grp_' + Math.abs([...(ticketId + mode)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)).toString(16)
-    for (const id of agreementIds) get().startEnvelope(id)
-    set((s) => ({ envelopes: s.envelopes.map((e) => (agreementIds.includes(e.agreement_id) && !e.envelope_group_id ? { ...e, envelope_group_id: groupId, mode } : e)) }))
-    get().audit_push({ event_type: 'signature_requested', ticket_id: ticketId, summary: `${agreementIds.length} document(s) routed for signature (${mode === 'combined' ? 'together' : 'individually'}).` })
   },
 
   // ----- versioning: track-changes hygiene + send-back (Eric §3) --------------

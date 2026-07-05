@@ -1,5 +1,5 @@
 import { clsx } from 'clsx'
-import { PanelLeftClose, Sparkles, Lock } from 'lucide-react'
+import { PanelLeftClose, ChevronLeft, Sparkles, Lock } from 'lucide-react'
 import { useStore } from '@/store'
 import { canView, VIEW_CAP, CAP_LABEL, ROLE_LABEL, ROLE_SCOPE } from '@/lib/access'
 import { Dashboard } from '@/views/Dashboard'
@@ -27,10 +27,7 @@ function useBreadcrumb(): string {
     deal_summary: 'Deal summary', intake: 'NDA drafting brief',
     repository: 'Archive', contracts: 'All contracts', projects: 'Templates',
   }
-  if (canvas.view === 'ticket' || canvas.view === 'agreement') {
-    const t = tickets.find((x) => x.id === canvas.ticketId)
-    return t ? t.title : 'Ticket workspace'
-  }
+  if (canvas.view === 'ticket' || canvas.view === 'agreement') return 'Dashboard'
   if (canvas.view === 'playbook') {
     if (canvas.playbookMode === 'library') return 'Playbooks'
     const pb = playbooks.find((p) => p.id === (canvas.playbookId ?? playbooks[0].id)) ?? playbooks[0]
@@ -67,17 +64,26 @@ export function Canvas() {
   const execTicketId = useStore((s) => s.canvas.executionTicketId)
   const role = useStore((s) => s.users.find((u) => u.id === s.currentUserId)!.role)
   const closeCanvas = useStore((s) => s.closeCanvas)
+  const openCanvas = useStore((s) => s.openCanvas)
   const crumb = useBreadcrumb()
   const allowed = canView(role, view)
+  const goToDashboard = () => openCanvas({ view: 'dashboard' })
 
   return (
     <div className="flex h-full flex-col bg-slate-50">
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-slate-200 bg-white/70 px-3 backdrop-blur">
         <div className="flex items-center gap-2 text-[12px] text-slate-400">
+          {view !== 'dashboard' && (
+            <button onClick={goToDashboard} title="Back to Dashboard" className="flex items-center gap-1 rounded-lg px-1.5 py-0.5 font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-700">
+              <ChevronLeft size={14} /> Back
+            </button>
+          )}
           <Sparkles size={13} className="text-ai-500" />
           <span className="font-medium text-slate-500">Workspace</span>
           <span className="text-slate-300">/</span>
-          <span className="font-semibold text-slate-700">{crumb}</span>
+          {view === 'ticket' || view === 'agreement'
+            ? <button onClick={goToDashboard} className="font-semibold text-slate-700 hover:text-brand-600 hover:underline">{crumb}</button>
+            : <span className="font-semibold text-slate-700">{crumb}</span>}
         </div>
         <button onClick={closeCanvas} title="Collapse to full-screen agent"
           className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-700">

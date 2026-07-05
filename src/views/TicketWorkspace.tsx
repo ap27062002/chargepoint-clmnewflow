@@ -5,7 +5,7 @@ import { OpenCommentsModal } from '@/components/OpenComments'
 import { UploadVersionModal } from '@/components/UploadVersionModal'
 import { useStore } from '@/store'
 import { Chip, Card, Button, SectionLabel, StackBar } from '@/components/ui'
-import { statusChip, priorityMeta, ticketTypeLabel, fmtDate, agreementStatusMeta } from '@/lib/labels'
+import { statusChip, agreementStatusMeta } from '@/lib/labels'
 import { fmtMoney } from '@/lib/analytics'
 import { DealDiscussion } from '@/views/DealDiscussion'
 import { AgreementReview } from '@/views/AgreementReview'
@@ -22,9 +22,6 @@ function DealOverview({ ticketId }: { ticketId: string }) {
   const navigate = useStore((s) => s.navigate)
   const openDealExecution = useStore((s) => s.openDealExecution)
   const ticket = useStore((s) => s.tickets.find((t) => t.id === ticketId))
-  const audit = useStore((s) => s.audit)
-  const recent = audit.filter((e) => e.ticket_id === ticketId || agreements.some((a) => a.ticket_id === ticketId && a.id === e.agreement_id)).slice(-4).reverse()
-  const [ovUpload, setOvUpload] = useState(false)
   const ags = agreements.filter((a) => a.ticket_id === ticketId)
   const open = ags.filter((a) => a.status !== 'executed')
   const cpCourt = open.filter((a) => a.ball_in_court === 'cp_legal').length
@@ -50,12 +47,8 @@ function DealOverview({ ticketId }: { ticketId: string }) {
         <Card className="overflow-hidden">
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
             <SectionLabel>Documents on this deal</SectionLabel>
-            <div className="flex gap-1.5">
-              <Button size="sm" variant="outline" icon={<UploadCloud size={12} />} onClick={() => setOvUpload(true)}>Upload New Version</Button>
-              {readyToSign > 0 && <Button size="sm" variant="ai" icon={<FileSignature size={13} />} onClick={() => openDealExecution(ticketId)}>Execute & sign ({readyToSign} ready)</Button>}
-            </div>
+            {readyToSign > 0 && <Button size="sm" variant="ai" icon={<FileSignature size={13} />} onClick={() => openDealExecution(ticketId)}>Execute & sign ({readyToSign} ready)</Button>}
           </div>
-          {ovUpload && <UploadVersionModal ticketId={ticketId} onClose={() => setOvUpload(false)} />}
           {ags.map((a) => (
             <button key={a.id} onClick={() => openAg(a)} className="flex w-full items-center gap-3 border-b border-slate-50 px-4 py-3 text-left last:border-0 hover:bg-slate-50">
               <FileSignature size={16} className={a.status === 'executed' ? 'text-brand-500' : 'text-slate-300'} />
@@ -70,24 +63,13 @@ function DealOverview({ ticketId }: { ticketId: string }) {
           ))}
         </Card>
 
-        {/* Counterparty summary + recent activity */}
-        <div className="grid grid-cols-2 gap-3">
-          <Card className="p-4">
-            <SectionLabel className="mb-1.5">Counterparty</SectionLabel>
-            <div className="text-[13.5px] font-bold text-slate-800">{ticket?.counterparty_name ?? '—'}</div>
-            <div className="mt-0.5 text-[12px] text-slate-500">{ags.length} document{ags.length === 1 ? '' : 's'} on this deal · {open.length} open · initiated by {userById(ticket?.initiator_id ?? '')?.name ?? '—'}</div>
-            <div className="mt-1 text-[11.5px] text-slate-400">{ticket?.description}</div>
-          </Card>
-          <Card className="p-4">
-            <SectionLabel className="mb-1.5">Recent activity</SectionLabel>
-            <div className="space-y-1">
-              {recent.map((e) => (
-                <div key={e.id} className="flex items-center gap-2 text-[11.5px] text-slate-500"><span className="h-1 w-1 shrink-0 rounded-full bg-slate-300" /><span className="truncate">{e.summary}</span></div>
-              ))}
-              {recent.length === 0 && <div className="text-[11.5px] text-slate-400">No activity yet.</div>}
-            </div>
-          </Card>
-        </div>
+        {/* Counterparty summary */}
+        <Card className="p-4">
+          <SectionLabel className="mb-1.5">Counterparty</SectionLabel>
+          <div className="text-[13.5px] font-bold text-slate-800">{ticket?.counterparty_name ?? '—'}</div>
+          <div className="mt-0.5 text-[12px] text-slate-500">{ags.length} document{ags.length === 1 ? '' : 's'} on this deal · {open.length} open · initiated by {userById(ticket?.initiator_id ?? '')?.name ?? '—'}</div>
+          <div className="mt-1 text-[11.5px] text-slate-400">{ticket?.description}</div>
+        </Card>
       </div>
     </div>
   )
@@ -127,7 +109,6 @@ export function TicketWorkspace() {
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [uploadOpen, setUploadOpen] = useState(false)
   const ags = agreements.filter((a) => a.ticket_id === ticket.id)
-  const multi = ticket.type === 'multi_agreement' || ags.length > 1
   const tab = canvas.agreementTab ?? (ticket.type === 'inquiry' ? 'deal' : 'overview')
   const activeAgreementId = canvas.agreementId ?? ags[0]?.id
   const activeAgreement = agreements.find((a) => a.id === activeAgreementId)
@@ -149,21 +130,15 @@ export function TicketWorkspace() {
             <div className="flex items-center gap-2">
               <h1 className="text-[17px] font-bold text-slate-800">{ticket.title}</h1>
               <Chip className={statusChip(ticket.status)}>{ticket.status}</Chip>
-              {multi && <Chip className="bg-indigo-50 text-indigo-600 ring-indigo-500/20">{ags.length} documents</Chip>}
-            </div>
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-slate-500">
-              <span className="font-mono text-slate-400">{ticket.id}</span>
-              <span>{ticketTypeLabel[ticket.type]}</span>
-              <span>· {ticket.counterparty_name}</span>
-              <span>· Initiator {userById(ticket.initiator_id)?.name}</span>
-              <Chip className={priorityMeta[ticket.priority].chip}>{priorityMeta[ticket.priority].label}</Chip>
-              <span>· SLA {fmtDate(ticket.sla_target_date)}</span>
+              <Chip className="bg-indigo-50 text-indigo-600 ring-indigo-500/20">{ags.length} document{ags.length === 1 ? '' : 's'}</Chip>
             </div>
           </div>
-          <div className="flex shrink-0 gap-1.5">
-            <Button size="sm" variant="outline" icon={<AtSign size={12} />} onClick={() => setCommentsOpen(true)}>Open Comments</Button>
-            {ticket.type !== 'inquiry' && <Button size="sm" variant="primary" icon={<UploadCloud size={12} />} onClick={() => setUploadOpen(true)}>Upload New Version</Button>}
-          </div>
+          {tab !== 'review' && (
+            <div className="flex shrink-0 gap-1.5">
+              <Button size="sm" variant="outline" icon={<AtSign size={12} />} onClick={() => setCommentsOpen(true)}>Open Comments</Button>
+              {ticket.type !== 'inquiry' && <Button size="sm" variant="primary" icon={<UploadCloud size={12} />} onClick={() => setUploadOpen(true)}>Upload New Version</Button>}
+            </div>
+          )}
         </div>
 
         <div className="mt-3 flex gap-1">
