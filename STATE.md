@@ -1,7 +1,9 @@
 # Project state — resume here
 
 **App:** ChargePoint Legal CLM — agent-first, chat-driven CLM prototype (Unify build).
-**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-26` (git tag) · repo clean.
+**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-27` (git tag) · repo clean.
+
+**build-27 — 15-item navigation/declutter pass from user screenshots.** Breadcrumb: ticket/agreement crumb reads "Workspace / Dashboard" (clickable back-link); universal "← Back" button in the Canvas top bar on every non-dashboard view. Dashboard: "All contracts" button removed (header + By-counterparty card). Deal page: header decluttered to deal name + stage chip + doc-count chip only; duplicate Upload New Version removed from Deal Overview's document card; Recent activity card removed; header-level Open Comments/Upload New Version hide specifically on the Agreement Review (document) tab. Agreement Review: redundant "Send back" tab removed (green stage-tracker CTA is the one path); doc toolbar's Details/Open-comments/insertion-deletion-legend removed; AIPanel's duplicate "AI Assistant + Context chips" header removed (only the outer "Ask Claude" panel header remains); default edit-toggle now reads "Edit" with a pencil icon. Execute & sign: "Execution version" selector widget removed; envelope creation deferred until the user enters the receiver's name+email (real wiring — flows into the created envelope's signer row); routing no longer eagerly creates envelopes.
 
 **build-26 — 3 UX fixes.** "Hide comments" hides TEAM comments only (AI issues list + issue chips always stay; Team pill reads "hidden"); playbook create step-3 decision is 4-way **Approve | Reject | Fallback | Defer** (Fallback → drafted text becomes fallback_tiers[0], "Approved as a Fallback" chip); Playbook library header has **Add template** (Upload / Create from examples popover).
 
