@@ -7,7 +7,7 @@ import { Chip, Avatar } from '@/components/ui'
 import { agreementStatusMeta } from '@/lib/labels'
 import { userById } from '@/data/seed'
 
-export function StageTracker({ agreementId }: { agreementId: string }) {
+export function StageTracker({ agreementId, hideSendBackCta }: { agreementId: string; hideSendBackCta?: boolean }) {
   const agreement = useStore((s) => s.agreements.find((a) => a.id === agreementId))
   const approvals = useStore((s) => s.approvals).filter((ap) => ap.agreement_id === agreementId)
   const advance = useStore((s) => s.advanceAgreementStage)
@@ -58,7 +58,7 @@ export function StageTracker({ agreementId }: { agreementId: string }) {
             <Undo2 size={13} /> Counterparty sent further redlines
           </button>
         )}
-        {agreement.status !== 'executed' && next && (
+        {agreement.status !== 'executed' && next && !(hideSendBackCta && next === 'negotiation') && (
           canAdvance ? (
             <button onClick={() => (next === 'negotiation' ? openSendBack(agreementId) : advance(agreementId))}
               className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-[12.5px] font-semibold text-white transition hover:bg-brand-600">

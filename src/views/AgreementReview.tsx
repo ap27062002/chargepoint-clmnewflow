@@ -411,7 +411,9 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
 
   return (
     <div className="flex h-full flex-col">
-      <StageTracker agreementId={agreementId} />
+      {/* On the Send-back screen the purple "Send to counterparty" button below is the actual
+          send action — the stage-tracker's own CTA would be a redundant duplicate there. */}
+      <StageTracker agreementId={agreementId} hideSendBackCta={mode === 'sendback'} />
 
       {/* mode toggles + version pills */}
       <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-white px-3 py-2">
