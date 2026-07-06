@@ -89,6 +89,7 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
   // ---- Word-style margin comments: BOTH the AI analysis and the team's comments live next to
   // the document, anchored to their clauses, with a filter (All / AI / Team). ----
   const setDisposition = useStore((s) => s.setDisposition)
+  const resolveMention = useStore((s) => s.resolveMention)
   const proposeCounter = useStore((s) => s.proposeCounter)
   const keepCounter = useStore((s) => s.keepCounter)
   const discardCounter = useStore((s) => s.discardCounter)
@@ -129,15 +130,18 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
   }
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const docDevs = devs.filter((d) => !!clauseIdFor(d))
-  // Margin shows AI analysis only — team-comment hide/unhide is handled by the toolbar's
-  // Hide/Show comments CTA (comments themselves live in Deal Discussion / My Queue).
-  type MarginItem = { uid: string; clauseId: string; kind: 'ai'; dev: Deviation }
-  const marginItems: MarginItem[] = docDevs.map((d) => ({ uid: 'ai-' + d.id, clauseId: clauseIdFor(d)!, kind: 'ai' as const, dev: d }))
+  // AI analysis is always visible; team comments show/hide with the toolbar's Hide/Show comments CTA.
+  const teamMsgs = showComments ? messages.filter((m) => m.thread_type === 'agreement_level' && m.agreement_id === agreementId && !!clauseForRef(m.provision_reference)) : []
+  type MarginItem = { uid: string; clauseId: string; kind: 'ai'; dev: Deviation } | { uid: string; clauseId: string; kind: 'team'; msg: (typeof teamMsgs)[number] }
+  const marginItems: MarginItem[] = [
+    ...docDevs.map((d) => ({ uid: 'ai-' + d.id, clauseId: clauseIdFor(d)!, kind: 'ai' as const, dev: d })),
+    ...teamMsgs.map((m) => ({ uid: 'tm-' + m.id, clauseId: clauseForRef(m.provision_reference)!, kind: 'team' as const, msg: m })),
+  ]
   const colRef = useRef<HTMLDivElement>(null)
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [tops, setTops] = useState<Record<string, number>>({})
   const [colH, setColH] = useState(0)
-  const itemsKey = marginItems.map((it) => it.uid + it.dev.disposition_status + (expanded[it.uid] ? 'x' : '')).join(',')
+  const itemsKey = marginItems.map((it) => it.uid + (it.kind === 'ai' ? it.dev.disposition_status : it.msg.resolved ? 'r' : 'o') + (expanded[it.uid] ? 'x' : '')).join(',')
   // Anchor each card to its clause's vertical position (stacked so cards never overlap).
   useLayoutEffect(() => {
     const col = colRef.current, cont = containerRef.current
@@ -241,10 +245,14 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
         ))}
         <button disabled className="rounded p-1.5 opacity-40"><Table size={14} /></button>
         <div className="mx-1 h-4 w-px bg-slate-200" />
-        <button onClick={() => setShowComments(!showComments)} title={showComments ? 'Hide comments — clean document' : 'Show comments'}
-          className={clsx('flex items-center gap-1 rounded-lg px-2 py-1 text-[11.5px] font-semibold transition', showComments ? 'text-slate-600 hover:bg-slate-100' : 'bg-slate-800 text-white')}>
-          {showComments ? <MessageSquare size={13} /> : <MessageSquareOff size={13} />} {showComments ? 'Hide comments' : 'Comments hidden'}
-        </button>
+        <div className="flex rounded-lg border border-slate-200 p-0.5">
+          <button onClick={() => setShowComments(false)} title="Hide team comments (AI analysis always stays visible)" className={clsx('flex items-center gap-1 rounded-md px-2 py-0.5 text-[11.5px] font-semibold transition', !showComments ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-100')}>
+            <MessageSquareOff size={13} /> Hide comments
+          </button>
+          <button onClick={() => setShowComments(true)} title="Show comments on this document" className={clsx('flex items-center gap-1 rounded-md px-2 py-0.5 text-[11.5px] font-semibold transition', showComments ? 'bg-ai-600 text-white' : 'text-slate-500 hover:bg-slate-100')}>
+            <MessageSquare size={13} /> Show comments
+          </button>
+        </div>
         {canEdit && (
           <div className="ml-auto flex items-center gap-1.5">
             {edit && (
@@ -397,15 +405,40 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
           )}
         </div>
 
-        {/* Margin — AI analysis only; team-comment hide/unhide lives in the toolbar CTA above. */}
-        {docDevs.length > 0 && (
+        {/* Margin — AI analysis always shown; team comments show/hide with the toolbar CTA. */}
+        {(docDevs.length > 0 || teamMsgs.length > 0) && (
           <div className="hidden w-[280px] shrink-0 lg:block">
-            <div className="mb-2 rounded-lg border border-slate-200 bg-white p-0.5 shadow-card">
+            <div className="mb-2 flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white p-0.5 shadow-card">
               <span className="block flex-1 rounded-md bg-ai-600 py-1 text-center text-[10.5px] font-semibold text-white">AI analysis ({docDevs.length})</span>
+              {showComments && <span className="block flex-1 rounded-md bg-slate-700 py-1 text-center text-[10.5px] font-semibold text-white">Comments ({teamMsgs.length})</span>}
             </div>
             <div ref={colRef} className="relative" style={{ minHeight: colH }}>
               {marginItems.map((it) => {
                 const common = { ref: (el: HTMLDivElement | null) => { cardRefs.current[it.uid] = el }, style: { position: 'absolute' as const, top: tops[it.uid] ?? 0, left: 0, right: 0 } }
+                if (it.kind === 'team') {
+                  const m = it.msg
+                  const isOpen = !!expanded[it.uid]
+                  return (
+                    <div key={it.uid} {...common} onClick={() => flashClause(it.clauseId)}
+                      className="cursor-pointer rounded-lg border border-slate-200 bg-white p-2.5 shadow-card transition hover:shadow-panel">
+                      <div className="flex items-center gap-1.5">
+                        <Avatar userId={m.author_id} size={18} />
+                        <span className="truncate text-[11.5px] font-bold text-slate-700">{userById(m.author_id)?.name}</span>
+                        <span className="ml-auto shrink-0 font-mono text-[10px] text-slate-400">{m.provision_reference}</span>
+                      </div>
+                      <div className="mt-1.5 text-[11px] leading-snug text-slate-600" style={isOpen ? undefined : { display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{m.body}</div>
+                      <div className="mt-1.5 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        {m.mentions && m.mentions.length > 0 && (m.resolved
+                          ? <Chip className="bg-brand-50 text-brand-700 ring-brand-500/20">✓ Sign-off received</Chip>
+                          : <>
+                              <Chip className="bg-amber-50 text-amber-700 ring-amber-500/20">@ {m.mentions.map((id) => userById(id)?.name.split(' ')[0]).join(', ')}</Chip>
+                              <button onClick={() => resolveMention(m.id)} className="text-[10.5px] font-semibold text-brand-600 hover:underline">Mark responded</button>
+                            </>)}
+                        {m.body.length > 130 && <button onClick={() => setExpanded((p) => ({ ...p, [it.uid]: !isOpen }))} className="ml-auto text-[10.5px] font-semibold text-slate-400 hover:text-slate-600">{isOpen ? 'Less' : 'More'}</button>}
+                      </div>
+                    </div>
+                  )
+                }
                 const d = it.dev
                 const decided = d.disposition_status !== 'open'
                 const rm = riskMeta[d.risk_category]

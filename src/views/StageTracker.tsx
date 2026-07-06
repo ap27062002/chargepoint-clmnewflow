@@ -58,9 +58,7 @@ export function StageTracker({ agreementId }: { agreementId: string }) {
             <Undo2 size={13} /> Counterparty sent further redlines
           </button>
         )}
-        {/* "Send back to counterparty" is hidden for the attorney persona specifically —
-            every other transition (advance, execute & sign) is unaffected. */}
-        {agreement.status !== 'executed' && next && !(next === 'negotiation' && role === 'attorney') && (
+        {agreement.status !== 'executed' && next && (
           canAdvance ? (
             <button onClick={() => (next === 'negotiation' ? openSendBack(agreementId) : advance(agreementId))}
               className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-[12.5px] font-semibold text-white transition hover:bg-brand-600">
