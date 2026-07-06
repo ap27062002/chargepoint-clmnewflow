@@ -1,7 +1,9 @@
 # Project state — resume here
 
 **App:** ChargePoint Legal CLM — agent-first, chat-driven CLM prototype (Unify build).
-**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-29` (git tag) · repo clean.
+**Live:** https://chargepoint-clm.vercel.app · **Current build:** `build-30` (git tag) · repo clean.
+
+**build-30 — dedupe the Send-back CTA.** StageTracker's own green "Send back to counterparty" button now hides specifically on the Send-back review screen itself (mode==='sendback'), since the purple "Send to counterparty" button at the bottom of that screen is the real send action — everywhere else (Review/List/Compare tabs, other stage transitions) is unaffected.
 
 **build-29 — revert + fix from build-28.** (1) "Send back to counterparty" restored for the attorney persona (build-28's attorney-hide gate on StageTracker reverted — exact prior behavior). (2) Team comments, which became entirely unreachable after build-28's margin-simplification (the toggle had nothing left to show), are back — rendered alongside the always-visible AI analysis cards, gated on the comments toggle; replaced the single ambiguous toggle button with two clear adjacent CTAs, "Hide comments" and "Show comments".
 
