@@ -30,6 +30,8 @@ import type { PublishedArtifact, TeamFolder, Role } from '@/types'
 import { executedCorpus } from '@/data/executed'
 import type { PlaybookSourceDefaults, SourceFolder, DocLock } from '@/types'
 import { agreementIdForVersion } from '@/data/documents'
+import { materializeDraftDoc, placeholderUploadDoc } from '@/data/draftDoc'
+import type { NegotiationWizardState } from '@/types'
 import { routeAttorney, type RoutingStrategy } from '@/lib/routing'
 import { slaStatus } from '@/lib/labels'
 
@@ -126,6 +128,18 @@ interface CLMState {
   generateNdaFromIntake: () => Ticket | null
   createInquiry: (question: string) => Ticket   // R79 — a ticket with no agreement, just a question→response
   createTicketFull: (input: { title: string; kind: 'negotiation' | 'support'; counterparty?: string; files: string[]; attorneyId?: string }) => void // Dashboard §1 Open Ticket modal
+  // ----- Chat-embedded negotiation-ticket wizard (Ticketing §New) -----
+  negotiationWizard: NegotiationWizardState | null
+  startNegotiationWizard: () => void
+  setWizardScope: (scope: 'single' | 'multiple') => void
+  setWizardSource: (payload: { sourceMode: 'template' | 'upload'; templateIds?: string[]; uploadedFiles?: string[] }) => void
+  setWizardCounterparty: (name: string) => void
+  cancelNegotiationWizard: () => void
+  confirmNegotiationWizard: () => { ticketId: string; title: string }
+  // ----- Drafting-stage agreements (start from a template, not a counterparty redline) -----
+  startDrafting: (agreementId: string, info: { purpose: string; term: string; jurisdiction: string }) => void
+  editDraftViaChat: (agreementId: string, instruction: string) => string // returns the chat reply text
+  sendDraftToCounterparty: (agreementId: string, receiverName: string) => void
   advanceInquiry: (ticketId: string) => void // support tickets: Open → In Progress → Resolved
   reassignVersion: (versionId: string, targetAgreementId: string, newNumber?: number) => void // intake §5 error correction
   ingestVersion: (agreementId: string, fileName: string, asNewDocument?: boolean) => void // intake §1 — in-deal upload
@@ -325,6 +339,7 @@ export const useStore = create<CLMState>((set, get) => ({
   analysisFlags: [],
   canvas: { view: 'dashboard', open: false },
   chat: [GREETING],
+  negotiationWizard: null,
   agentThinking: false,
   toast: null,
   cmdkOpen: false,
@@ -693,6 +708,149 @@ export const useStore = create<CLMState>((set, get) => ({
     get().setToast(`Ticket ${t.id} created${files.length ? ` with ${files.length} document(s)` : ''}.`)
     get().openTicket(t.id)
   },
+
+  // ----- Chat-embedded negotiation-ticket wizard (Ticketing §New) -----------
+  // Sequential Q&A, driven by the agent chat: scope → template/upload → counterparty → confirm.
+  startNegotiationWizard: () => set({ negotiationWizard: { step: 'scope' } }),
+  setWizardScope: (scope) => set((s) => (s.negotiationWizard ? { negotiationWizard: { ...s.negotiationWizard, scope, step: 'source' } } : {})),
+  setWizardSource: (payload) => set((s) => (s.negotiationWizard ? { negotiationWizard: { ...s.negotiationWizard, ...payload, step: 'counterparty' } } : {})),
+  setWizardCounterparty: (name) => set((s) => (s.negotiationWizard ? { negotiationWizard: { ...s.negotiationWizard, counterparty: name.trim(), step: 'confirm' } } : {})),
+  cancelNegotiationWizard: () => set({ negotiationWizard: null }),
+  confirmNegotiationWizard: () => {
+    const w = get().negotiationWizard
+    if (!w || !w.counterparty) return { ticketId: '', title: '' }
+    const cpName = w.counterparty.replace(/\b\w/g, (c) => c.toUpperCase())
+    const templates = w.sourceMode === 'template' ? get().templates.filter((tpl) => (w.templateIds ?? []).includes(tpl.id)) : []
+    const sources = w.sourceMode === 'template' ? templates.map((tpl) => tpl.name) : (w.uploadedFiles ?? [])
+    const primaryType: AgreementType = w.sourceMode === 'template' ? (templates[0]?.agreement_type ?? 'Other') : 'Other'
+    const ticketTitle = `${cpName} — ${sources.length === 1 ? sources[0] : sources.length > 1 ? 'Multi-Agreement' : 'Agreement'} negotiation`
+    const t = get().createTicketFromAgent({
+      title: ticketTitle, counterparty_name: cpName,
+      type: sources.length > 1 || w.scope === 'multiple' ? 'multi_agreement' : 'single_agreement',
+      agreement_type: primaryType, priority: 'normal',
+      description: `Created via the drafting wizard — ${w.sourceMode === 'template' ? `from ${sources.join(', ')}` : `uploaded ${sources.length} document(s)`}.`,
+    })
+    const baseNum = 9600 + get().agreements.length
+    const newAgs: Agreement[] = []
+    const newVers: Version[] = []
+    const newDocs: Record<string, DocModel> = {}
+    const draftSources = w.sourceMode === 'template' ? templates : (w.uploadedFiles ?? []).map((f) => ({ file: f }))
+    draftSources.forEach((src, i) => {
+      const aid = `AGR-${baseNum + i}`
+      const vid = `${aid}-1`
+      const isTemplate = w.sourceMode === 'template'
+      const tpl = isTemplate ? (src as AgreementTemplate) : null
+      const fileName = !isTemplate ? (src as { file: string }).file : undefined
+      const type: AgreementType = tpl?.agreement_type ?? 'Other'
+      const title = tpl ? `${cpName} ${tpl.agreement_type}` : (fileName ?? 'Uploaded document').replace(/\.(docx|pdf)$/i, '').replace(/[_-]+/g, ' ')
+      newAgs.push({ id: aid, ticket_id: t.id, title, agreement_type: type, status: 'draft', current_version_id: vid, playbook_id: type === 'MNDA' ? 'pb_nda' : type === 'MSA' ? 'pb_msa' : null, paper_origin: 'cp_paper', ball_in_court: 'cp_legal', red_line_count: 0, created_date: now(), last_activity_date: '2026-06-27', turn_count: 0 })
+      newVers.push({ id: vid, agreement_id: aid, version_number: 1, label: 'v1', source: 'cp_draft', document_ref: tpl ? tpl.name : (fileName ?? 'uploaded'), created_by: get().currentUserId, created_date: now(), parent_version_id: null, change_summary: tpl ? `Drafted from ${tpl.name}.` : `Uploaded as "${fileName}".` })
+      newDocs[vid] = tpl ? materializeDraftDoc(vid, title, tpl) : placeholderUploadDoc(vid, title, fileName ?? 'uploaded document')
+    })
+    set((s) => ({
+      agreements: [...newAgs, ...s.agreements],
+      versions: [...s.versions, ...newVers],
+      documents: { ...s.documents, ...newDocs },
+      tickets: s.tickets.map((x) => (x.id === t.id ? { ...x, agreement_ids: newAgs.map((a) => a.id) } : x)),
+      negotiationWizard: null,
+    }))
+    get().audit_push({ event_type: 'version_created', ticket_id: t.id, summary: `${newAgs.length} draft(s) created (${w.sourceMode === 'template' ? 'from template' : 'uploaded'}).` })
+    get().setToast(`Ticket ${t.id} created with ${newAgs.length} draft(s).`)
+    get().openTicket(t.id)
+    return { ticketId: t.id, title: ticketTitle }
+  },
+
+  // ----- Drafting-stage agreements (start from a template, not a counterparty redline) ------
+  // The Start Drafting form writes REAL content into the doc — term/jurisdiction/purpose land
+  // in the actual Term & Termination / Governing Law clauses, not just metadata.
+  startDrafting: (agreementId, info) => {
+    const a = get().agreements.find((x) => x.id === agreementId)
+    if (!a) return
+    const vid = a.current_version_id
+    set((s) => {
+      const doc = s.documents[vid]
+      if (!doc) return {}
+      const clauses = doc.clauses.map((c) => {
+        const h = c.heading.toLowerCase()
+        if (/term\s*&|termination/.test(h) && info.term.trim()) {
+          return { ...c, runs: [{ text: `This Agreement shall remain in effect for ${info.term.trim()} from the Effective Date, unless earlier terminated as provided herein.`, type: 'normal' as const }] }
+        }
+        if (/governing law/.test(h) && info.jurisdiction.trim()) {
+          return { ...c, runs: [{ text: `This Agreement shall be governed by the laws of ${info.jurisdiction.trim()}, without regard to its conflict-of-laws principles, and the Parties consent to the exclusive jurisdiction of the courts located therein.`, type: 'normal' as const }] }
+        }
+        return c
+      })
+      return {
+        documents: { ...s.documents, [vid]: { ...doc, clauses, subtitle: `ChargePoint working draft (v1) — purpose: ${info.purpose.trim() || 'general commercial engagement'}` } },
+        agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, drafting_purpose: info.purpose.trim(), drafting_term: info.term.trim(), drafting_jurisdiction: info.jurisdiction.trim() } : x)),
+      }
+    })
+    get().audit_push({ event_type: 'version_created', agreement_id: agreementId, summary: `Drafting details applied — purpose, ${info.term.trim() || 'term'}, ${info.jurisdiction.trim() || 'jurisdiction'}.` })
+    get().setToast('Drafting details applied to the document.')
+  },
+
+  // Deterministic chat-driven document editing for drafting-stage agreements — real text changes,
+  // not a canned reply. Mirrors the same pattern as playbook chat-editing (playbookOps.ts).
+  editDraftViaChat: (agreementId, instruction) => {
+    const a = get().agreements.find((x) => x.id === agreementId)
+    if (!a) return "I couldn't find that agreement."
+    const vid = a.current_version_id
+    const doc = get().documents[vid]
+    if (!doc) return "This draft doesn't have a document yet."
+    const t = instruction.toLowerCase()
+
+    const mTerm = t.match(/term\s*(?:to|of|=)?\s*(\d+)\s*year/)
+    const mJur = t.match(/(?:governing law|jurisdiction)\s*(?:to|=)?\s*(?:the laws of\s*)?([a-z ]+?)(?:[.?!]|$)/)
+    const mAdd = t.match(/add (?:a |an )?(?:clause|section|provision)(?: about| on| for)?\s*(.+?)(?:[.?!]|$)/)
+
+    let changed = false
+    let clauses = doc.clauses
+    let reply = ''
+
+    if (mTerm) {
+      const years = mTerm[1]
+      clauses = clauses.map((c) => /term\s*&|termination/i.test(c.heading)
+        ? { ...c, runs: [{ text: `This Agreement shall remain in effect for ${years} year${years === '1' ? '' : 's'} from the Effective Date, unless earlier terminated as provided herein.`, type: 'normal' as const }] }
+        : c)
+      changed = true
+      reply = `Updated **Term & Termination** to ${years} year${years === '1' ? '' : 's'}.`
+    } else if (mJur) {
+      const jur = mJur[1].trim().replace(/\b\w/g, (c) => c.toUpperCase())
+      clauses = clauses.map((c) => /governing law/i.test(c.heading)
+        ? { ...c, runs: [{ text: `This Agreement shall be governed by the laws of ${jur}, without regard to its conflict-of-laws principles, and the Parties consent to the exclusive jurisdiction of the courts located therein.`, type: 'normal' as const }] }
+        : c)
+      changed = true
+      reply = `Updated **Governing Law** to ${jur}.`
+    } else if (mAdd) {
+      const topic = mAdd[1].trim()
+      const heading = `${clauses.length + 1}. ${topic.replace(/\b\w/g, (c) => c.toUpperCase())}`
+      const newClause: DocClause = { id: `dc-${vid}-${clauses.length}`, ref: `§${clauses.length + 1}`, heading, runs: [{ text: `The Parties agree to terms governing ${topic}, to be developed further with the deal team and reflected here.`, type: 'normal' as const }], level: 1 }
+      clauses = [...clauses, newClause]
+      changed = true
+      reply = `Added a new clause — **${heading}**.`
+    } else {
+      reply = `I can update this draft directly — try "change the term to 3 years", "set governing law to California", or "add a clause about data ownership".`
+    }
+
+    if (changed) {
+      set((s) => ({ documents: { ...s.documents, [vid]: { ...doc, clauses, toc: clauses.map((c) => ({ label: c.heading, clauseId: c.id })) } } }))
+      get().audit_push({ event_type: 'version_created', agreement_id: agreementId, summary: `Draft edited via chat: ${reply.replace(/\*\*/g, '')}` })
+    }
+    return reply
+  },
+
+  // "Send to counterparty" for a first-time draft (paper_origin cp_paper, no counterparty
+  // version yet) — no clean-copy/redline generation needed; just who's receiving it.
+  sendDraftToCounterparty: (agreementId, receiverName) => {
+    const a = get().agreements.find((x) => x.id === agreementId)
+    if (!a) return
+    set((s) => ({
+      agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, status: 'sent_to_counterparty' as const, ball_in_court: 'counterparty' as const, last_activity_date: '2026-07-05', turn_count: (x.turn_count ?? 0) + 1 } : x)),
+    }))
+    get().audit_push({ event_type: 'status_changed', agreement_id: agreementId, summary: `Sent to ${receiverName.trim() || 'the counterparty'} for review — ball in their court.` })
+    get().setToast(`Sent to ${receiverName.trim() || 'the counterparty'}.`)
+  },
+
   addIntakeAgreementType: (type) => set((s) => ({ intakeExtraTypes: s.intakeExtraTypes.includes(type) ? s.intakeExtraTypes.filter((x) => x !== type) : [...s.intakeExtraTypes, type] })),
   // R79 — a ticket that is a pure inquiry (no agreement), with an agent-drafted response.
   createInquiry: (question) => {

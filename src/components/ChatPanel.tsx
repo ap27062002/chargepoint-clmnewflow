@@ -6,10 +6,11 @@ import {
   PenTool, Settings, ShieldCheck, FolderTree, Table, Wand2, Send, FolderKanban, FileStack,
 } from 'lucide-react'
 import { useStore } from '@/store'
-import { sendToAgent, openArtifact } from '@/agent/engine'
-import { Avatar } from '@/components/ui'
+import { sendToAgent, openArtifact, submitTicketSource } from '@/agent/engine'
+import { Avatar, Chip } from '@/components/ui'
 import { Markdown } from '@/components/Markdown'
 import { startersFor } from '@/lib/access'
+import { Check, ChevronDown, UploadCloud } from 'lucide-react'
 import type { ChatMessage, ArtifactKind } from '@/types'
 
 const artifactIcon: Record<ArtifactKind, JSX.Element> = {
@@ -40,6 +41,79 @@ function ArtifactChip({ m }: { m: ChatMessage }) {
   )
 }
 
+// Chat-embedded step: pick template(s) from a multi-select dropdown, or upload your own
+// document(s) instead. Renders inline in the message bubble; "Continue" hands off to the
+// engine, which posts a summary + the next question — the widget itself then freezes.
+function TicketSourceWidget() {
+  const templates = useStore((s) => s.templates)
+  const scope = useStore((s) => s.negotiationWizard?.scope) ?? 'single'
+  const [mode, setMode] = useState<'template' | 'upload'>('template')
+  const [ddOpen, setDdOpen] = useState(false)
+  const [selected, setSelected] = useState<string[]>([])
+  const [files, setFiles] = useState<string[]>([])
+  const [submitted, setSubmitted] = useState(false)
+
+  const toggle = (id: string) => {
+    if (scope === 'single') { setSelected([id]); setDdOpen(false) }
+    else setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
+  }
+  const addFile = () => setFiles((f) => (scope === 'single' ? [`Uploaded_draft.docx`] : [...f, `Uploaded_draft_${f.length + 1}.docx`]))
+
+  const canContinue = mode === 'template' ? selected.length > 0 : files.length > 0
+  const continueClick = () => {
+    setSubmitted(true)
+    submitTicketSource(mode === 'template' ? { sourceMode: 'template', templateIds: selected } : { sourceMode: 'upload', uploadedFiles: files })
+  }
+
+  if (submitted) {
+    return (
+      <div className="mt-2.5 flex items-center gap-1.5 text-[12px] font-medium text-slate-400">
+        <Check size={13} className="text-brand-500" />
+        {mode === 'template' ? `Selected: ${templates.filter((t) => selected.includes(t.id)).map((t) => t.name).join(', ')}` : `Uploaded: ${files.join(', ')}`}
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-2.5 w-full max-w-[340px] rounded-xl border border-slate-200 bg-slate-50/70 p-2.5">
+      <div className="mb-2 flex rounded-lg border border-slate-200 bg-white p-0.5">
+        <button onClick={() => setMode('template')} className={clsx('flex-1 rounded-md py-1 text-[11.5px] font-semibold transition', mode === 'template' ? 'bg-ai-600 text-white' : 'text-slate-500 hover:bg-slate-50')}>Use a template</button>
+        <button onClick={() => setMode('upload')} className={clsx('flex-1 rounded-md py-1 text-[11.5px] font-semibold transition', mode === 'upload' ? 'bg-ai-600 text-white' : 'text-slate-500 hover:bg-slate-50')}>Upload my own</button>
+      </div>
+      {mode === 'template' ? (
+        <div className="relative">
+          <button onClick={() => setDdOpen((v) => !v)} className="flex w-full items-center justify-between rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-left text-[12.5px] text-slate-700">
+            <span className="truncate">{selected.length === 0 ? `Select template${scope === 'multiple' ? '(s)' : ''}…` : templates.filter((t) => selected.includes(t.id)).map((t) => t.name).join(', ')}</span>
+            <ChevronDown size={14} className={clsx('shrink-0 text-slate-400 transition', ddOpen && 'rotate-180')} />
+          </button>
+          {ddOpen && (
+            <div className="absolute inset-x-0 top-full z-10 mt-1 rounded-lg border border-slate-200 bg-white p-1 shadow-pop">
+              {templates.map((t) => {
+                const on = selected.includes(t.id)
+                return (
+                  <button key={t.id} onClick={() => toggle(t.id)} className={clsx('flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] transition', on ? 'bg-brand-50 text-slate-700' : 'text-slate-600 hover:bg-slate-50')}>
+                    <span className={clsx('flex h-4 w-4 shrink-0 items-center justify-center rounded border', on ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-300')}>{on && <Check size={11} />}</span>
+                    <span className="truncate font-medium">{t.name}</span>
+                    <Chip className="ml-auto shrink-0 bg-slate-100 text-slate-400 ring-slate-200">{t.agreement_type}</Chip>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div onClick={addFile} className="flex cursor-pointer flex-col items-center rounded-lg border-2 border-dashed border-slate-300 px-3 py-4 text-center transition hover:border-ai-300">
+          <UploadCloud size={18} className="mb-1 text-slate-400" />
+          <div className="text-[11.5px] font-semibold text-slate-600">{files.length > 0 ? `${files.length} file${files.length > 1 ? 's' : ''} added — click to add ${scope === 'multiple' ? 'another' : 'again'}` : `Click to add ${scope === 'multiple' ? 'one or more documents' : 'a document'}`}</div>
+        </div>
+      )}
+      <button onClick={continueClick} disabled={!canContinue} className="mt-2 w-full rounded-lg bg-ai-600 py-1.5 text-[12.5px] font-semibold text-white transition hover:bg-ai-700 disabled:opacity-30">
+        Continue
+      </button>
+    </div>
+  )
+}
+
 function MessageRow({ m, compact }: { m: ChatMessage; compact: boolean }) {
   const isUser = m.role === 'user'
   const currentUserId = useStore((s) => s.currentUserId)
@@ -58,6 +132,7 @@ function MessageRow({ m, compact }: { m: ChatMessage; compact: boolean }) {
           )}
         >
           {isUser ? <div className="text-[14px] leading-relaxed">{m.text}</div> : <Markdown text={m.text} />}
+          {!isUser && m.widget?.kind === 'ticket_source' && <TicketSourceWidget />}
           {!isUser && <ArtifactChip m={m} />}
         </div>
         {!isUser && m.actions && m.actions.length > 0 && (

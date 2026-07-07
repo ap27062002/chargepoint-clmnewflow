@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Send, BookOpen, Highlighter } from 'lucide-react'
+import { Send, BookOpen, Highlighter, PenLine } from 'lucide-react'
 import { Markdown } from '@/components/Markdown'
 import { AiTag } from '@/components/ui'
 import { sendToAgent } from '@/agent/engine'
 import { precedentAnswer } from '@/lib/precedent'
+import { useStore } from '@/store'
 
 interface Msg { role: 'user' | 'ai'; text: string }
 
@@ -23,19 +24,23 @@ const ANSWERS: { match: (t: string) => boolean; text: string }[] = [
 ]
 
 // Pure ask-anything chat — the AI's clause analysis lives as margin comments in the document itself.
-export function AIPanel({ agreementTitle, seed }: { agreementTitle: string; seed?: { text: string; nonce: number } | null }) {
+export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onStartDrafting }: { agreementTitle: string; seed?: { text: string; nonce: number } | null; agreementId?: string; isDraft?: boolean; onStartDrafting?: () => void }) {
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [lastSel, setLastSel] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
+  const editDraftViaChat = useStore((s) => s.editDraftViaChat)
 
   const ask = (text: string) => {
     if (!text.trim()) return
     const lc = text.toLowerCase()
-    // Precedent questions are answered from the real executed-contract corpus (R44).
-    const answer = isPrecedentQ(lc)
-      ? precedentAnswer(text)
-      : (ANSWERS.find((x) => x.match(lc))?.text ?? `**Clause analysis.** Checked against the NDA playbook, the identified deviations, and our prior deals — I don't see a red-line trigger in this text. Make sure the defined terms are used consistently ("Confidential Information", not "Proprietary") and that every obligation is **mutual**. Want me to compare it to the matching playbook provision or draft alternative language?`)
+    // Drafting-stage agreements: free text EDITS the document for real (deterministic patterns),
+    // rather than returning a canned negotiation-style answer.
+    const answer = isDraft && agreementId
+      ? editDraftViaChat(agreementId, text)
+      : isPrecedentQ(lc)
+        ? precedentAnswer(text)
+        : (ANSWERS.find((x) => x.match(lc))?.text ?? `**Clause analysis.** Checked against the NDA playbook, the identified deviations, and our prior deals — I don't see a red-line trigger in this text. Make sure the defined terms are used consistently ("Confidential Information", not "Proprietary") and that every obligation is **mutual**. Want me to compare it to the matching playbook provision or draft alternative language?`)
     setMsgs((m) => [...m, { role: 'user', text }, { role: 'ai', text: answer }])
     setInput('')
   }
@@ -63,16 +68,26 @@ export function AIPanel({ agreementTitle, seed }: { agreementTitle: string; seed
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3">
         {msgs.length === 0 ? (
           <>
-            <div className="text-[12px] text-slate-500">Ask anything about <span className="font-semibold">{agreementTitle}</span>, or pick a capability:</div>
+            <div className="text-[12px] text-slate-500">
+              {isDraft ? <>Drafting <span className="font-semibold">{agreementTitle}</span> — start the form below, or just tell me what to change.</> : <>Ask anything about <span className="font-semibold">{agreementTitle}</span>, or pick a capability:</>}
+            </div>
             <div className="grid grid-cols-1 gap-1.5">
-              {CAPS.map((c) => (
-                <button key={c.label} onClick={() => ask(c.prompt)} className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-2 text-left text-[12.5px] font-medium text-slate-600 transition hover:border-ai-200 hover:bg-ai-50/50">
-                  <span className="text-ai-500">{c.icon}</span>{c.label}
+              {isDraft ? (
+                <button onClick={onStartDrafting} className="flex items-center gap-2 rounded-lg border border-ai-200 bg-ai-50/40 px-2.5 py-2 text-left text-[12.5px] font-medium text-ai-700 transition hover:bg-ai-50">
+                  <PenLine size={13} />Start drafting
                 </button>
-              ))}
-              <button onClick={analyzeHighlight} className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-2 text-left text-[12.5px] font-medium text-slate-600 transition hover:border-ai-200 hover:bg-ai-50/50">
-                <span className="text-ai-500"><Highlighter size={13} /></span>Analyze a highlighted clause
-              </button>
+              ) : (
+                <>
+                  {CAPS.map((c) => (
+                    <button key={c.label} onClick={() => ask(c.prompt)} className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-2 text-left text-[12.5px] font-medium text-slate-600 transition hover:border-ai-200 hover:bg-ai-50/50">
+                      <span className="text-ai-500">{c.icon}</span>{c.label}
+                    </button>
+                  ))}
+                  <button onClick={analyzeHighlight} className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-2 text-left text-[12.5px] font-medium text-slate-600 transition hover:border-ai-200 hover:bg-ai-50/50">
+                    <span className="text-ai-500"><Highlighter size={13} /></span>Analyze a highlighted clause
+                  </button>
+                </>
+              )}
             </div>
           </>
         ) : (

@@ -17,6 +17,7 @@ interface AgentReply {
   artifact?: { kind: ArtifactKind; refId?: string; title?: string }
   actions?: ChatAction[]
   effect?: () => void
+  widget?: { kind: 'ticket_source' }
 }
 
 type Intent = { name: string; test: (t: string) => boolean; reply: (t: string) => AgentReply; cap?: Capability }
@@ -73,28 +74,72 @@ const intents: Intent[] = [
     name: 'create_ticket', cap: 'intake',
     test: (t) => has(t, 'create a ticket', 'open a ticket', 'new ticket', 'create ticket') && !has(t, 'negotiation ticket', 'support ticket'),
     reply: () => ({
-      text: `Happy to open a ticket. Tell me **what kind**, **what it's about**, and **who it's with** — in one line if you like, e.g. *"negotiation ticket for Rivian pilot MSA with Rivian"* or *"support ticket for an RFP review with Metro Transit"*. Attach files with the paperclip and I'll classify them as v1.`,
+      text: `Happy to open a ticket. **What kind is it?**`,
       artifact: { kind: 'none' },
       actions: [
-        { label: 'Agreement negotiation (Rivian pilot sample)', prompt: 'create a negotiation ticket for the Rivian charging pilot', variant: 'primary' },
+        { label: 'Agreement negotiation', prompt: 'start a negotiation ticket', variant: 'primary' },
         { label: 'General legal support (RFP review)', prompt: 'create a general legal support ticket for an RFP review' },
       ],
     }),
   },
   {
-    name: 'create_ticket_negotiation', cap: 'intake',
-    test: (t) => has(t, 'negotiation ticket'),
-    reply: (t) => {
-      // conversational elicitation: parse title ("for …") and counterparty ("with …") from the message
-      const cp = t.match(/with ([a-z][\w .&-]+?)(?:[.,!]|$)/i)?.[1]?.trim()
-      const title = t.match(/for (?:the )?(.+?)(?: with [\w .&-]+)?(?:[.,!]|$)/i)?.[1]?.trim()
-      const cpName = cp ? cp.replace(/\b\w/g, (c) => c.toUpperCase()) : 'Rivian'
-      const ticketTitle = title ? title.charAt(0).toUpperCase() + title.slice(1) : 'Rivian charging pilot — MSA negotiation'
+    // Step 1 of the wizard — scope: single or multiple agreements.
+    name: 'negotiation_wizard_start', cap: 'intake',
+    test: (t) => has(t, 'start a negotiation ticket', 'negotiation ticket'),
+    reply: () => {
+      useStore.getState().startNegotiationWizard()
       return {
-        text: `Done — created **"${ticketTitle}"** with **${cpName}**, attached the uploaded agreement as **v1**, and routed it to **Kirsten Sachs** (commercial). Opening the deal page — Deal Overview first.`,
+        text: `Happy to open a negotiation ticket. **Is this a single agreement or multiple agreements?**`,
         artifact: { kind: 'none' },
-        effect: () => useStore.getState().createTicketFull({ title: ticketTitle, kind: 'negotiation', counterparty: cpName, files: ['Uploaded_agreement_v1.docx'], attorneyId: 'u_kirsten' }),
+        actions: [
+          { label: 'Single agreement', prompt: 'single agreement', variant: 'primary' },
+          { label: 'Multiple agreements', prompt: 'multiple agreements' },
+        ],
+      }
+    },
+  },
+  {
+    // Step 2 — scope answered → ask for template(s) or an upload via the embedded widget.
+    name: 'negotiation_wizard_scope', cap: 'intake',
+    test: (t) => useStore.getState().negotiationWizard?.step === 'scope' && has(t, 'single agreement', 'multiple agreements'),
+    reply: (t) => {
+      const scope = has(t, 'multiple') ? 'multiple' : 'single'
+      useStore.getState().setWizardScope(scope)
+      return {
+        text: `Got it — **${scope === 'single' ? 'a single agreement' : 'multiple agreements'}**. Which template should I start from, or upload your own document?`,
+        artifact: { kind: 'none' },
+        widget: { kind: 'ticket_source' },
+      }
+    },
+  },
+  {
+    // Step 4 — counterparty captured, summary shown → user confirms.
+    name: 'negotiation_wizard_confirm', cap: 'intake',
+    test: (t) => useStore.getState().negotiationWizard?.step === 'confirm' && has(t, 'confirm ticket wizard', 'yes, create it', 'yes create it'),
+    reply: () => {
+      const { title } = useStore.getState().confirmNegotiationWizard()
+      return {
+        text: title
+          ? `Done — created **"${title}"** and opened the deal page — Deal Overview first. The draft is ready in **Agreement Review** whenever you want to start writing.`
+          : `Something went wrong building the ticket — let's try again.`,
+        artifact: { kind: 'none' },
         actions: [],
+      }
+    },
+  },
+  {
+    name: 'negotiation_wizard_restart', cap: 'intake',
+    test: (t) => has(t, 'restart ticket wizard', 'start over'),
+    reply: () => {
+      useStore.getState().cancelNegotiationWizard()
+      useStore.getState().startNegotiationWizard()
+      return {
+        text: `No problem — let's start over. **Is this a single agreement or multiple agreements?**`,
+        artifact: { kind: 'none' },
+        actions: [
+          { label: 'Single agreement', prompt: 'single agreement', variant: 'primary' },
+          { label: 'Multiple agreements', prompt: 'multiple agreements' },
+        ],
       }
     },
   },
@@ -779,9 +824,38 @@ const intents: Intent[] = [
   },
 ]
 
+// Summary line for the wizard's confirm step.
+function wizardSummary(): string {
+  const s = useStore.getState()
+  const w = s.negotiationWizard
+  if (!w) return ''
+  const scopeLabel = w.scope === 'multiple' ? 'Multiple agreements' : 'Single agreement'
+  const sourceLabel = w.sourceMode === 'template'
+    ? (s.templates.filter((tpl) => (w.templateIds ?? []).includes(tpl.id)).map((tpl) => tpl.name).join(', ') || 'no template selected')
+    : (w.uploadedFiles ?? []).join(', ') || 'no file uploaded'
+  return `Here's what I'll create:\n\n- **Scope:** ${scopeLabel}\n- **Source:** ${sourceLabel}\n- **Counterparty:** ${w.counterparty}\n\nShall I proceed?`
+}
+
 function route(text: string): { reply: AgentReply; matched: boolean } {
   const t = text.toLowerCase().trim()
   const role = currentRole()
+  // Step 3 of the wizard — ANY free text at this point is the counterparty name, not a normal
+  // intent (so a counterparty called e.g. "Airbus" doesn't accidentally match another rule).
+  const wiz = useStore.getState().negotiationWizard
+  if (wiz?.step === 'counterparty' && text.trim()) {
+    useStore.getState().setWizardCounterparty(text.trim())
+    return {
+      matched: true,
+      reply: {
+        text: wizardSummary(),
+        artifact: { kind: 'none' },
+        actions: [
+          { label: 'Yes, create it', prompt: 'confirm ticket wizard', variant: 'primary' },
+          { label: 'Start over', prompt: 'restart ticket wizard' },
+        ],
+      },
+    }
+  }
   for (const i of intents) {
     if (!i.test(t)) continue
     if (i.cap && !can(role, i.cap)) return { reply: denial(role, i.cap), matched: true }
@@ -870,7 +944,7 @@ const pushAgent = (reply: AgentReply) => {
   reply.effect?.()
   useStore.getState().pushChat({
     id: cid(), role: 'agent', text: reply.text, ts: ts(),
-    artifact: reply.artifact, actions: reply.actions, aiGenerated: true,
+    artifact: reply.artifact, actions: reply.actions, aiGenerated: true, widget: reply.widget,
   })
   // Navigation is click-to-open: from the hero we never auto-open the right pane —
   // the user clicks the artifact chip. If a workspace is already docked, we keep it in sync.
@@ -878,6 +952,23 @@ const pushAgent = (reply: AgentReply) => {
     openArtifact(reply.artifact)
   }
   useStore.getState().setAgentThinking(false)
+}
+
+// Called directly by the embedded ticket_source widget (template multi-select / upload) —
+// it manipulates the wizard + chat timeline itself rather than going through text routing,
+// since a structured multi-select doesn't map onto a single free-text prompt.
+export function submitTicketSource(payload: { sourceMode: 'template' | 'upload'; templateIds?: string[]; uploadedFiles?: string[] }) {
+  const store = useStore.getState()
+  store.setWizardSource(payload)
+  const summary = payload.sourceMode === 'template'
+    ? `Use template${(payload.templateIds ?? []).length > 1 ? 's' : ''}: ${store.templates.filter((tpl) => (payload.templateIds ?? []).includes(tpl.id)).map((tpl) => tpl.name).join(', ')}`
+    : `Upload my own document${(payload.uploadedFiles ?? []).length > 1 ? 's' : ''}: ${(payload.uploadedFiles ?? []).join(', ')}`
+  store.pushChat({ id: cid(), role: 'user', text: summary, ts: ts() })
+  store.setAgentThinking(true)
+  setTimeout(() => pushAgent({
+    text: `Got it. **Who's the counterparty?**`,
+    artifact: { kind: 'none' },
+  }), 260)
 }
 
 export function sendToAgent(text: string) {

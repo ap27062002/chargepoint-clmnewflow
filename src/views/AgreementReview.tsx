@@ -14,6 +14,7 @@ import { RedlineDocView } from '@/views/RedlineDocView'
 import { StageTracker } from '@/views/StageTracker'
 import { Chip, Avatar, Button, Card } from '@/components/ui'
 import { MentionComposer } from '@/components/MentionComposer'
+import { StartDraftingForm } from '@/components/StartDraftingForm'
 import { sourceLabel, fmtDate, fmtDateTime } from '@/lib/labels'
 import { diffVersions, clauseIdForDeviation, cleanCopyId } from '@/data/documents'
 import { userById } from '@/data/seed'
@@ -378,6 +379,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
   const mode = rawMode === 'document' ? 'directive' : rawMode // 'document' aliases to the split
   const [rightTab, setRightTab] = useState<RightTab>('ai')
   const [aiSeed, setAiSeed] = useState<{ text: string; nonce: number } | null>(null)
+  const [startDraftingOpen, setStartDraftingOpen] = useState(false)
   const [focusClause, setFocusClause] = useState<string | undefined>()
   const [selVer, setSelVer] = useState<string | undefined>(undefined)
 
@@ -411,6 +413,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
 
   return (
     <div className="flex h-full flex-col">
+      {startDraftingOpen && <StartDraftingForm agreementId={agreementId} onClose={() => setStartDraftingOpen(false)} />}
       {/* On the Send-back screen the purple "Send to counterparty" button below is the actual
           send action — the stage-tracker's own CTA would be a redundant duplicate there. */}
       <StageTracker agreementId={agreementId} hideSendBackCta={mode === 'sendback'} />
@@ -476,7 +479,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
                   <button onClick={() => setRightTab(null)} title="Collapse panel" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><PanelRightClose size={15} /></button>
                 </div>
                 <div className="min-h-0 flex-1">
-                  <AIPanel agreementTitle={agreement.title} seed={aiSeed} />
+                  <AIPanel agreementTitle={agreement.title} seed={aiSeed} agreementId={agreementId} isDraft={agreement.status === 'draft'} onStartDrafting={() => setStartDraftingOpen(true)} />
                 </div>
               </div>
             )}

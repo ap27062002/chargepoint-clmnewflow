@@ -91,6 +91,10 @@ export interface Agreement {
   contract_value?: number       // USD TCV; 0/undefined for NDAs → renders "—"
   last_activity_date?: string   // ISO; anchor for ball-in-court "days waiting"
   turn_count?: number           // # of ball-in-court handoffs (Ironclad "No. turns")
+  // Drafting stage (Start Drafting form) — filled in once, then reflected into the doc body.
+  drafting_purpose?: string
+  drafting_term?: string
+  drafting_jurisdiction?: string
 }
 
 // ----- Version --------------------------------------------------------------
@@ -345,6 +349,7 @@ export interface ChatMessage {
   artifact?: { kind: ArtifactKind; refId?: string; title?: string }
   actions?: ChatAction[]
   aiGenerated?: boolean
+  widget?: { kind: 'ticket_source' } // chat-embedded interactive step (template multi-select / upload)
 }
 
 export interface ChatAction {
@@ -439,6 +444,19 @@ export interface CanvasState {
   playbookDraftId?: string
   projectId?: string                     // templates / projects
   templateId?: string
+  startDraftingAgreementId?: string       // opens the Start Drafting form for this agreement
+  simpleSendAgreementId?: string          // opens the simplified (no-cleaning) send-to-counterparty screen
+}
+
+// ----- Ticketing §New — sequential chat wizard for creating a negotiation ticket ------------
+export type WizardStep = 'scope' | 'source' | 'counterparty' | 'confirm'
+export interface NegotiationWizardState {
+  step: WizardStep
+  scope?: 'single' | 'multiple'
+  sourceMode?: 'template' | 'upload'
+  templateIds?: string[]
+  uploadedFiles?: string[]
+  counterparty?: string
 }
 
 // ----- Intake (agentic NDA drafting, Change 1) ------------------------------

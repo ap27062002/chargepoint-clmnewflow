@@ -1,11 +1,12 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { clsx } from 'clsx'
-import { Check, ChevronRight, ArrowRight, ShieldCheck, Lock, Undo2 } from 'lucide-react'
+import { Check, ChevronRight, ArrowRight, ShieldCheck, Lock, Undo2, Send } from 'lucide-react'
 import { useStore, AGREEMENT_LIFECYCLE } from '@/store'
 import { can } from '@/lib/access'
 import { Chip, Avatar } from '@/components/ui'
 import { agreementStatusMeta } from '@/lib/labels'
 import { userById } from '@/data/seed'
+import { SimpleSendModal } from '@/components/SimpleSendModal'
 
 export function StageTracker({ agreementId, hideSendBackCta }: { agreementId: string; hideSendBackCta?: boolean }) {
   const agreement = useStore((s) => s.agreements.find((a) => a.id === agreementId))
@@ -17,6 +18,7 @@ export function StageTracker({ agreementId, hideSendBackCta }: { agreementId: st
   const uid = useStore((s) => s.currentUserId)
   const role = useStore((s) => s.users.find((u) => u.id === s.currentUserId)!.role)
   const canAdvance = can(role, 'disposition')
+  const [simpleSendOpen, setSimpleSendOpen] = useState(false)
   const stepperRef = useRef<HTMLDivElement>(null)
   const curIdx = agreement ? AGREEMENT_LIFECYCLE.indexOf(agreement.status) : -1
   // Keep the current stage visible when the stepper overflows behind the Advance button.
@@ -30,9 +32,13 @@ export function StageTracker({ agreementId, hideSendBackCta }: { agreementId: st
   const next = AGREEMENT_LIFECYCLE[curIdx + 1]
   const pendingApproval = approvals.find((ap) => ap.state === 'pending')
   const blockedBySend = next === 'sent_to_counterparty' && (!approvals.some((a) => a.type === 'external_delivery' && a.state === 'granted'))
+  // A from-scratch draft (our own paper, nothing negotiated yet) sends with a single
+  // "who's receiving it" question — no clean-copy/redline generation needed.
+  const isFreshDraft = agreement.status === 'draft' && agreement.paper_origin === 'cp_paper'
 
   return (
     <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-2.5">
+      {simpleSendOpen && <SimpleSendModal agreementId={agreementId} onClose={() => setSimpleSendOpen(false)} />}
       {/* stepper + advance — single compact row */}
       <div className="flex items-center gap-2">
         <div ref={stepperRef} className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
@@ -60,11 +66,18 @@ export function StageTracker({ agreementId, hideSendBackCta }: { agreementId: st
         )}
         {agreement.status !== 'executed' && next && !(hideSendBackCta && next === 'negotiation') && (
           canAdvance ? (
-            <button onClick={() => (next === 'negotiation' ? openSendBack(agreementId) : advance(agreementId))}
-              className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-[12.5px] font-semibold text-white transition hover:bg-brand-600">
-              {next === 'negotiation' ? 'Send back to counterparty' : next === 'executed' ? 'Execute & sign' : next === 'sent_to_counterparty' && blockedBySend ? 'Request approval to send' : `Advance to ${agreementStatusMeta[next].label}`}
-              <ArrowRight size={13} />
-            </button>
+            isFreshDraft ? (
+              <button onClick={() => setSimpleSendOpen(true)}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-[12.5px] font-semibold text-white transition hover:bg-brand-600">
+                Send to counterparty <Send size={13} />
+              </button>
+            ) : (
+              <button onClick={() => (next === 'negotiation' ? openSendBack(agreementId) : advance(agreementId))}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-[12.5px] font-semibold text-white transition hover:bg-brand-600">
+                {next === 'negotiation' ? 'Send back to counterparty' : next === 'executed' ? 'Execute & sign' : next === 'sent_to_counterparty' && blockedBySend ? 'Request approval to send' : `Advance to ${agreementStatusMeta[next].label}`}
+                <ArrowRight size={13} />
+              </button>
+            )
           ) : (
             <span className="flex shrink-0 items-center gap-1 text-[11.5px] font-medium text-slate-400"><Lock size={12} /> Attorney-only</span>
           )
