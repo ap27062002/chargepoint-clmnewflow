@@ -135,7 +135,7 @@ interface CLMState {
   setWizardSource: (payload: { sourceMode: 'template' | 'upload'; templateIds?: string[]; uploadedFiles?: string[] }) => void
   setWizardCounterparty: (name: string) => void
   cancelNegotiationWizard: () => void
-  confirmNegotiationWizard: () => { ticketId: string; title: string }
+  confirmNegotiationWizard: (overrideTitle?: string) => { ticketId: string; title: string }
   // ----- Drafting-stage agreements (start from a template, not a counterparty redline) -----
   startDrafting: (agreementId: string, info: { purpose: string; term: string; jurisdiction: string }) => void
   editDraftViaChat: (agreementId: string, instruction: string) => string // returns the chat reply text
@@ -716,14 +716,14 @@ export const useStore = create<CLMState>((set, get) => ({
   setWizardSource: (payload) => set((s) => (s.negotiationWizard ? { negotiationWizard: { ...s.negotiationWizard, ...payload, step: 'counterparty' } } : {})),
   setWizardCounterparty: (name) => set((s) => (s.negotiationWizard ? { negotiationWizard: { ...s.negotiationWizard, counterparty: name.trim(), step: 'confirm' } } : {})),
   cancelNegotiationWizard: () => set({ negotiationWizard: null }),
-  confirmNegotiationWizard: () => {
+  confirmNegotiationWizard: (overrideTitle) => {
     const w = get().negotiationWizard
     if (!w || !w.counterparty) return { ticketId: '', title: '' }
     const cpName = w.counterparty.replace(/\b\w/g, (c) => c.toUpperCase())
     const templates = w.sourceMode === 'template' ? get().templates.filter((tpl) => (w.templateIds ?? []).includes(tpl.id)) : []
     const sources = w.sourceMode === 'template' ? templates.map((tpl) => tpl.name) : (w.uploadedFiles ?? [])
     const primaryType: AgreementType = w.sourceMode === 'template' ? (templates[0]?.agreement_type ?? 'Other') : 'Other'
-    const ticketTitle = `${cpName} — ${sources.length === 1 ? sources[0] : sources.length > 1 ? 'Multi-Agreement' : 'Agreement'} negotiation`
+    const ticketTitle = overrideTitle?.trim() || `${cpName} — ${sources.length === 1 ? sources[0] : sources.length > 1 ? 'Multi-Agreement' : 'Agreement'} negotiation`
     const t = get().createTicketFromAgent({
       title: ticketTitle, counterparty_name: cpName,
       type: sources.length > 1 || w.scope === 'multiple' ? 'multi_agreement' : 'single_agreement',
