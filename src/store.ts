@@ -90,6 +90,8 @@ interface CLMState {
   agentThinking: boolean
   toast: string | null
   cmdkOpen: boolean
+  openCommentsReportOpen: boolean
+  setOpenCommentsReportOpen: (v: boolean) => void
   slaChecked: boolean
   entered: boolean
   enterApp: () => void
@@ -344,6 +346,8 @@ export const useStore = create<CLMState>((set, get) => ({
   agentThinking: false,
   toast: null,
   cmdkOpen: false,
+  openCommentsReportOpen: false,
+  setOpenCommentsReportOpen: (v) => set({ openCommentsReportOpen: v }),
   slaChecked: false,
   entered: false,
   enterApp: () => set({ entered: true }),

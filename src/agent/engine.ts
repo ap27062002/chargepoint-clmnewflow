@@ -2,7 +2,7 @@ import { useStore, agreementDeviations } from '@/store'
 import type { ChatMessage, ChatAction, ArtifactKind, Role } from '@/types'
 import { userById } from '@/data/seed'
 import { can, CAP_LABEL, ROLE_LABEL, ROLE_SCOPE, startersFor, type Capability } from '@/lib/access'
-import { canSeeTicket } from '@/lib/scope'
+import { canSeeTicket, visibleTickets } from '@/lib/scope'
 import { lookupCounterparty, inferDealContext } from '@/data/counterparties'
 import { precedentAnswer, precedentDigest, searchPrecedent } from '@/lib/precedent'
 import { answerFromState } from '@/lib/reason'
@@ -156,6 +156,28 @@ const intents: Intent[] = [
         artifact: { kind: 'none' },
         effect: () => useStore.getState().createTicketFull({ title: ticketTitle, kind: 'support', counterparty: cpName, files: [], attorneyId: 'u_kirsten' }),
         actions: [],
+      }
+    },
+  },
+  {
+    // Consolidated Open Comments report, aggregated (RBAC-scoped) across every matter — as
+    // opposed to open_comments_doc below, which is a single-document list. Must stay ahead of
+    // it in this array since both tests match on the "open comments" substring.
+    name: 'open_comments_report', cap: 'review',
+    test: (t) => has(t, 'open comments report', 'consolidated open comments', 'open comments across', 'consolidated report', 'open comments for all', 'open comments everywhere'),
+    reply: () => {
+      const s = useStore.getState()
+      const cu = s.users.find((u) => u.id === s.currentUserId)!
+      const scoped = new Set(visibleTickets(s.tickets, s.messages, cu).map((tk) => tk.id))
+      const rows = s.messages.filter((m) => !m.resolved && !m.parent_id && (m.thread_type === 'agreement_level' || m.thread_type === 'deal_level') && scoped.has(m.ticket_id))
+      const matters = new Set(rows.map((m) => m.ticket_id)).size
+      return {
+        text: rows.length
+          ? `**Consolidated open comments** — ${rows.length} unresolved across ${matters} matter${matters === 1 ? '' : 's'} visible to you. Opening the full report — you can send reminders or export it as a CSV from there.`
+          : `No open comments anywhere across your matters right now. 🎉`,
+        artifact: { kind: 'none' },
+        actions: [],
+        effect: () => useStore.getState().setOpenCommentsReportOpen(true),
       }
     },
   },

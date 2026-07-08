@@ -6,6 +6,7 @@ import { Canvas } from '@/components/Canvas'
 import { CommandMenu } from '@/components/CommandMenu'
 import { LeftRail } from '@/components/LeftRail'
 import { EntryLanding } from '@/components/EntryLanding'
+import { ConsolidatedOpenCommentsModal } from '@/components/OpenComments'
 import { useStore } from '@/store'
 
 function Toast() {
@@ -32,6 +33,8 @@ export default function App() {
   const open = useStore((s) => s.canvas.open)
   const entered = useStore((s) => s.entered)
   const runSlaCheck = useStore((s) => s.runSlaCheck)
+  const openCommentsReportOpen = useStore((s) => s.openCommentsReportOpen)
+  const setOpenCommentsReportOpen = useStore((s) => s.setOpenCommentsReportOpen)
   useEffect(() => { runSlaCheck() }, [runSlaCheck])
   if (!entered) return <EntryLanding />
   return (
@@ -50,6 +53,7 @@ export default function App() {
       </main>
       <Toast />
       <CommandMenu />
+      {openCommentsReportOpen && <ConsolidatedOpenCommentsModal onClose={() => setOpenCommentsReportOpen(false)} />}
     </div>
   )
 }
