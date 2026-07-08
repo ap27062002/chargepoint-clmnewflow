@@ -29,7 +29,7 @@ function DealOverview({ ticketId }: { ticketId: string }) {
   const value = ags.reduce((n, a) => n + (a.contract_value ?? 0), 0)
   const redLines = ags.reduce((n, a) => n + a.red_line_count, 0)
   const readyToSign = ags.filter((a) => a.status === 'pending_execution').length
-  const openAg = (a: Agreement) => navigate({ agreementId: a.id, agreementTab: 'review', reviewMode: 'directive', solo: true })
+  const openAg = (a: Agreement) => navigate({ agreementId: a.id, agreementTab: 'review', reviewMode: 'directive' })
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -118,7 +118,7 @@ export function TicketWorkspace() {
     { key: 'deal' as const, label: 'Deal Discussion', icon: <MessagesSquare size={15} /> },
     { key: 'review' as const, label: 'Agreement Review', icon: <FileSearch size={15} /> },
   ]
-  const onTab = (k: 'overview' | 'deal' | 'review') => navigate({ agreementTab: k, solo: k === 'review' })
+  const onTab = (k: 'overview' | 'deal' | 'review') => navigate({ agreementTab: k })
 
   return (
     <div className="flex h-full flex-col">

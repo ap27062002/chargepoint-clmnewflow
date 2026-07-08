@@ -423,8 +423,7 @@ export type ViewKey =
 
 export interface CanvasState {
   view: ViewKey
-  open?: boolean
-  solo?: boolean // canvas shown full-width with the agent collapsed (rail-driven navigation)
+  open?: boolean // whenever a view is open the agent collapses to full-page — see App.tsx
   ticketId?: string
   agreementId?: string
   agreementTab?: 'overview' | 'deal' | 'review'

@@ -923,8 +923,8 @@ export function openArtifact(a: { kind: ArtifactKind; refId?: string; title?: st
     case 'redline_doc': s.openSendBack(a.refId ?? 'AGR-2201'); s.navigate({ reviewMode: 'redline' }); break
     case 'send_back': s.openSendBack(a.refId ?? 'AGR-2201'); break
     case 'deal_execution': s.openDealExecution(a.refId ?? 'TKT-1031'); break
-    case 'projects': s.openProjects(a.refId || undefined, false); break
-    case 'template': { const tpl = s.templates.find((x) => x.id === a.refId); s.openProjects(tpl?.project_id || undefined, false); if (a.refId) s.navigate({ templateId: a.refId }); break }
+    case 'projects': s.openProjects(a.refId || undefined); break
+    case 'template': { const tpl = s.templates.find((x) => x.id === a.refId); s.openProjects(tpl?.project_id || undefined); if (a.refId) s.navigate({ templateId: a.refId }); break }
     case 'dashboard': s.setView('dashboard'); break
     case 'deal_summary': s.openCanvas({ view: 'deal_summary', dealSummaryId: a.refId ?? 'AGR-2150' }); break
     case 'tagged_items': s.openCanvas({ view: 'queue' }); break
@@ -933,7 +933,7 @@ export function openArtifact(a: { kind: ArtifactKind; refId?: string; title?: st
     case 'admin': s.setView('admin'); break
     case 'audit': s.setView('audit'); break
     case 'repository': s.setView('repository'); break
-    case 'contracts': s.openContracts('all', false); break
+    case 'contracts': s.openContracts('all'); break
     case 'ticket_created': s.setView('dashboard'); break
     default: break
   }

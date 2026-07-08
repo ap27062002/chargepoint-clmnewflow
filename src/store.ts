@@ -105,8 +105,8 @@ interface CLMState {
   openAgreement: (agreementId: string, tab?: 'deal' | 'review') => void
   setView: (view: ViewKey) => void
   openFull: (view: ViewKey) => void
-  openContracts: (preset?: ContractsFilterPreset, solo?: boolean) => void
-  openProjects: (projectId?: string, solo?: boolean) => void
+  openContracts: (preset?: ContractsFilterPreset) => void
+  openProjects: (projectId?: string) => void
   openDealExecution: (ticketId: string, agreementIds?: string[]) => void
   setPersona: (userId: string) => void
   setToast: (t: string | null) => void
@@ -352,40 +352,40 @@ export const useStore = create<CLMState>((set, get) => ({
   setCmdkOpen: (v) => set({ cmdkOpen: v }),
 
   navigate: (c) => set((s) => ({ canvas: { ...s.canvas, ...c } })),
-  // Agent-driven opens dock the agent beside the canvas (solo: false).
-  openCanvas: (c) => set((s) => ({ canvas: { ...s.canvas, open: true, solo: false, ...c } })),
+  // Every navigation action opens full-page — the agent always collapses, one click away via the rail.
+  openCanvas: (c) => set((s) => ({ canvas: { ...s.canvas, open: true, ...c } })),
   closeCanvas: () => set((s) => ({ canvas: { ...s.canvas, open: false } })),
   openTicket: (ticketId) => {
     const t = get().tickets.find((x) => x.id === ticketId)
     if (!t) return
     if (t.type === 'inquiry' || t.agreement_ids.length === 0) {
-      set({ canvas: { view: 'ticket', open: true, solo: false, ticketId, agreementTab: 'deal' } })
+      set({ canvas: { view: 'ticket', open: true, ticketId, agreementTab: 'deal' } })
     } else if (t.type === 'multi_agreement') {
       // Multi-agreement deals land on the deal overview (all documents visible).
-      set({ canvas: { view: 'ticket', open: true, solo: false, ticketId, agreementId: t.agreement_ids[0], agreementTab: 'overview' } })
+      set({ canvas: { view: 'ticket', open: true, ticketId, agreementId: t.agreement_ids[0], agreementTab: 'overview' } })
     } else {
       // Deal navigation §1 — land on the Deal Overview first, not on a document.
-      set({ canvas: { view: 'ticket', open: true, solo: false, ticketId, agreementId: t.agreement_ids[0], agreementTab: 'overview' } })
+      set({ canvas: { view: 'ticket', open: true, ticketId, agreementId: t.agreement_ids[0], agreementTab: 'overview' } })
     }
   },
-  // Document review owns the frame (Eric §2): agent collapses (solo), lands on the doc+issues directive split.
+  // Document review owns the frame (Eric §2): lands on the doc+issues directive split.
   openAgreement: (agreementId, tab = 'review') => {
     const a = get().agreements.find((x) => x.id === agreementId)
     if (!a) return
-    set({ canvas: { view: 'ticket', open: true, solo: true, ticketId: a.ticket_id, agreementId, agreementTab: tab, reviewMode: 'directive', reviewFocusDeviationId: undefined } })
+    set({ canvas: { view: 'ticket', open: true, ticketId: a.ticket_id, agreementId, agreementTab: tab, reviewMode: 'directive', reviewFocusDeviationId: undefined } })
   },
-  setView: (view) => set((s) => ({ canvas: { ...s.canvas, view, open: true, solo: false } })),
+  setView: (view) => set((s) => ({ canvas: { ...s.canvas, view, open: true } })),
   // Rail-driven full-screen navigation: canvas takes the full width, agent collapses (one click away).
-  openFull: (view) => set({ canvas: { view, open: true, solo: true } }),
-  // Contracts list — one click from the dashboard (full-width by default; docked when opened from an agent chip).
-  openContracts: (preset = 'all', solo = true) =>
-    set((s) => ({ canvas: { ...s.canvas, view: 'contracts', open: true, solo, contractsFilter: preset } })),
-  openProjects: (projectId, solo = true) =>
-    set((s) => ({ canvas: { ...s.canvas, view: 'projects', open: true, solo, projectId, templateId: undefined } })),
+  openFull: (view) => set({ canvas: { view, open: true } }),
+  // Contracts list — one click from the dashboard, always full-width.
+  openContracts: (preset = 'all') =>
+    set((s) => ({ canvas: { ...s.canvas, view: 'contracts', open: true, contractsFilter: preset } })),
+  openProjects: (projectId) =>
+    set((s) => ({ canvas: { ...s.canvas, view: 'projects', open: true, projectId, templateId: undefined } })),
   openDealExecution: (ticketId, agreementIds) => {
     const t = get().tickets.find((x) => x.id === ticketId)
     const ids = agreementIds ?? (t ? get().agreements.filter((a) => a.ticket_id === ticketId && a.status !== 'executed').map((a) => a.id) : [])
-    set((s) => ({ canvas: { ...s.canvas, view: 'execution', open: true, solo: false, executionTicketId: ticketId, executionSelection: ids } }))
+    set((s) => ({ canvas: { ...s.canvas, view: 'execution', open: true, executionTicketId: ticketId, executionSelection: ids } }))
   },
   setPersona: (userId) => {
     const u = get().users.find((x) => x.id === userId)
@@ -1189,7 +1189,7 @@ export const useStore = create<CLMState>((set, get) => ({
     const versions = get().versions.filter((v) => v.agreement_id === agreementId)
     const cpLast = [...versions].reverse().find((v) => v.source === 'counterparty_response' || v.source === 'counterparty_draft')
     const base = cpLast?.id ?? versions[0]?.id ?? ''
-    set((s) => ({ canvas: { ...s.canvas, view: 'ticket', open: true, solo: true, ticketId: get().agreements.find((a) => a.id === agreementId)?.ticket_id, agreementId, agreementTab: 'review', reviewMode: 'sendback', sendBack: { agreementId, baseVersionId: base, cumulative: false, staged: false } } }))
+    set((s) => ({ canvas: { ...s.canvas, view: 'ticket', open: true, ticketId: get().agreements.find((a) => a.id === agreementId)?.ticket_id, agreementId, agreementTab: 'review', reviewMode: 'sendback', sendBack: { agreementId, baseVersionId: base, cumulative: false, staged: false } } }))
   },
   setSendBackBase: (baseVersionId) => set((s) => (s.canvas.sendBack ? { canvas: { ...s.canvas, sendBack: { ...s.canvas.sendBack, baseVersionId, redline: undefined } } } : {})),
   setSendBackCumulative: (cumulative) => set((s) => (s.canvas.sendBack ? { canvas: { ...s.canvas, sendBack: { ...s.canvas.sendBack, cumulative, redline: undefined } } } : {})),
