@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
 import { clsx } from 'clsx'
-import { GitBranch, Timer, CheckSquare, Bell, Users, Plug, Check, Rocket, TrendingUp, Megaphone, GraduationCap, FolderTree, BookOpen, Inbox } from 'lucide-react'
+import { GitBranch, Timer, CheckSquare, Bell, Users, Plug, Check, Rocket, TrendingUp, Megaphone, GraduationCap, FolderTree, BookOpen, Inbox, UserCog } from 'lucide-react'
 import { Card, Chip, Avatar, SectionLabel, Button, SearchBox, SortHeader, toggleSort } from '@/components/ui'
 import { useStore } from '@/store'
 import { ROUTING_LABEL, type RoutingStrategy } from '@/lib/routing'
-import type { AgreementType } from '@/types'
+import type { AgreementType, Ticket, User } from '@/types'
 
 type UserSortKey = 'name' | 'role' | 'title'
 
@@ -49,6 +49,7 @@ const TABS = [
   { key: 'approvals', label: 'Approvals', icon: <CheckSquare size={15} /> },
   { key: 'notifications', label: 'Notifications', icon: <Bell size={15} /> },
   { key: 'playbook_sources', label: 'Playbook sources', icon: <FolderTree size={15} /> },
+  { key: 'assignments', label: 'Assignments', icon: <UserCog size={15} /> },
   { key: 'users', label: 'Users & RBAC', icon: <Users size={15} /> },
   { key: 'intake', label: 'Intake', icon: <Inbox size={15} /> },
   { key: 'adoption', label: 'Adoption', icon: <Rocket size={15} /> },
@@ -206,6 +207,90 @@ function PlaybookSourcesTab() {
   )
 }
 
+// Admin-only: assign a ticket's lead + co-counsel attorneys, and add stakeholders (e.g. sales
+// reps) who get read visibility without an assignment. Same underlying action the chat-driven
+// "assign TKT-1042 to Kirsten…" agent capability uses (store.assignTicketTeam).
+function AssignmentEditor({ ticket, attorneys, users }: { ticket: Ticket; attorneys: User[]; users: User[] }) {
+  const assignTicketTeam = useStore((s) => s.assignTicketTeam)
+  const [lead, setLead] = useState(ticket.assigned_attorney_id ?? '')
+  const [additional, setAdditional] = useState<string[]>(ticket.additional_attorney_ids ?? [])
+  const [watchers, setWatchers] = useState<string[]>(ticket.watcher_ids ?? [])
+  const toggle = (list: string[], set: (v: string[]) => void, id: string) => set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id])
+  const save = () => assignTicketTeam(ticket.id, { leadAttorneyId: lead || null, additionalAttorneyIds: additional, watcherIds: watchers })
+
+  return (
+    <Card className="p-4">
+      <div className="mb-3">
+        <div className="text-[14px] font-bold text-slate-800">{ticket.title}</div>
+        <div className="text-[11.5px] text-slate-400">{ticket.id} · {ticket.counterparty_name}</div>
+      </div>
+      <div className="mb-4">
+        <SectionLabel className="mb-1.5">Lead attorney</SectionLabel>
+        <select value={lead} onChange={(e) => setLead(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[13px] outline-none focus:border-ai-400">
+          <option value="">Unassigned</option>
+          {attorneys.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </select>
+      </div>
+      <div className="mb-4">
+        <SectionLabel className="mb-1.5">Co-counsel — additional lawyers on this ticket</SectionLabel>
+        <div className="space-y-0.5">
+          {attorneys.filter((a) => a.id !== lead).map((a) => (
+            <label key={a.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] text-slate-700 hover:bg-slate-50">
+              <input type="checkbox" checked={additional.includes(a.id)} onChange={() => toggle(additional, setAdditional, a.id)} className="accent-ai-500" />
+              <Avatar userId={a.id} size={20} /> {a.name}
+            </label>
+          ))}
+          {attorneys.length <= 1 && <div className="px-2 py-1 text-[12px] text-slate-400">No other attorneys available.</div>}
+        </div>
+      </div>
+      <div className="mb-4">
+        <SectionLabel className="mb-1.5">Stakeholders with visibility (e.g. sales reps) — read-only, no assignment</SectionLabel>
+        <div className="space-y-0.5">
+          {users.filter((u) => u.id !== lead && !additional.includes(u.id)).map((u) => (
+            <label key={u.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] text-slate-700 hover:bg-slate-50">
+              <input type="checkbox" checked={watchers.includes(u.id)} onChange={() => toggle(watchers, setWatchers, u.id)} className="accent-ai-500" />
+              <Avatar userId={u.id} size={20} /> {u.name} <span className="text-[11px] capitalize text-slate-400">{u.title}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+      <Button variant="primary" onClick={save}>Save assignment</Button>
+    </Card>
+  )
+}
+
+function AssignmentsTab() {
+  const tickets = useStore((s) => s.tickets)
+  const users = useStore((s) => s.users)
+  const attorneys = users.filter((u) => u.role === 'attorney')
+  const [q, setQ] = useState('')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const ql = q.toLowerCase().trim()
+  const filtered = tickets.filter((t) => !ql || t.title.toLowerCase().includes(ql) || t.id.toLowerCase().includes(ql) || t.counterparty_name.toLowerCase().includes(ql))
+  const selected = tickets.find((t) => t.id === selectedId) ?? null
+
+  return (
+    <div className="grid max-w-4xl grid-cols-[280px_1fr] gap-4">
+      <div>
+        <SearchBox value={q} onChange={setQ} placeholder="Search tickets…" className="mb-2 w-full" />
+        <div className="max-h-[560px] space-y-1 overflow-y-auto">
+          {filtered.map((t) => (
+            <button key={t.id} onClick={() => setSelectedId(t.id)}
+              className={clsx('block w-full rounded-lg px-2.5 py-2 text-left', selectedId === t.id ? 'bg-ai-50 text-ai-700' : 'text-slate-600 hover:bg-slate-50')}>
+              <div className="truncate text-[12.5px] font-semibold">{t.title}</div>
+              <div className="truncate text-[11px] text-slate-400">{t.id} · {t.counterparty_name}</div>
+            </button>
+          ))}
+          {filtered.length === 0 && <div className="py-4 text-center text-[12px] text-slate-400">No tickets match.</div>}
+        </div>
+      </div>
+      {selected
+        ? <AssignmentEditor key={selected.id} ticket={selected} attorneys={attorneys} users={users} />
+        : <div className="flex items-center justify-center rounded-xl border border-dashed border-slate-200 text-[13px] text-slate-400">Select a ticket to manage its assignment.</div>}
+    </div>
+  )
+}
+
 export function AdminView() {
   const [tab, setTab] = useState<Tab>('routing')
   const users = useStore((s) => s.users)
@@ -282,6 +367,7 @@ export function AdminView() {
           </div>
         )}
         {tab === 'playbook_sources' && <PlaybookSourcesTab />}
+        {tab === 'assignments' && <AssignmentsTab />}
         {tab === 'adoption' && <AdoptionTab />}
         {tab === 'users' && (
           <div className="max-w-3xl">

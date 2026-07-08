@@ -122,6 +122,7 @@ interface CLMState {
   markNotificationRead: (id: string) => void
   markAllNotificationsRead: () => void
   createTicketFromAgent: (t: Partial<Ticket> & { title: string; counterparty_name: string; type: Ticket['type']; agreement_type?: AgreementType }) => Ticket
+  assignTicketTeam: (ticketId: string, team: { leadAttorneyId?: string | null; additionalAttorneyIds?: string[]; watcherIds?: string[] }) => void
   audit_push: (e: { event_type: AuditEventType; summary: string; ticket_id?: string; agreement_id?: string; actor_id?: string }) => void
 
   // agentic NDA intake (Change 1)
@@ -482,6 +483,26 @@ export const useStore = create<CLMState>((set, get) => ({
     const aName = get().users.find((u) => u.id === attorneyId)?.name ?? 'attorney'
     get().audit_push({ event_type: 'ticket_assigned', ticket_id: id, actor_id: 'ai_engine', summary: `Routed to ${aName} (${t.assigned_attorney_id ? 'manual override' : routed.rationale}).` })
     return ticket
+  },
+
+  assignTicketTeam: (ticketId, team) => {
+    const t = get().tickets.find((x) => x.id === ticketId)
+    if (!t) return
+    const nameOf = (id: string) => get().users.find((u) => u.id === id)?.name ?? id
+    set((s) => ({
+      tickets: s.tickets.map((x) => (x.id === ticketId ? {
+        ...x,
+        assigned_attorney_id: team.leadAttorneyId !== undefined ? team.leadAttorneyId : x.assigned_attorney_id,
+        additional_attorney_ids: team.additionalAttorneyIds !== undefined ? team.additionalAttorneyIds : x.additional_attorney_ids,
+        watcher_ids: team.watcherIds !== undefined ? team.watcherIds : x.watcher_ids,
+      } : x)),
+    }))
+    const parts: string[] = []
+    if (team.leadAttorneyId !== undefined) parts.push(`lead attorney → ${team.leadAttorneyId ? nameOf(team.leadAttorneyId) : 'unassigned'}`)
+    if (team.additionalAttorneyIds?.length) parts.push(`co-counsel → ${team.additionalAttorneyIds.map(nameOf).join(', ')}`)
+    if (team.watcherIds?.length) parts.push(`visibility → ${team.watcherIds.map(nameOf).join(', ')}`)
+    get().audit_push({ event_type: 'ticket_assigned', ticket_id: ticketId, summary: `${t.id} assignment updated: ${parts.join('; ') || 'no change'}.` })
+    get().setToast(`${t.id} assignment updated.`)
   },
 
   // ----- agentic NDA intake (Change 1) --------------------------------------

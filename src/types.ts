@@ -42,6 +42,8 @@ export interface Ticket {
   status: InquiryStatus | ContractStatus
   counterparty_name: string
   assigned_attorney_id: string | null
+  additional_attorney_ids?: string[] // co-assigned lawyers, beyond the lead attorney above
+  watcher_ids?: string[] // stakeholders with read visibility but no assignment (e.g. sales reps)
   initiator_id: string
   created_date: string
   sla_target_date: string

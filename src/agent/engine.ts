@@ -160,6 +160,55 @@ const intents: Intent[] = [
     },
   },
   {
+    // Legal-admin ticket assignment: "assign TKT-1042 to Kirsten and loop in Marcus for
+    // visibility." Admin-only (mirrors the Admin Console's assignment tab). Deterministic
+    // name matching against the real user directory — real but bounded, like the rest of
+    // this engine's NL parsing; free-text names outside that directory won't resolve.
+    name: 'assign_ticket_chat', cap: 'admin',
+    test: (t) => has(t, 'assign', 'reassign') && (has(t, 'ticket') || /\btkt-\d+\b/.test(t)),
+    reply: (t) => {
+      const s = useStore.getState()
+      const idMatch = t.match(/\btkt-\d+\b/)
+      const ticket = idMatch
+        ? s.tickets.find((x) => x.id.toLowerCase() === idMatch[0])
+        : (s.canvas.ticketId ? s.tickets.find((x) => x.id === s.canvas.ticketId) : undefined)
+      if (!ticket) {
+        return {
+          text: `Which ticket? Tell me the ticket number — e.g. "assign TKT-1042 to Kirsten and loop in Marcus for visibility" — or open the ticket first and just say "assign this ticket to Kirsten."`,
+          artifact: { kind: 'none' }, actions: [],
+        }
+      }
+      // Everything before a watcher keyword is the assignment clause (lead attorney); everything after is watchers.
+      const [assignClause, ...watcherParts] = t.split(/\b(?:loop in|involve|cc|give visibility to|also add)\b/)
+      const watcherClause = watcherParts.join(' ')
+      const nameHitIn = (clause: string) => (u: { name: string }) =>
+        u.name.toLowerCase().split(' ').some((part) => part.length > 2 && clause.includes(part))
+      const lead = s.users.filter((u) => u.role === 'attorney').find(nameHitIn(assignClause))
+      const watchers = s.users.filter((u) => u.id !== lead?.id && nameHitIn(watcherClause)(u))
+
+      if (!lead && watchers.length === 0) {
+        return {
+          text: `I couldn't match a name in that. Try: "assign ${ticket.id} to Kirsten and loop in Marcus for visibility."`,
+          artifact: { kind: 'ticket', refId: ticket.id }, actions: [],
+        }
+      }
+      const bits: string[] = []
+      if (lead) bits.push(`assigned lead attorney to **${lead.name}**`)
+      if (watchers.length) bits.push(`gave visibility to **${watchers.map((w) => w.name).join(', ')}**`)
+      return {
+        text: `Done — **${ticket.id}** (${ticket.title}): ${bits.join(' and ')}.`,
+        artifact: { kind: 'ticket', refId: ticket.id },
+        actions: [],
+        effect: () => useStore.getState().assignTicketTeam(ticket.id, {
+          leadAttorneyId: lead?.id,
+          watcherIds: watchers.length
+            ? Array.from(new Set([...(ticket.watcher_ids ?? []), ...watchers.map((w) => w.id)]))
+            : undefined,
+        }),
+      }
+    },
+  },
+  {
     // Consolidated Open Comments report, aggregated (RBAC-scoped) across every matter — as
     // opposed to open_comments_doc below, which is a single-document list. Must stay ahead of
     // it in this array since both tests match on the "open comments" substring.
