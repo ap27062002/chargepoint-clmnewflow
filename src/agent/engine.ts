@@ -212,7 +212,9 @@ const intents: Intent[] = [
     // Consolidated Open Comments report, aggregated (RBAC-scoped) across every matter — as
     // opposed to open_comments_doc below, which is a single-document list. Must stay ahead of
     // it in this array since both tests match on the "open comments" substring.
-    name: 'open_comments_report', cap: 'review',
+    // cap:'pipeline' (not 'review') deliberately — administrators lack 'review' but should still
+    // get portfolio-wide comment oversight; 'pipeline' is the one capability every role holds.
+    name: 'open_comments_report', cap: 'pipeline',
     test: (t) => has(t, 'open comments report', 'consolidated open comments', 'open comments across', 'consolidated report', 'open comments for all', 'open comments everywhere'),
     reply: () => {
       const s = useStore.getState()

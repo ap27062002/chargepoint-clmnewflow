@@ -89,10 +89,12 @@ export function startersFor(role: Role): Starter[] {
       return [
         { label: 'Create a ticket', sub: 'Negotiation or general legal support', prompt: 'create a ticket' },
         { label: 'Track my requests', sub: 'Status of my tickets', prompt: "what's on my plate?" },
+        { label: 'Open comments report', sub: 'Every unresolved comment on my matters', prompt: 'open comments report' },
       ]
     case 'contributor':
       return [
         { label: "What I'm tagged on", sub: 'Provisions needing my input', prompt: "what's on my plate?" },
+        { label: 'Open comments report', sub: 'Every unresolved comment on my matters', prompt: 'open comments report' },
       ]
     case 'playbook_owner':
       return [
@@ -100,6 +102,7 @@ export function startersFor(role: Role): Starter[] {
         { label: 'Open the NDA playbook', sub: '10 provisions · v3', prompt: 'show me the NDA playbook' },
         { label: 'Create a new playbook', sub: 'From a template + examples', prompt: 'create a new playbook' },
         { label: 'Build a new template', sub: 'From precedent + standards', prompt: 'create a new template project' },
+        { label: 'Open comments report', sub: 'Every unresolved comment across your matters', prompt: 'open comments report' },
       ]
     case 'administrator':
       return [
@@ -107,12 +110,15 @@ export function startersFor(role: Role): Starter[] {
         { label: 'Review playbook suggestions', sub: 'Attorney-proposed additions', prompt: 'review playbook suggestions' },
         { label: 'Templates', sub: 'Baseline form agreements', prompt: 'open templates' },
         { label: 'Review the audit log', sub: 'Immutable event history', prompt: 'show me the audit log' },
+        { label: 'Consolidated open comments', sub: 'Every unresolved comment, portfolio-wide', prompt: 'open comments report' },
+        { label: 'Assign a ticket', sub: 'Lead attorney, co-counsel, or visibility', prompt: 'assign a ticket' },
       ]
     case 'attorney':
     default:
       return [
         { label: 'Review the Vishay redline', sub: '8 issues · 1 red line', prompt: 'review the Vishay redline' },
         { label: "What's on my plate today?", sub: 'Tagged items & SLA queue', prompt: "what's on my plate?" },
+        { label: 'Open comments report', sub: 'Every unresolved comment across your matters', prompt: 'open comments report' },
         { label: 'Create a ticket', sub: 'Negotiation or general legal support', prompt: 'create a ticket' },
         { label: 'Review 2 new changes in playbook', sub: '2 refinement updates to approve', prompt: 'show me the NDA playbook' },
       ]
