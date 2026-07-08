@@ -189,6 +189,7 @@ export interface Message {
   created_date: string
   mentions?: string[] // user ids tagged for sign-off
   resolved?: boolean
+  parent_id?: string // set on a reply — the root comment this is threaded under (Google-Docs-style)
 }
 
 // ----- Playbook -------------------------------------------------------------

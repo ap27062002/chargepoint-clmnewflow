@@ -6,6 +6,7 @@ import { useStore } from '@/store'
 import { sendToAgent } from '@/agent/engine'
 import { can } from '@/lib/access'
 import { Chip, Avatar } from '@/components/ui'
+import { CommentReplies } from '@/components/CommentReplies'
 import { riskMeta, dispositionMeta } from '@/lib/labels'
 import { userById } from '@/data/seed'
 import type { DocRun } from '@/data/documents'
@@ -131,7 +132,7 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const docDevs = devs.filter((d) => !!clauseIdFor(d))
   // AI analysis is always visible; team comments show/hide with the toolbar's Hide/Show comments CTA.
-  const teamMsgs = showComments ? messages.filter((m) => m.thread_type === 'agreement_level' && m.agreement_id === agreementId && !!clauseForRef(m.provision_reference)) : []
+  const teamMsgs = showComments ? messages.filter((m) => m.thread_type === 'agreement_level' && m.agreement_id === agreementId && !m.parent_id && !!clauseForRef(m.provision_reference)) : []
   type MarginItem = { uid: string; clauseId: string; kind: 'ai'; dev: Deviation } | { uid: string; clauseId: string; kind: 'team'; msg: (typeof teamMsgs)[number] }
   const marginItems: MarginItem[] = [
     ...docDevs.map((d) => ({ uid: 'ai-' + d.id, clauseId: clauseIdFor(d)!, kind: 'ai' as const, dev: d })),
@@ -141,7 +142,8 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [tops, setTops] = useState<Record<string, number>>({})
   const [colH, setColH] = useState(0)
-  const itemsKey = marginItems.map((it) => it.uid + (it.kind === 'ai' ? it.dev.disposition_status : it.msg.resolved ? 'r' : 'o') + (expanded[it.uid] ? 'x' : '')).join(',')
+  // Reply count is folded in so posting a reply re-triggers the stacking layout below (card grows taller).
+  const itemsKey = marginItems.map((it) => it.uid + (it.kind === 'ai' ? it.dev.disposition_status : (it.msg.resolved ? 'r' : 'o') + '-' + messages.filter((m) => m.parent_id === it.msg.id).length) + (expanded[it.uid] ? 'x' : '')).join(',')
   // Anchor each card to its clause's vertical position (stacked so cards never overlap).
   useLayoutEffect(() => {
     const col = colRef.current, cont = containerRef.current
@@ -436,6 +438,7 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
                             </>)}
                         {m.body.length > 130 && <button onClick={() => setExpanded((p) => ({ ...p, [it.uid]: !isOpen }))} className="ml-auto text-[10.5px] font-semibold text-slate-400 hover:text-slate-600">{isOpen ? 'Less' : 'More'}</button>}
                       </div>
+                      <CommentReplies parentId={m.id} compact />
                     </div>
                   )
                 }

@@ -14,7 +14,7 @@ export function OpenCommentsModal({ agreementId, ticketId, title, onClose }: { a
   const setToast = useStore((s) => s.setToast)
   const rows = messages
     .filter((m) => (agreementId ? m.agreement_id === agreementId : m.ticket_id === ticketId && m.thread_type === 'agreement_level'))
-    .filter((m) => !m.resolved)
+    .filter((m) => !m.resolved && !m.parent_id)
     .map((m) => ({ m, days: age(m.created_date) }))
     .sort((a, b) => b.days - a.days)
 

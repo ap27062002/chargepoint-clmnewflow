@@ -14,13 +14,14 @@ import { RedlineDocView } from '@/views/RedlineDocView'
 import { StageTracker } from '@/views/StageTracker'
 import { Chip, Avatar, Button, Card } from '@/components/ui'
 import { MentionComposer } from '@/components/MentionComposer'
+import { CommentReplies } from '@/components/CommentReplies'
 import { StartDraftingForm } from '@/components/StartDraftingForm'
 import { sourceLabel, fmtDate, fmtDateTime } from '@/lib/labels'
 import { diffVersions, clauseIdForDeviation, cleanCopyId } from '@/data/documents'
 import { userById } from '@/data/seed'
 
 function CommentsPanel({ ticketId, agreementId, provisionOptions = [] }: { ticketId: string; agreementId: string; provisionOptions?: string[] }) {
-  const messages = useStore((s) => s.messages).filter((m) => m.thread_type === 'agreement_level' && m.agreement_id === agreementId)
+  const messages = useStore((s) => s.messages).filter((m) => m.thread_type === 'agreement_level' && m.agreement_id === agreementId && !m.parent_id)
   const postMessage = useStore((s) => s.postMessage)
   const resolveMention = useStore((s) => s.resolveMention)
   const users = useStore((s) => s.users)
@@ -50,6 +51,7 @@ function CommentsPanel({ ticketId, agreementId, provisionOptions = [] }: { ticke
                     : <button onClick={() => resolveMention(m.id)} className="ml-auto text-[11.5px] font-semibold text-brand-600 hover:underline">Mark responded</button>}
                 </div>
               )}
+              <CommentReplies parentId={m.id} />
             </div>
           )
         })}

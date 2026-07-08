@@ -3,6 +3,7 @@ import { Tag, AtSign, CheckCircle2 } from 'lucide-react'
 import { useStore } from '@/store'
 import { Avatar, Chip } from '@/components/ui'
 import { MentionComposer } from '@/components/MentionComposer'
+import { CommentReplies } from '@/components/CommentReplies'
 import { fmtDateTime } from '@/lib/labels'
 import { userById } from '@/data/seed'
 import type { MessageTag } from '@/types'
@@ -14,7 +15,7 @@ const tagMeta: Record<MessageTag, string> = {
 const TAGS: MessageTag[] = ['timeline', 'pricing', 'decision', 'question']
 
 export function DealDiscussion({ ticketId }: { ticketId: string }) {
-  const messages = useStore((s) => s.messages).filter((m) => m.thread_type === 'deal_level' && m.ticket_id === ticketId)
+  const messages = useStore((s) => s.messages).filter((m) => m.thread_type === 'deal_level' && m.ticket_id === ticketId && !m.parent_id)
   const postMessage = useStore((s) => s.postMessage)
   const resolveMention = useStore((s) => s.resolveMention)
   const users = useStore((s) => s.users)
@@ -49,6 +50,7 @@ export function DealDiscussion({ ticketId }: { ticketId: string }) {
                       : <button onClick={() => resolveMention(m.id)} className="text-[11.5px] font-semibold text-brand-600 hover:underline">Mark responded</button>}
                   </div>
                 )}
+                <CommentReplies parentId={m.id} />
               </div>
             </div>
           )

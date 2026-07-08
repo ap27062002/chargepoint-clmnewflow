@@ -116,6 +116,7 @@ interface CLMState {
   applyAllRecommended: (agreementId: string) => void
   postMessage: (m: { thread_type: ThreadType; ticket_id: string; agreement_id: string | null; body: string; tag?: MessageTag; provision_reference?: string; mentions?: string[] }) => void
   resolveMention: (messageId: string) => void
+  replyToMessage: (parentId: string, body: string) => void
   markNotificationRead: (id: string) => void
   markAllNotificationsRead: () => void
   createTicketFromAgent: (t: Partial<Ticket> & { title: string; counterparty_name: string; type: Ticket['type']; agreement_type?: AgreementType }) => Ticket
@@ -442,6 +443,18 @@ export const useStore = create<CLMState>((set, get) => ({
 
   resolveMention: (messageId) =>
     set((s) => ({ messages: s.messages.map((m) => (m.id === messageId ? { ...m, resolved: true } : m)) })),
+
+  replyToMessage: (parentId, body) => {
+    const parent = get().messages.find((m) => m.id === parentId)
+    if (!parent || !body.trim()) return
+    const msg: Message = {
+      id: nextId('M'), created_date: now(), author_id: get().currentUserId,
+      thread_type: parent.thread_type, ticket_id: parent.ticket_id, agreement_id: parent.agreement_id,
+      body: body.trim(), parent_id: parent.id, provision_reference: parent.provision_reference,
+    }
+    set((s) => ({ messages: [...s.messages, msg] }))
+    get().audit_push({ event_type: 'comment_posted', ticket_id: parent.ticket_id, agreement_id: parent.agreement_id ?? undefined, summary: 'Replied to a comment.' })
+  },
 
   markNotificationRead: (id) =>
     set((s) => ({ notifications: s.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)) })),
