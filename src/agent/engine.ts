@@ -6,6 +6,8 @@ import { canSeeTicket, visibleTickets } from '@/lib/scope'
 import { lookupCounterparty, inferDealContext } from '@/data/counterparties'
 import { precedentAnswer, precedentDigest, searchPrecedent } from '@/lib/precedent'
 import { answerFromState } from '@/lib/reason'
+import { consolidatedOpenCommentsRows, consolidatedOpenCommentsCsv, downloadCsv } from '@/lib/openComments'
+import { AS_OF } from '@/lib/analytics'
 export { GREETING } from '@/agent/greeting'
 
 let _c = 0
@@ -212,6 +214,39 @@ const intents: Intent[] = [
     // Consolidated Open Comments report, aggregated (RBAC-scoped) across every matter — as
     // opposed to open_comments_doc below, which is a single-document list. Must stay ahead of
     // it in this array since both tests match on the "open comments" substring.
+    // "Show open comments" — the explicit follow-up action from open_comments_report below (or
+    // typed directly). Must stay ahead of open_comments_report since "show open comments report"
+    // also contains the substring "open comments report".
+    name: 'open_comments_report_show', cap: 'pipeline',
+    test: (t) => has(t, 'show open comments', 'show the open comments', 'show comments report'),
+    reply: () => ({
+      text: `Opening the consolidated open comments report.`,
+      artifact: { kind: 'none' },
+      actions: [],
+      effect: () => useStore.getState().setOpenCommentsReportOpen(true),
+    }),
+  },
+  {
+    // "Download open comments" — exports the CSV directly, no modal. Same ordering note as above.
+    name: 'open_comments_report_download', cap: 'pipeline',
+    test: (t) => has(t, 'download open comments', 'download the open comments', 'download comments report', 'export open comments'),
+    reply: () => {
+      const s = useStore.getState()
+      const cu = s.users.find((u) => u.id === s.currentUserId)!
+      const scoped = new Set(visibleTickets(s.tickets, s.messages, cu).map((tk) => tk.id))
+      const rows = consolidatedOpenCommentsRows(s.messages, s.tickets, s.agreements, scoped, AS_OF)
+      return {
+        text: rows.length ? `Exported **${rows.length}** open comment${rows.length === 1 ? '' : 's'} as a CSV.` : `No open comments to export right now.`,
+        artifact: { kind: 'none' },
+        actions: [],
+        effect: rows.length ? () => {
+          downloadCsv(consolidatedOpenCommentsCsv(rows), `Consolidated_Open_Comments_${AS_OF}.csv`)
+          useStore.getState().setToast('Consolidated open-comments report exported.')
+        } : undefined,
+      }
+    },
+  },
+  {
     // cap:'pipeline' (not 'review') deliberately — administrators lack 'review' but should still
     // get portfolio-wide comment oversight; 'pipeline' is the one capability every role holds.
     name: 'open_comments_report', cap: 'pipeline',
@@ -220,15 +255,17 @@ const intents: Intent[] = [
       const s = useStore.getState()
       const cu = s.users.find((u) => u.id === s.currentUserId)!
       const scoped = new Set(visibleTickets(s.tickets, s.messages, cu).map((tk) => tk.id))
-      const rows = s.messages.filter((m) => !m.resolved && !m.parent_id && (m.thread_type === 'agreement_level' || m.thread_type === 'deal_level') && scoped.has(m.ticket_id))
-      const matters = new Set(rows.map((m) => m.ticket_id)).size
+      const rows = consolidatedOpenCommentsRows(s.messages, s.tickets, s.agreements, scoped, AS_OF)
+      const matters = new Set(rows.map((r) => r.m.ticket_id)).size
       return {
         text: rows.length
-          ? `**Consolidated open comments** — ${rows.length} unresolved across ${matters} matter${matters === 1 ? '' : 's'} visible to you. Opening the full report — you can send reminders or export it as a CSV from there.`
+          ? `**Consolidated open comments** — ${rows.length} unresolved across ${matters} matter${matters === 1 ? '' : 's'} visible to you. Want to see them or export a CSV?`
           : `No open comments anywhere across your matters right now. 🎉`,
         artifact: { kind: 'none' },
-        actions: [],
-        effect: () => useStore.getState().setOpenCommentsReportOpen(true),
+        actions: rows.length ? [
+          { label: 'Show comments', prompt: 'show open comments report', variant: 'primary' },
+          { label: 'Download comments', prompt: 'download open comments report' },
+        ] : [],
       }
     },
   },

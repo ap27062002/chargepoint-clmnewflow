@@ -6,8 +6,9 @@ import { Chip, Button, Avatar } from '@/components/ui'
 import { userById } from '@/data/seed'
 import { AS_OF } from '@/lib/analytics'
 import { visibleTickets } from '@/lib/scope'
+import { commentAge, consolidatedOpenCommentsRows, consolidatedOpenCommentsCsv, downloadCsv } from '@/lib/openComments'
 
-const age = (created: string) => Math.max(0, Math.round((new Date(AS_OF).getTime() - new Date(created.slice(0, 10)).getTime()) / 86400000))
+const age = (created: string) => commentAge(created, AS_OF)
 const ageChip = (d: number) => (d > 10 ? 'bg-red-50 text-red-700 ring-red-500/20' : d > 5 ? 'bg-amber-50 text-amber-700 ring-amber-500/20' : 'bg-slate-100 text-slate-500 ring-slate-300/30')
 
 export function OpenCommentsModal({ agreementId, ticketId, title, onClose }: { agreementId?: string; ticketId: string; title: string; onClose: () => void }) {
@@ -80,22 +81,10 @@ export function ConsolidatedOpenCommentsModal({ onClose }: { onClose: () => void
   const openAgreement = useStore((s) => s.openAgreement)
 
   const scopedTicketIds = new Set(visibleTickets(tickets, messages, cu).map((t) => t.id))
-  const rows = messages
-    .filter((m) => !m.resolved && !m.parent_id && (m.thread_type === 'agreement_level' || m.thread_type === 'deal_level') && scopedTicketIds.has(m.ticket_id))
-    .map((m) => {
-      const ticket = tickets.find((t) => t.id === m.ticket_id)
-      const agreement = m.agreement_id ? agreements.find((a) => a.id === m.agreement_id) : undefined
-      return { m, days: age(m.created_date), label: agreement?.title ?? ticket?.title ?? m.ticket_id, ticket, agreement }
-    })
-    .sort((a, b) => b.days - a.days)
+  const rows = consolidatedOpenCommentsRows(messages, tickets, agreements, scopedTicketIds, AS_OF)
 
   const exportReport = () => {
-    const csv = ['deal,comment,clause,tagged,age_days,status', ...rows.map(({ m, days, label }) =>
-      `"${label.replace(/"/g, "'")}","${m.body.slice(0, 60).replace(/"/g, "'")}",${m.provision_reference ?? ''},"${(m.mentions ?? []).map((id) => userById(id)?.name).join('; ')}",${days},open`)].join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href = url; a.download = `Consolidated_Open_Comments_${AS_OF}.csv`; a.click()
-    setTimeout(() => URL.revokeObjectURL(url), 3000)
+    downloadCsv(consolidatedOpenCommentsCsv(rows), `Consolidated_Open_Comments_${AS_OF}.csv`)
     setToast('Consolidated open-comments report exported.')
   }
 
