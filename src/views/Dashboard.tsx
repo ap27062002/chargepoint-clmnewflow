@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { clsx } from 'clsx'
-import { AlertTriangle, FileText, Search, Plus, Scale, DollarSign, Flame, UserX, Clock, ChevronRight, AtSign, Bot, BellRing } from 'lucide-react'
+import { AlertTriangle, FileText, Plus, Scale, DollarSign, Flame, UserX, Clock, ChevronRight, AtSign, Bot, BellRing } from 'lucide-react'
 import { useStore } from '@/store'
-import { Card, Chip, Avatar, Button, SectionLabel, Kpi } from '@/components/ui'
+import { Card, Chip, Avatar, Button, SectionLabel, Kpi, SortHeader, SearchBox, toggleSort } from '@/components/ui'
 import { agreementStatusMeta, fmtDate } from '@/lib/labels'
 import { visibleTickets } from '@/lib/scope'
 import { ROLE_LABEL } from '@/lib/access'
@@ -37,6 +37,11 @@ export function Dashboard() {
   const [modalOpen, setModalOpen] = useState(false)
   const [q, setQ] = useState('')
   const [stageFilter, setStageFilter] = useState<string>('All')
+  type QueueSortKey = 'name' | 'counterparty' | 'attorney' | 'stage' | 'days' | 'comments'
+  const [qSort, setQSort] = useState<{ key: QueueSortKey; dir: 'asc' | 'desc' }>({ key: 'days', dir: 'desc' })
+  type CpSortKey = 'counterparty' | 'open' | 'stage' | 'value'
+  const [cpQ, setCpQ] = useState('')
+  const [cpSort, setCpSort] = useState<{ key: CpSortKey; dir: 'asc' | 'desc' }>({ key: 'counterparty', dir: 'asc' })
 
   // RBAC row-scoping, then compute metrics over what's visible.
   const tickets = visibleTickets(allTickets, messages, cu)
@@ -44,6 +49,17 @@ export function Dashboard() {
   const agreements = allAgreements.filter((a) => ticketIds.has(a.ticket_id))
   const leader = cu.role === 'administrator' || cu.role === 'playbook_owner'
   const m = leadershipMetrics(tickets, agreements, versions, deviations)
+  const cpQl = cpQ.toLowerCase().trim()
+  const cpRows = m.byCounterparty
+    .filter((r) => !cpQl || r.counterparty.toLowerCase().includes(cpQl))
+    .sort((a, b) => {
+      const d = cpSort.dir === 'asc' ? 1 : -1
+      if (cpSort.key === 'open') return (a.openCount - b.openCount) * d
+      if (cpSort.key === 'stage') return String(a.stages[a.stages.length - 1] ?? '').localeCompare(String(b.stages[b.stages.length - 1] ?? '')) * d
+      if (cpSort.key === 'value') return (a.value - b.value) * d
+      return a.counterparty.localeCompare(b.counterparty) * d
+    })
+  const onCpSort = (key: CpSortKey) => setCpSort((s) => toggleSort(key, s, (k) => k === 'counterparty'))
 
   // ---- My Open Tickets (primary work queue) — Eric: users have 100+ tickets and won't scroll ----
   const contributorsFor = (t: Ticket) => Array.from(new Set(messages.filter((mm) => mm.ticket_id === t.id).flatMap((mm) => [mm.author_id, ...(mm.mentions ?? [])]))).filter((id) => id !== t.assigned_attorney_id).slice(0, 3)
@@ -59,9 +75,18 @@ export function Dashboard() {
       const contribs = contributorsFor(t).map((id) => userById(id)?.name.toLowerCase() ?? '').join(' ')
       return t.title.toLowerCase().includes(ql) || t.id.toLowerCase().includes(ql) || attorney.includes(ql) || contribs.includes(ql)
     })
-    .sort((a, b) => daysOpen(b.created_date) - daysOpen(a.created_date)),
+    .sort((a, b) => {
+      const d = qSort.dir === 'asc' ? 1 : -1
+      if (qSort.key === 'name') return a.title.localeCompare(b.title) * d
+      if (qSort.key === 'counterparty') return (a.counterparty_name ?? '').localeCompare(b.counterparty_name ?? '') * d
+      if (qSort.key === 'attorney') return (userById(a.assigned_attorney_id ?? '')?.name ?? '').localeCompare(userById(b.assigned_attorney_id ?? '')?.name ?? '') * d
+      if (qSort.key === 'stage') return String(a.status).localeCompare(String(b.status)) * d
+      if (qSort.key === 'comments') return (openCommentsFor(a) - openCommentsFor(b)) * d
+      return (daysOpen(a.created_date) - daysOpen(b.created_date)) * d
+    }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [openTickets, stageFilter, ql])
+    [openTickets, stageFilter, ql, qSort])
+  const onQueueSort = (key: QueueSortKey) => setQSort((s) => toggleSort(key, s, (k) => k === 'name' || k === 'counterparty' || k === 'attorney'))
 
   // ---- Where I'm Tagged — my open comments/tags, with age + jump link ----
   const myTags = messages.filter((mm) => mm.mentions?.includes(cu.id) && !mm.resolved)
@@ -90,10 +115,7 @@ export function Dashboard() {
       <Card className="mb-4 overflow-hidden">
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2.5">
           <SectionLabel>My Open Tickets · {queue.length}</SectionLabel>
-          <div className="ml-auto flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5">
-            <Search size={13} className="text-slate-400" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, #, attorney, contributor…" className="w-56 text-[12.5px] outline-none placeholder:text-slate-400" />
-          </div>
+          <SearchBox value={q} onChange={setQ} placeholder="Search name, #, attorney, contributor…" className="ml-auto w-64" />
         </div>
         <div className="flex flex-wrap gap-1.5 border-b border-slate-100 px-4 py-2">
           {stages.map((st) => (
@@ -102,9 +124,15 @@ export function Dashboard() {
         </div>
         <table className="w-full text-left text-[12.5px]">
           <thead><tr className="border-b border-slate-100 text-[10.5px] uppercase tracking-wide text-slate-400">
-            <th className="px-4 py-2 font-semibold">Ticket #</th><th className="px-2 py-2 font-semibold">Ticket name</th><th className="px-2 py-2 font-semibold">Counterparty</th>
-            <th className="px-2 py-2 font-semibold">Type</th><th className="px-2 py-2 font-semibold">Attorney</th><th className="px-2 py-2 font-semibold">Contributors</th>
-            <th className="px-2 py-2 font-semibold">Stage</th><th className="px-2 py-2 font-semibold">Days open</th><th className="px-2 py-2 font-semibold">Open comments</th>
+            <th className="px-4 py-2 font-semibold">Ticket #</th>
+            <SortHeader sortKey="name" active={qSort.key === 'name'} dir={qSort.dir} onSort={onQueueSort}>Ticket name</SortHeader>
+            <SortHeader sortKey="counterparty" active={qSort.key === 'counterparty'} dir={qSort.dir} onSort={onQueueSort}>Counterparty</SortHeader>
+            <th className="px-2 py-2 font-semibold">Type</th>
+            <SortHeader sortKey="attorney" active={qSort.key === 'attorney'} dir={qSort.dir} onSort={onQueueSort}>Attorney</SortHeader>
+            <th className="px-2 py-2 font-semibold">Contributors</th>
+            <SortHeader sortKey="stage" active={qSort.key === 'stage'} dir={qSort.dir} onSort={onQueueSort}>Stage</SortHeader>
+            <SortHeader sortKey="days" active={qSort.key === 'days'} dir={qSort.dir} onSort={onQueueSort}>Days open</SortHeader>
+            <SortHeader sortKey="comments" active={qSort.key === 'comments'} dir={qSort.dir} onSort={onQueueSort}>Open comments</SortHeader>
           </tr></thead>
           <tbody>
             {queue.map((t) => {
@@ -132,14 +160,21 @@ export function Dashboard() {
       {/* ============ By counterparty (directly below the queue) ============ */}
       <Card className="mb-4 overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
-          <SectionLabel>By counterparty</SectionLabel>
+          <SectionLabel>By counterparty · {cpRows.length}</SectionLabel>
+          <SearchBox value={cpQ} onChange={setCpQ} placeholder="Search counterparty…" className="w-64" />
         </div>
         <table className="w-full text-left text-[12.5px]">
           <thead><tr className="border-b border-slate-100 text-[10.5px] uppercase tracking-wide text-slate-400">
-            <th className="px-4 py-2 font-semibold">Counterparty</th><th className="px-2 py-2 font-semibold">Open items</th><th className="px-2 py-2 font-semibold">Latest stage</th><th className="px-2 py-2 font-semibold">Turn</th><th className="px-2 py-2 font-semibold">Owner</th><th className="px-2 py-2 font-semibold">Value</th><th className="px-2 py-2" />
+            <SortHeader sortKey="counterparty" active={cpSort.key === 'counterparty'} dir={cpSort.dir} onSort={onCpSort} className="px-4">Counterparty</SortHeader>
+            <SortHeader sortKey="open" active={cpSort.key === 'open'} dir={cpSort.dir} onSort={onCpSort}>Open items</SortHeader>
+            <SortHeader sortKey="stage" active={cpSort.key === 'stage'} dir={cpSort.dir} onSort={onCpSort}>Latest stage</SortHeader>
+            <th className="px-2 py-2 font-semibold">Turn</th><th className="px-2 py-2 font-semibold">Owner</th>
+            <SortHeader sortKey="value" active={cpSort.key === 'value'} dir={cpSort.dir} onSort={onCpSort}>Value</SortHeader>
+            <th className="px-2 py-2" />
           </tr></thead>
           <tbody>
-            {m.byCounterparty.map((r) => (
+            {cpRows.length === 0 && <tr><td colSpan={7} className="px-4 py-6 text-center text-[12.5px] text-slate-400">No counterparties match.</td></tr>}
+            {cpRows.map((r) => (
               <tr key={r.counterparty} onClick={() => openTicket(r.ticketId)} className="cursor-pointer border-b border-slate-50 hover:bg-slate-50">
                 <td className="px-4 py-2 font-semibold text-slate-700">{r.counterparty}</td>
                 <td className="px-2 py-2 text-slate-600">{r.openCount}</td>

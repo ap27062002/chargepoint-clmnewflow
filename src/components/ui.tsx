@@ -1,6 +1,40 @@
 import { clsx } from 'clsx'
+import { Search, ArrowUp, ArrowDown } from 'lucide-react'
 import type { ReactNode, CSSProperties } from 'react'
 import { userById, AI_ENGINE } from '@/data/seed'
+
+// Shared sortable-column header — click toggles asc/desc, clicking a new column defaults to `initialDir`.
+export function SortHeader<K extends string>({ sortKey, active, dir, onSort, initialDir = 'desc', className, children }: {
+  sortKey: K
+  active: boolean
+  dir: 'asc' | 'desc'
+  onSort: (key: K) => void
+  initialDir?: 'asc' | 'desc'
+  className?: string
+  children: ReactNode
+}) {
+  void initialDir // consumed by the caller's onSort handler, kept here for call-site documentation
+  return (
+    <th className={clsx('cursor-pointer select-none px-2 py-2 font-semibold hover:text-slate-600', className)} onClick={() => onSort(sortKey)}>
+      <span className="inline-flex items-center gap-1">{children}{active && (dir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}</span>
+    </th>
+  )
+}
+
+// Toggle helper for the sort state a SortHeader drives: same key flips direction, a new key resets to its default.
+export function toggleSort<K extends string>(key: K, current: { key: K; dir: 'asc' | 'desc' }, ascByDefault: (key: K) => boolean): { key: K; dir: 'asc' | 'desc' } {
+  if (current.key === key) return { key, dir: current.dir === 'asc' ? 'desc' : 'asc' }
+  return { key, dir: ascByDefault(key) ? 'asc' : 'desc' }
+}
+
+export function SearchBox({ value, onChange, placeholder, className }: { value: string; onChange: (v: string) => void; placeholder: string; className?: string }) {
+  return (
+    <div className={clsx('flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5', className)}>
+      <Search size={13} className="text-slate-400" />
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full min-w-0 text-[12.5px] outline-none placeholder:text-slate-400" />
+    </div>
+  )
+}
 
 export function Chip({ children, className }: { children: ReactNode; className?: string }) {
   return (

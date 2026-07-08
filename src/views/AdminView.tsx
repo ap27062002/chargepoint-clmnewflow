@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { clsx } from 'clsx'
 import { GitBranch, Timer, CheckSquare, Bell, Users, Plug, Check, Rocket, TrendingUp, Megaphone, GraduationCap, FolderTree, BookOpen, Inbox } from 'lucide-react'
-import { Card, Chip, Avatar, SectionLabel, Button } from '@/components/ui'
+import { Card, Chip, Avatar, SectionLabel, Button, SearchBox, SortHeader, toggleSort } from '@/components/ui'
 import { useStore } from '@/store'
 import { ROUTING_LABEL, type RoutingStrategy } from '@/lib/routing'
 import type { AgreementType } from '@/types'
+
+type UserSortKey = 'name' | 'role' | 'title'
 
 // Intake §3 — the three configurable intake channels, plus the decision Eric wants his
 // team to see explicitly: individual attorney inbox reading is DISABLED.
@@ -209,6 +211,19 @@ export function AdminView() {
   const users = useStore((s) => s.users)
   const setToast = useStore((s) => s.setToast)
   const [connected, setConnected] = useState<string[]>([])
+  const [userQ, setUserQ] = useState('')
+  const [userSort, setUserSort] = useState<{ key: UserSortKey; dir: 'asc' | 'desc' }>({ key: 'name', dir: 'asc' })
+  const userQl = userQ.toLowerCase().trim()
+  const sortedUsers = useMemo(() => users
+    .filter((u) => !userQl || u.name.toLowerCase().includes(userQl) || u.role.toLowerCase().includes(userQl) || u.title.toLowerCase().includes(userQl))
+    .sort((a, b) => {
+      const d = userSort.dir === 'asc' ? 1 : -1
+      if (userSort.key === 'role') return a.role.localeCompare(b.role) * d
+      if (userSort.key === 'title') return a.title.localeCompare(b.title) * d
+      return a.name.localeCompare(b.name) * d
+    }),
+    [users, userQl, userSort])
+  const onUserSort = (key: UserSortKey) => setUserSort((s) => toggleSort(key, s, () => true))
 
   return (
     <div className="flex h-full flex-col">
@@ -269,22 +284,28 @@ export function AdminView() {
         {tab === 'playbook_sources' && <PlaybookSourcesTab />}
         {tab === 'adoption' && <AdoptionTab />}
         {tab === 'users' && (
-          <Card className="max-w-3xl overflow-hidden">
-            <table className="w-full text-left text-[13px]">
-              <thead><tr className="border-b border-slate-100 text-[11px] uppercase tracking-wide text-slate-400">
-                <th className="px-4 py-2 font-semibold">User</th><th className="px-2 py-2 font-semibold">Role (Entra-synced)</th><th className="px-2 py-2 font-semibold">Title</th>
-              </tr></thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.id} className="border-b border-slate-50">
-                    <td className="px-4 py-2.5"><div className="flex items-center gap-2"><Avatar userId={u.id} size={24} /><span className="font-semibold text-slate-700">{u.name}</span></div></td>
-                    <td className="px-2 py-2.5"><Chip className="bg-indigo-50 text-indigo-600 ring-indigo-500/20 capitalize">{u.role.replace('_', ' ')}</Chip></td>
-                    <td className="px-2 py-2.5 text-slate-500">{u.title}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
+          <div className="max-w-3xl">
+            <div className="mb-2 flex justify-end"><SearchBox value={userQ} onChange={setUserQ} placeholder="Search name, role, title…" className="w-64" /></div>
+            <Card className="overflow-hidden">
+              <table className="w-full text-left text-[13px]">
+                <thead><tr className="border-b border-slate-100 text-[11px] uppercase tracking-wide text-slate-400">
+                  <SortHeader sortKey="name" active={userSort.key === 'name'} dir={userSort.dir} onSort={onUserSort} className="px-4">User</SortHeader>
+                  <SortHeader sortKey="role" active={userSort.key === 'role'} dir={userSort.dir} onSort={onUserSort}>Role (Entra-synced)</SortHeader>
+                  <SortHeader sortKey="title" active={userSort.key === 'title'} dir={userSort.dir} onSort={onUserSort}>Title</SortHeader>
+                </tr></thead>
+                <tbody>
+                  {sortedUsers.length === 0 && <tr><td colSpan={3} className="px-4 py-6 text-center text-[12.5px] text-slate-400">No users match.</td></tr>}
+                  {sortedUsers.map((u) => (
+                    <tr key={u.id} className="border-b border-slate-50">
+                      <td className="px-4 py-2.5"><div className="flex items-center gap-2"><Avatar userId={u.id} size={24} /><span className="font-semibold text-slate-700">{u.name}</span></div></td>
+                      <td className="px-2 py-2.5"><Chip className="bg-indigo-50 text-indigo-600 ring-indigo-500/20 capitalize">{u.role.replace('_', ' ')}</Chip></td>
+                      <td className="px-2 py-2.5 text-slate-500">{u.title}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          </div>
         )}
         {tab === 'integrations' && (
           <div className="grid max-w-3xl grid-cols-2 gap-3">
