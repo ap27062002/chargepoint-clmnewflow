@@ -531,10 +531,7 @@ const intents: Intent[] = [
       return {
         text: `Here's everything currently on your plate, ${first}.\n\n**${mentions.length} provision sign-off${mentions.length === 1 ? '' : 's'} awaiting you** and **${myTickets.length} active ticket${myTickets.length === 1 ? '' : 's'}** assigned to you.${mentions.length ? `\n\n${mentionLines}` : ''}\n\nThe Airbus NDA (TKT-1039) is at **80% of its SLA window** — I'd take that first.`,
         artifact: { kind: 'tagged_items', title: 'My queue & tagged items' },
-        actions: [
-          { label: 'Open Airbus (SLA risk)', prompt: 'open ticket TKT-1039', variant: 'primary' },
-          { label: 'Review Vishay redline', prompt: 'review the Vishay redline' },
-        ],
+        actions: [],
       }
     },
   },
