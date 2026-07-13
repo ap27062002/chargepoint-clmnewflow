@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { Send, BookOpen, Highlighter, PenLine } from 'lucide-react'
 import { Markdown } from '@/components/Markdown'
 import { AiTag } from '@/components/ui'
-import { sendToAgent } from '@/agent/engine'
 import { precedentAnswer } from '@/lib/precedent'
 import { useStore } from '@/store'
 
@@ -30,6 +29,9 @@ export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onStartDra
   const [lastSel, setLastSel] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const editDraftViaChat = useStore((s) => s.editDraftViaChat)
+  const suggestToPlaybook = useStore((s) => s.suggestToPlaybook)
+  const agreement = useStore((s) => s.agreements.find((a) => a.id === agreementId))
+  const playbookName = useStore((s) => s.playbooks.find((p) => p.id === agreement?.playbook_id)?.name)
 
   const ask = (text: string) => {
     if (!text.trim()) return
@@ -43,6 +45,20 @@ export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onStartDra
         : (ANSWERS.find((x) => x.match(lc))?.text ?? `**Clause analysis.** Checked against the NDA playbook, the identified deviations, and our prior deals — I don't see a red-line trigger in this text. Make sure the defined terms are used consistently ("Confidential Information", not "Proprietary") and that every obligation is **mutual**. Want me to compare it to the matching playbook provision or draft alternative language?`)
     setMsgs((m) => [...m, { role: 'user', text }, { role: 'ai', text: answer }])
     setInput('')
+  }
+
+  // Suggests the last-highlighted clause to the playbook — runs the store action directly (not
+  // via the global agent chat) so the confirmation lands right here, in the panel you clicked
+  // from, instead of silently posting to a different, invisible conversation.
+  const suggestClauseToPlaybook = () => {
+    if (!lastSel || !agreement) return
+    const snippet = lastSel.length > 200 ? lastSel.slice(0, 200) + '…' : lastSel
+    suggestToPlaybook({
+      playbook_id: agreement.playbook_id ?? 'pb_nda', provision_name: 'Suggested clause', kind: 'fallback',
+      proposed_text: snippet, source_agreement_id: agreement.id,
+    })
+    setMsgs((m) => [...m, { role: 'user', text: `Suggest to add to playbook as a fallback: "${snippet}"` },
+      { role: 'ai', text: `Sent to the **playbook owner** for approval — proposed as a **fallback** for *${playbookName ?? 'the playbook'}*. It lands in Playbook → **Suggested additions**; once approved it's added and the agent flags it automatically from then on.` }])
   }
 
   // Ad hoc analysis of whatever the user last highlighted in the document (via the ✨ Ask AI
@@ -104,7 +120,7 @@ export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onStartDra
 
       <div className="border-t border-slate-100 p-2.5">
         {lastSel && (
-          <button onClick={() => sendToAgent(`Suggest to add to playbook as a fallback: "${lastSel.length > 200 ? lastSel.slice(0, 200) + '…' : lastSel}"`)}
+          <button onClick={suggestClauseToPlaybook}
             className="mb-1.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-ai-200 py-1.5 text-[11.5px] font-semibold text-ai-700 hover:bg-ai-50">
             <BookOpen size={12} /> Suggest this clause to the playbook
           </button>

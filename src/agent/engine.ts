@@ -322,41 +322,60 @@ const intents: Intent[] = [
   },
   // ===== build-12: Eric's use-case feedback =====
   {
+    // Context-aware: operates on whichever agreement is currently open (s.canvas.agreementId),
+    // falling back to the Vishay NDA when nothing's open — so "send back" said while reviewing
+    // e.g. the Northwind MSA sends back the Northwind MSA, not always Vishay.
     name: 'send_back', cap: 'disposition',
     test: (t) => has(t, 'send back', 'send the clean copy', 'clean copy and redline', 'send our redline', 'send the redline back', 'send it back to the counterparty', 'return to counterparty'),
-    reply: () => ({
-      text: `Opening the **send-back** panel for the Vishay NDA. I'll assemble a **clean copy** (your working copy with changes accepted) plus a **redline vs their Draft 2** (non-cumulative), and can draft an internal or external **summary of the changes**. Nothing goes out until you send it — status then moves to **In Negotiation**.`,
-      artifact: { kind: 'send_back', refId: 'AGR-2201', title: 'Vishay NDA — send back (clean copy + redline)' },
-      actions: [],
-    }),
+    reply: () => {
+      const s = useStore.getState()
+      const ag = s.agreements.find((a) => a.id === s.canvas.agreementId) ?? s.agreements.find((a) => a.id === 'AGR-2201')!
+      return {
+        text: `Opening the **send-back** panel for the ${ag.title}. I'll assemble a **clean copy** (your working copy with changes accepted) plus a **redline vs their last version** (non-cumulative), and can draft an internal or external **summary of the changes**. Nothing goes out until you send it — status then moves to **In Negotiation**.`,
+        artifact: { kind: 'send_back', refId: ag.id, title: `${ag.title} — send back (clean copy + redline)` },
+        actions: [],
+      }
+    },
   },
   {
     name: 'generate_redline', cap: 'disposition',
     test: (t) => has(t, 'generate the redline', 'generate a redline', 'produce a redline', 'redline document', 'clean copy plus redline'),
-    reply: () => ({
-      text: `Generating the **redline document** — your clean copy vs the counterparty's last version, word-level. Open it below; you can switch the comparison version or make it cumulative (e.g. V-latest vs V1), then send a clean copy + redline.`,
-      artifact: { kind: 'redline_doc', refId: 'AGR-2201', title: 'Vishay NDA — redline document' },
-      actions: [],
-    }),
+    reply: () => {
+      const s = useStore.getState()
+      const ag = s.agreements.find((a) => a.id === s.canvas.agreementId) ?? s.agreements.find((a) => a.id === 'AGR-2201')!
+      return {
+        text: `Generating the **redline document** — your clean copy vs the counterparty's last version, word-level. Open it below; you can switch the comparison version or make it cumulative (e.g. V-latest vs V1), then send a clean copy + redline.`,
+        artifact: { kind: 'redline_doc', refId: ag.id, title: `${ag.title} — redline document` },
+        actions: [],
+      }
+    },
   },
   {
     name: 'summarize_changes', cap: 'disposition',
     test: (t) => (has(t, 'summarize the changes', 'summary of changes', 'summarize my changes', 'summarize our changes', 'change summary', 'draft a summary of the changes')) && !has(t, 'deal summary', 'mondelez'),
-    reply: () => ({
-      text: `I can draft a **summary of the changes** — an **internal** version (for a sales rep or contributor) or an **external** version (for the counterparty). Open the send-back panel below, generate the redline, and pick the audience.`,
-      artifact: { kind: 'send_back', refId: 'AGR-2201', title: 'Vishay NDA — change summary' },
-      actions: [],
-    }),
+    reply: () => {
+      const s = useStore.getState()
+      const ag = s.agreements.find((a) => a.id === s.canvas.agreementId) ?? s.agreements.find((a) => a.id === 'AGR-2201')!
+      return {
+        text: `I can draft a **summary of the changes** — an **internal** version (for a sales rep or contributor) or an **external** version (for the counterparty). Open the send-back panel below, generate the redline, and pick the audience.`,
+        artifact: { kind: 'send_back', refId: ag.id, title: `${ag.title} — change summary` },
+        actions: [],
+      }
+    },
   },
   {
     name: 'accept_all_clean', cap: 'disposition',
     test: (t) => (has(t, 'accept all', 'accept everything', 'make a clean copy', 'accept the changes')) && !has(t, 'recommended'),
-    reply: () => ({
-      text: `Accepted all tracked changes on the working copy — it's now a **clean copy**. Attorneys can't carry cumulative track-changes across versions; once accepted, the doc is clean and I redline it against the counterparty's version. Open it below, then assemble the clean copy + redline.`,
-      artifact: { kind: 'document', refId: 'AGR-2201', title: 'Vishay NDA — clean copy' },
-      effect: () => useStore.getState().acceptAllChanges('V-2201-2'),
-      actions: [{ label: 'Assemble clean copy + redline', prompt: 'send the clean copy and redline back to the counterparty', variant: 'primary' }],
-    }),
+    reply: () => {
+      const s = useStore.getState()
+      const ag = s.agreements.find((a) => a.id === s.canvas.agreementId) ?? s.agreements.find((a) => a.id === 'AGR-2201')!
+      return {
+        text: `Accepted all tracked changes on the working copy — it's now a **clean copy**. Attorneys can't carry cumulative track-changes across versions; once accepted, the doc is clean and I redline it against the counterparty's version. Open it below, then assemble the clean copy + redline.`,
+        artifact: { kind: 'document', refId: ag.id, title: `${ag.title} — clean copy` },
+        effect: () => useStore.getState().acceptAllChanges(ag.current_version_id),
+        actions: [{ label: 'Assemble clean copy + redline', prompt: 'send the clean copy and redline back to the counterparty', variant: 'primary' }],
+      }
+    },
   },
   {
     name: 'execute_deal', cap: 'disposition',
