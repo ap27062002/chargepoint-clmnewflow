@@ -377,9 +377,12 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
   const canvas = useStore((s) => s.canvas)
   const navigate = useStore((s) => s.navigate)
   const openSendBack = useStore((s) => s.openSendBack)
+  // Initiators (e.g. Marcus) get a read-only view of the document: no Ask Claude panel, no
+  // deviation List — they can track and read a deal, not decide or draft on it.
+  const isInitiator = useStore((s) => s.users.find((u) => u.id === s.currentUserId)?.role === 'initiator')
   const rawMode = canvas.reviewMode ?? 'directive'
-  const mode = rawMode === 'document' ? 'directive' : rawMode // 'document' aliases to the split
-  const [rightTab, setRightTab] = useState<RightTab>('ai')
+  const mode = rawMode === 'document' ? 'directive' : (isInitiator && rawMode === 'issues' ? 'directive' : rawMode) // 'document' aliases to the split
+  const [rightTab, setRightTab] = useState<RightTab>(isInitiator ? null : 'ai')
   const [aiSeed, setAiSeed] = useState<{ text: string; nonce: number } | null>(null)
   const [startDraftingOpen, setStartDraftingOpen] = useState(false)
   const [focusClause, setFocusClause] = useState<string | undefined>()
@@ -400,11 +403,13 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
   }
 
   // Send-back is reached via the green stage-tracker CTA, not a tab here (avoids a duplicate control).
-  const TABS = [
-    { key: 'directive', label: 'Review', icon: <ListChecks size={14} /> },
-    { key: 'issues', label: 'List', icon: <FileText size={14} /> },
-    { key: 'compare', label: 'Compare', icon: <GitCompareArrows size={14} /> },
-  ] as const
+  const TABS = (
+    [
+      { key: 'directive', label: 'Review', icon: <ListChecks size={14} /> },
+      { key: 'issues', label: 'List', icon: <FileText size={14} /> },
+      { key: 'compare', label: 'Compare', icon: <GitCompareArrows size={14} /> },
+    ] as const
+  ).filter((t) => !isInitiator || t.key !== 'issues')
   const activeTab = mode === 'redline' ? 'sendback' : mode
   const onTab = (k: string) => { if (k === 'sendback') openSendBack(agreementId); else navigate({ reviewMode: k as typeof rawMode }) }
 
@@ -457,8 +462,9 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
           <div className="min-w-0 flex-1 overflow-y-auto"><IssuesView agreementId={agreementId} onViewInDoc={(id) => { navigate({ reviewMode: 'directive' }); focusDeviation(id) }} /></div>
         ) : (
           <>
-            {/* SPLIT: document (left) + review directive / ask claude / comments (right) — Eric §2 */}
-            <div className="flex min-w-0 flex-1 flex-col border-r border-slate-200">
+            {/* SPLIT: document (left) + review directive / ask claude / comments (right) — Eric §2.
+                Initiators get read-only, full-width document — no Ask Claude panel at all. */}
+            <div className={clsx('flex min-w-0 flex-1 flex-col', !isInitiator && 'border-r border-slate-200')}>
               {hasDoc
                 ? <DocumentViewer versionId={activeVerId!} agreementId={agreementId} focusClauseId={focusClause?.trim()} focusRef={canvas.reviewFocusRef} onAskAi={askAiAboutSelection} />
                 : <div className="flex h-full flex-col items-center justify-center px-8 text-center text-sm text-slate-400">
@@ -467,7 +473,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
                     {documents['V-2201-2'] && agreementId === 'AGR-2201' && <button onClick={() => setSelVer(reviewVersion?.id)} className="mt-2 text-[12.5px] font-semibold text-brand-600 hover:underline">View the counterparty redline (Draft 2)</button>}
                   </div>}
             </div>
-            {rightTab === null ? (
+            {isInitiator ? null : rightTab === null ? (
               <div className="flex w-12 shrink-0 flex-col items-center gap-2 bg-white py-3">
                 <button onClick={() => setRightTab('ai')} title="Ask Claude" className="flex h-9 w-9 items-center justify-center rounded-lg text-ai-600 hover:bg-ai-50"><Sparkles size={16} /></button>
               </div>

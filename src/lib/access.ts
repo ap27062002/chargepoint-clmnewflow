@@ -89,7 +89,6 @@ export function startersFor(role: Role): Starter[] {
       return [
         { label: 'Create a ticket', sub: 'Negotiation or general legal support', prompt: 'create a ticket' },
         { label: 'Track my requests', sub: 'Status of my tickets', prompt: "what's on my plate?" },
-        { label: 'Open comments report', sub: 'Every unresolved comment on my matters', prompt: 'open comments report' },
       ]
     case 'contributor':
       return [
