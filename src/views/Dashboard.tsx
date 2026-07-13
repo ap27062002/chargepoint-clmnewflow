@@ -189,7 +189,7 @@ export function Dashboard() {
         </table>
       </Card>
 
-      <div className="mb-4 grid grid-cols-2 gap-3">
+      <div className={clsx('mb-4 grid gap-3', cu.role === 'initiator' ? 'grid-cols-1' : 'grid-cols-2')}>
         {/* ============ Where I'm Tagged ============ */}
         <Card className="p-4">
           <div className="mb-2 flex items-center justify-between">
@@ -213,21 +213,24 @@ export function Dashboard() {
           </div>
         </Card>
 
-        {/* ============ Needs attention (kept, compact) ============ */}
-        <Card className="p-4">
-          <div className="mb-2 flex items-center gap-2"><AlertTriangle size={14} className="text-amber-600" /><SectionLabel className="text-amber-700">Needs attention</SectionLabel></div>
-          <div className="space-y-1.5">
-            {m.attention.slice(0, 4).map((a, i) => (
-              <button key={i} onClick={() => (a.agreementId ? openAgreement(a.agreementId, 'review') : a.ticketId ? openTicket(a.ticketId) : undefined)}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left ring-1 ring-transparent hover:bg-slate-50">
-                {attnIcon[a.kind]}
-                <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-700">{a.label}</span>
-                <ChevronRight size={13} className="shrink-0 text-slate-300" />
-              </button>
-            ))}
-            {m.attention.length === 0 && <div className="py-3 text-center text-[12px] text-slate-400">All clear.</div>}
-          </div>
-        </Card>
+        {/* ============ Needs attention (kept, compact) — not for initiators: it's a
+            triage/decision surface (red lines, deviations), not tracking/reading a deal. */}
+        {cu.role !== 'initiator' && (
+          <Card className="p-4">
+            <div className="mb-2 flex items-center gap-2"><AlertTriangle size={14} className="text-amber-600" /><SectionLabel className="text-amber-700">Needs attention</SectionLabel></div>
+            <div className="space-y-1.5">
+              {m.attention.slice(0, 4).map((a, i) => (
+                <button key={i} onClick={() => (a.agreementId ? openAgreement(a.agreementId, 'review') : a.ticketId ? openTicket(a.ticketId) : undefined)}
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left ring-1 ring-transparent hover:bg-slate-50">
+                  {attnIcon[a.kind]}
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-700">{a.label}</span>
+                  <ChevronRight size={13} className="shrink-0 text-slate-300" />
+                </button>
+              ))}
+              {m.attention.length === 0 && <div className="py-3 text-center text-[12px] text-slate-400">All clear.</div>}
+            </div>
+          </Card>
+        )}
       </div>
 
       {/* ============ Admin analytics: tagged-item aging ============ */}
