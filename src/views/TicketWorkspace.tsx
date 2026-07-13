@@ -104,6 +104,9 @@ export function TicketWorkspace() {
   const tickets = useStore((s) => s.tickets)
   const agreements = useStore((s) => s.agreements)
   const navigate = useStore((s) => s.navigate)
+  // Initiators (e.g. Marcus) are read-only in a ticket workspace: no composing comments, no
+  // uploading versions — those are contribution actions, not tracking/reading a deal.
+  const isInitiator = useStore((s) => s.users.find((u) => u.id === s.currentUserId)?.role === 'initiator')
 
   const ticket = tickets.find((t) => t.id === canvas.ticketId) ?? tickets[0]
   const [commentsOpen, setCommentsOpen] = useState(false)
@@ -133,7 +136,7 @@ export function TicketWorkspace() {
               <Chip className="bg-indigo-50 text-indigo-600 ring-indigo-500/20">{ags.length} document{ags.length === 1 ? '' : 's'}</Chip>
             </div>
           </div>
-          {tab !== 'review' && (
+          {tab !== 'review' && !isInitiator && (
             <div className="flex shrink-0 gap-1.5">
               <Button size="sm" variant="outline" icon={<AtSign size={12} />} onClick={() => setCommentsOpen(true)}>Open Comments</Button>
               {ticket.type !== 'inquiry' && <Button size="sm" variant="primary" icon={<UploadCloud size={12} />} onClick={() => setUploadOpen(true)}>Upload New Version</Button>}

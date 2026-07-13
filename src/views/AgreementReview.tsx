@@ -381,7 +381,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
   // deviation List — they can track and read a deal, not decide or draft on it.
   const isInitiator = useStore((s) => s.users.find((u) => u.id === s.currentUserId)?.role === 'initiator')
   const rawMode = canvas.reviewMode ?? 'directive'
-  const mode = rawMode === 'document' ? 'directive' : (isInitiator && rawMode === 'issues' ? 'directive' : rawMode) // 'document' aliases to the split
+  const mode = rawMode === 'document' ? 'directive' : (isInitiator && (rawMode === 'issues' || rawMode === 'compare') ? 'directive' : rawMode) // 'document' aliases to the split
   const [rightTab, setRightTab] = useState<RightTab>(isInitiator ? null : 'ai')
   const [aiSeed, setAiSeed] = useState<{ text: string; nonce: number } | null>(null)
   const [startDraftingOpen, setStartDraftingOpen] = useState(false)
@@ -409,7 +409,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
       { key: 'issues', label: 'List', icon: <FileText size={14} /> },
       { key: 'compare', label: 'Compare', icon: <GitCompareArrows size={14} /> },
     ] as const
-  ).filter((t) => !isInitiator || t.key !== 'issues')
+  ).filter((t) => !isInitiator || (t.key !== 'issues' && t.key !== 'compare'))
   const activeTab = mode === 'redline' ? 'sendback' : mode
   const onTab = (k: string) => { if (k === 'sendback') openSendBack(agreementId); else navigate({ reviewMode: k as typeof rawMode }) }
 
