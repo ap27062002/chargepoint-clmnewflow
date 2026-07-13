@@ -79,6 +79,9 @@ function DealOverview({ ticketId }: { ticketId: string }) {
 function InquiryStageBar({ ticketId }: { ticketId: string }) {
   const ticket = useStore((s) => s.tickets.find((t) => t.id === ticketId))
   const advanceInquiry = useStore((s) => s.advanceInquiry)
+  // Only the assigned attorney decides when work starts/resolves — not the initiator who filed
+  // it, and not other roles just viewing the ticket.
+  const role = useStore((s) => s.users.find((u) => u.id === s.currentUserId)?.role)
   if (!ticket) return null
   const STAGES = ['Open', 'In Progress', 'Resolved'] as const
   const idx = STAGES.indexOf(ticket.status as (typeof STAGES)[number])
@@ -90,7 +93,7 @@ function InquiryStageBar({ ticketId }: { ticketId: string }) {
           {i < STAGES.length - 1 && <ArrowRight size={12} className="text-slate-300" />}
         </div>
       ))}
-      {idx < STAGES.length - 1 && (
+      {idx < STAGES.length - 1 && role === 'attorney' && (
         <button onClick={() => advanceInquiry(ticketId)} className="ml-auto rounded-lg bg-brand-500 px-3 py-1 text-[12px] font-semibold text-white hover:bg-brand-600">
           {idx === 0 ? 'Start work' : 'Mark resolved'}
         </button>
