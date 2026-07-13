@@ -189,7 +189,7 @@ export function Dashboard() {
         </table>
       </Card>
 
-      <div className={clsx('mb-4 grid gap-3', cu.role === 'initiator' ? 'grid-cols-1' : 'grid-cols-2')}>
+      <div className={clsx('mb-4 grid gap-3', (cu.role === 'initiator' || cu.role === 'contributor') ? 'grid-cols-1' : 'grid-cols-2')}>
         {/* ============ Where I'm Tagged ============ */}
         <Card className="p-4">
           <div className="mb-2 flex items-center justify-between">
@@ -213,9 +213,9 @@ export function Dashboard() {
           </div>
         </Card>
 
-        {/* ============ Needs attention (kept, compact) — not for initiators: it's a
-            triage/decision surface (red lines, deviations), not tracking/reading a deal. */}
-        {cu.role !== 'initiator' && (
+        {/* ============ Needs attention (kept, compact) — not for initiators or contributors:
+            it's a triage/decision surface (red lines, deviations), not tracking/reading a deal. */}
+        {cu.role !== 'initiator' && cu.role !== 'contributor' && (
           <Card className="p-4">
             <div className="mb-2 flex items-center gap-2"><AlertTriangle size={14} className="text-amber-600" /><SectionLabel className="text-amber-700">Needs attention</SectionLabel></div>
             <div className="space-y-1.5">
