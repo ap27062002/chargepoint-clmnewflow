@@ -53,7 +53,7 @@ export function CreateTicketModal({ onClose }: { onClose: () => void }) {
   const submit = () => {
     if (!canCreate) return
     if (kind === 'support') {
-      createInquiry(query.trim())
+      createInquiry(query.trim(), 'General Legal Support')
     } else {
       // Same pipeline as the chat wizard — drafts materialize with real clause bodies.
       startNegotiationWizard()

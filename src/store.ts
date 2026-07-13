@@ -130,7 +130,9 @@ interface CLMState {
   updateIntakeField: (key: keyof IntakePayload, value: IntakePayload[keyof IntakePayload]) => void
   confirmCounterparty: (profile: CounterpartyProfile) => void
   generateNdaFromIntake: () => Ticket | null
-  createInquiry: (question: string) => Ticket   // R79 — a ticket with no agreement, just a question→response
+  createInquiry: (question: string, titlePrefix?: string) => Ticket   // R79 — a ticket with no agreement, just a question→response
+  pendingSupportQuery: boolean   // "create a support/RFP ticket" asked for the query; next message is it
+  setPendingSupportQuery: (v: boolean) => void
   createTicketFull: (input: { title: string; kind: 'negotiation' | 'support'; counterparty?: string; files: string[]; attorneyId?: string }) => void // Dashboard §1 Open Ticket modal
   // ----- Chat-embedded negotiation-ticket wizard (Ticketing §New) -----
   negotiationWizard: NegotiationWizardState | null
@@ -344,6 +346,8 @@ export const useStore = create<CLMState>((set, get) => ({
   canvas: { view: 'dashboard', open: false },
   chat: [GREETING],
   negotiationWizard: null,
+  pendingSupportQuery: false,
+  setPendingSupportQuery: (v) => set({ pendingSupportQuery: v }),
   agentThinking: false,
   toast: null,
   cmdkOpen: false,
@@ -891,8 +895,8 @@ export const useStore = create<CLMState>((set, get) => ({
 
   addIntakeAgreementType: (type) => set((s) => ({ intakeExtraTypes: s.intakeExtraTypes.includes(type) ? s.intakeExtraTypes.filter((x) => x !== type) : [...s.intakeExtraTypes, type] })),
   // R79 — a ticket that is a pure inquiry (no agreement), with an agent-drafted response.
-  createInquiry: (question) => {
-    const t = get().createTicketFromAgent({ title: `Inquiry — ${question.length > 56 ? question.slice(0, 56) + '…' : question}`, counterparty_name: '—', type: 'inquiry', priority: 'normal', description: question })
+  createInquiry: (question, titlePrefix = 'Inquiry') => {
+    const t = get().createTicketFromAgent({ title: `${titlePrefix} — ${question.length > 56 ? question.slice(0, 56) + '…' : question}`, counterparty_name: '—', type: 'inquiry', priority: 'normal', description: question })
     const answer = precedentAnswer(question)
     set((s) => ({ messages: [...s.messages,
       { id: nextId('M'), thread_type: 'deal_level', ticket_id: t.id, agreement_id: null, author_id: get().currentUserId, body: question, created_date: now() },

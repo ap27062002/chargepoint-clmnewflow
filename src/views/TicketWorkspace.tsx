@@ -116,11 +116,16 @@ export function TicketWorkspace() {
   const activeAgreementId = canvas.agreementId ?? ags[0]?.id
   const activeAgreement = agreements.find((a) => a.id === activeAgreementId)
 
-  const tabs = [
-    { key: 'overview' as const, label: 'Deal Overview', icon: <LayoutGrid size={15} /> },
-    { key: 'deal' as const, label: 'Deal Discussion', icon: <MessagesSquare size={15} /> },
-    { key: 'review' as const, label: 'Agreement Review', icon: <FileSearch size={15} /> },
-  ]
+  // RFP / general-legal-support tickets have no agreement — Deal Overview and Agreement Review
+  // don't apply. They get a single "Query Discussion" tab instead (current-state stage bar
+  // above already shows Open → In Progress → Resolved).
+  const tabs = ticket.type === 'inquiry'
+    ? [{ key: 'deal' as const, label: 'Query Discussion', icon: <MessagesSquare size={15} /> }]
+    : [
+        { key: 'overview' as const, label: 'Deal Overview', icon: <LayoutGrid size={15} /> },
+        { key: 'deal' as const, label: 'Deal Discussion', icon: <MessagesSquare size={15} /> },
+        { key: 'review' as const, label: 'Agreement Review', icon: <FileSearch size={15} /> },
+      ]
   const onTab = (k: 'overview' | 'deal' | 'review') => navigate({ agreementTab: k })
 
   return (

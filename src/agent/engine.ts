@@ -146,20 +146,17 @@ const intents: Intent[] = [
     },
   },
   {
+    // RFP / general legal support tickets no longer get created blind — ask for the actual
+    // query first (captured by the pendingSupportQuery check at the top of route()), then
+    // create it with that query attached, same as a logged inquiry.
     name: 'create_ticket_support', cap: 'intake',
     test: (t) => has(t, 'support ticket', 'legal support ticket'),
-    reply: (t) => {
-      const cp = t.match(/with ([a-z][\w .&-]+?)(?:[.,!]|$)/i)?.[1]?.trim()
-      const title = t.match(/for (?:an? )?(.+?)(?: with [\w .&-]+)?(?:[.,!]|$)/i)?.[1]?.trim()
-      const cpName = cp ? cp.replace(/\b\w/g, (c) => c.toUpperCase()) : 'Metro Transit Authority'
-      const ticketTitle = title ? title.charAt(0).toUpperCase() + title.slice(1) : 'RFP review — legal support'
-      return {
-        text: `Done — **General Legal Support** ticket **"${ticketTitle}"** created with **${cpName}** (no agreement attached). It gets a deal page with the **Deal Discussion** thread and **Open → In Progress → Resolved** tracking. Opening it now.`,
-        artifact: { kind: 'none' },
-        effect: () => useStore.getState().createTicketFull({ title: ticketTitle, kind: 'support', counterparty: cpName, files: [], attorneyId: 'u_kirsten' }),
-        actions: [],
-      }
-    },
+    reply: () => ({
+      text: `Happy to open a **General Legal Support** ticket. **What's your question or request?** Type it below — I'll log it, draft an initial response from the playbook + precedent, and route it for attorney review.`,
+      artifact: { kind: 'none' },
+      effect: () => useStore.getState().setPendingSupportQuery(true),
+      actions: [],
+    }),
   },
   {
     // Legal-admin ticket assignment: "assign TKT-1042 to Kirsten and loop in Marcus for
@@ -979,6 +976,20 @@ function route(text: string): { reply: AgentReply; matched: boolean } {
           { label: 'Yes, create it', prompt: 'confirm ticket wizard', variant: 'primary' },
           { label: 'Start over', prompt: 'restart ticket wizard' },
         ],
+      },
+    }
+  }
+  // create_ticket_support asked "what's your question?" — this next message is the query, not a
+  // normal intent (so a query that happens to mention e.g. "playbook" doesn't get hijacked).
+  if (useStore.getState().pendingSupportQuery && text.trim()) {
+    useStore.getState().setPendingSupportQuery(false)
+    const ticket = useStore.getState().createInquiry(text.trim(), 'General Legal Support')
+    return {
+      matched: true,
+      reply: {
+        text: `Logged — **${ticket.title}**. I've drafted an initial response from the playbook + executed precedent in the Query Discussion thread; edit it or tag an attorney for sign-off. Open → In Progress → Resolved tracking is on the ticket.`,
+        artifact: { kind: 'none' },
+        actions: [],
       },
     }
   }
