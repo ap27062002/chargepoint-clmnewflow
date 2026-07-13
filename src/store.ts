@@ -22,7 +22,6 @@ import { seedDocuments, buildCleanCopy, buildRedlineDoc, summarizeRedline, clean
 import { analyzePlaybook } from '@/lib/playbookAnalysis'
 import { deriveProvisions, comparativeAnalysis, folderAgreements, composeBodyFromPrecedents } from '@/data/playbookDerive'
 import { applyPlaybookInstruction } from '@/lib/playbookOps'
-import { precedentAnswer } from '@/lib/precedent'
 import { TEAM_FOLDERS } from '@/data/folders'
 import { generateSectionBodies, bodyForSection } from '@/lib/templateGen'
 import { can } from '@/lib/access'
@@ -894,17 +893,16 @@ export const useStore = create<CLMState>((set, get) => ({
   },
 
   addIntakeAgreementType: (type) => set((s) => ({ intakeExtraTypes: s.intakeExtraTypes.includes(type) ? s.intakeExtraTypes.filter((x) => x !== type) : [...s.intakeExtraTypes, type] })),
-  // R79 — a ticket that is a pure inquiry (no agreement), with an agent-drafted response.
+  // R79 — a ticket that is a pure inquiry (no agreement). Logs the query only — a human
+  // (attorney) responds manually in Query Discussion, no auto-drafted AI answer.
   createInquiry: (question, titlePrefix = 'Inquiry') => {
     const t = get().createTicketFromAgent({ title: `${titlePrefix} — ${question.length > 56 ? question.slice(0, 56) + '…' : question}`, counterparty_name: '—', type: 'inquiry', priority: 'normal', description: question })
-    const answer = precedentAnswer(question)
     set((s) => ({ messages: [...s.messages,
       { id: nextId('M'), thread_type: 'deal_level', ticket_id: t.id, agreement_id: null, author_id: get().currentUserId, body: question, created_date: now() },
-      { id: nextId('M'), thread_type: 'deal_level', ticket_id: t.id, agreement_id: null, author_id: 'ai_engine', body: `${answer}\n\n_This is an inquiry (no agreement attached) — I've drafted a response above from the playbook + executed precedent. Edit it, or tag an attorney for sign-off._`, created_date: now() },
     ] }))
-    get().audit_push({ event_type: 'ticket_created', ticket_id: t.id, actor_id: 'ai_engine', summary: `Inquiry logged (no agreement); agent drafted a response.` })
+    get().audit_push({ event_type: 'ticket_created', ticket_id: t.id, actor_id: get().currentUserId, summary: `Inquiry logged (no agreement) — awaiting attorney response.` })
     get().openTicket(t.id)
-    get().setToast('Inquiry logged — agent drafted a response for your review.')
+    get().setToast('Inquiry logged — awaiting attorney response.')
     return t
   },
 

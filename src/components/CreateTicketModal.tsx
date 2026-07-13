@@ -3,8 +3,8 @@
 //   own), counterparty. Routes through the SAME wizard pipeline as the chat flow
 //   (negotiationWizard → confirmNegotiationWizard), so drafts materialize identically.
 //   Attorney assignment is automatic (routing engine) — no manual dropdown.
-// - General Legal Support: one question — your query. Creates an inquiry ticket with an
-//   agent-drafted first response (createInquiry).
+// - General Legal Support: one question — your query. Creates an inquiry ticket, logged and
+//   routed to an attorney to respond manually in Query Discussion (createInquiry).
 import { useState } from 'react'
 import { clsx } from 'clsx'
 import { X, UploadCloud, Ticket as TicketIcon, Check, ChevronDown } from 'lucide-react'
@@ -86,12 +86,12 @@ export function CreateTicketModal({ onClose }: { onClose: () => void }) {
 
         {kind === 'support' ? (
           <>
-            {/* One question — the agent drafts a first response and opens the ticket. */}
+            {/* One question — logs it and opens the ticket for an attorney to answer manually. */}
             <label className="mt-3 block text-[11px] font-bold uppercase tracking-wide text-slate-400">Enter your query</label>
             <textarea autoFocus value={query} onChange={(e) => setQuery(e.target.value)} rows={3}
               placeholder="e.g. Can we sign Aptiv's mutual NDA on their paper? What's our exposure on the indemnity clause?"
               className="mt-1 w-full resize-none rounded-lg border border-slate-300 px-2.5 py-2 text-[13px] outline-none focus:border-brand-400" />
-            <div className="mt-1 text-[11px] text-slate-400">The agent drafts a first response from the playbook + executed precedent; an attorney is routed automatically.</div>
+            <div className="mt-1 text-[11px] text-slate-400">Logged to Query Discussion; an attorney is routed automatically to respond.</div>
           </>
         ) : (
           <>

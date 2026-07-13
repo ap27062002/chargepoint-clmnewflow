@@ -152,7 +152,7 @@ const intents: Intent[] = [
     name: 'create_ticket_support', cap: 'intake',
     test: (t) => has(t, 'support ticket', 'legal support ticket'),
     reply: () => ({
-      text: `Happy to open a **General Legal Support** ticket. **What's your question or request?** Type it below — I'll log it, draft an initial response from the playbook + precedent, and route it for attorney review.`,
+      text: `Happy to open a **General Legal Support** ticket. **What's your question or request?** Type it below — I'll log it and route it to Query Discussion for an attorney to respond.`,
       artifact: { kind: 'none' },
       effect: () => useStore.getState().setPendingSupportQuery(true),
       actions: [],
@@ -688,15 +688,16 @@ const intents: Intent[] = [
     }),
   },
   {
-    // R79 — a pure inquiry (a question, no agreement) → logged as an inquiry ticket + drafted response.
+    // R79 — a pure inquiry (a question, no agreement) → logged as an inquiry ticket, awaiting a
+    // human (attorney) response in Query Discussion — no auto-drafted AI answer.
     name: 'create_inquiry', cap: 'intake',
     test: (t) => (has(t, 'log an inquiry', 'log a question', 'i have a question', 'legal question', 'ask legal', 'quick question', 'just a question', 'no agreement, just', 'open an inquiry', 'raise an inquiry'))
       && !has(t, 'create an nda', 'draft an nda', 'new nda'),
     reply: (t) => {
       const q = t.replace(/^.*?(question|inquiry)[:,]?\s*/i, '').trim() || t
       return {
-        text: `Logged that as an **inquiry** (no agreement attached) and drafted a response from the playbook + executed precedent — open it to review, edit, or tag an attorney for sign-off.`,
-        artifact: { kind: 'ticket', title: 'Inquiry — drafted response' },
+        text: `Logged that as an **inquiry** (no agreement attached) — open it to review in Query Discussion, or tag an attorney for a response.`,
+        artifact: { kind: 'ticket', title: 'Inquiry logged' },
         effect: () => useStore.getState().createInquiry(q),
         actions: [],
       }
@@ -987,7 +988,7 @@ function route(text: string): { reply: AgentReply; matched: boolean } {
     return {
       matched: true,
       reply: {
-        text: `Logged — **${ticket.title}**. I've drafted an initial response from the playbook + executed precedent in the Query Discussion thread; edit it or tag an attorney for sign-off. Open → In Progress → Resolved tracking is on the ticket.`,
+        text: `Logged — **${ticket.title}**. It's waiting in **Query Discussion** for an attorney to respond — Open → In Progress → Resolved tracking is on the ticket.`,
         artifact: { kind: 'none' },
         actions: [],
       },
