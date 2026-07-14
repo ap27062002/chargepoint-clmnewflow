@@ -192,6 +192,8 @@ function PlaybookCreate() {
   const refine = useStore((s) => s.refinePlaybookDraft)
   const setDraftExampleRefs = useStore((s) => s.setDraftExampleRefs)
   const renameDraft = useStore((s) => s.renamePlaybookDraft)
+  const setDraftTemplate = useStore((s) => s.setDraftTemplate)
+  const templates = useStore((s) => s.templates)
   const agreements = useStore((s) => s.agreements)
   const tickets = useStore((s) => s.tickets)
   const draft = drafts.find((d) => d.id === canvas.playbookDraftId) ?? drafts[0]
@@ -236,14 +238,20 @@ function PlaybookCreate() {
               <div className="text-[13px] font-bold text-slate-700">Drop your template and negotiated agreements here</div>
               <div className="mt-0.5 text-[11px] text-slate-400">{dropped > 0 ? `${dropped} file${dropped === 1 ? '' : 's'} received — plus the folder selection below.` : 'Or pick a folder / browse the archive below.'}</div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-[11.5px] font-semibold text-slate-500">Select a folder:</span>
               <select defaultValue={draft.sourcePath ?? folder?.path ?? ''} className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[12px] outline-none">
                 <option value={folder?.path ?? '/Legal/NDAs'}>{folder?.path ?? '/Legal/NDAs'}</option>
                 <option>/Legal/Executed/2025</option>
                 <option>/Legal/MSAs — enterprise</option>
               </select>
-              <Chip className="ml-auto bg-white text-slate-500 ring-slate-200">Template: {draft.sourceTemplateId ?? `${draft.agreement_type} standard`}</Chip>
+              <span className="ml-2 text-[11.5px] font-semibold text-slate-500">Select a template:</span>
+              <select value={draft.sourceTemplateId ?? ''} onChange={(e) => setDraftTemplate(draft.id, e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[12px] outline-none">
+                <option value="" disabled>Pick a template…</option>
+                {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <Chip className="ml-auto bg-white text-slate-500 ring-slate-200">Template: {templates.find((t) => t.id === draft.sourceTemplateId)?.name ?? draft.sourceTemplateId ?? `${draft.agreement_type} standard`}</Chip>
             </div>
             <div>
               <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Describe what's in these documents</div>
