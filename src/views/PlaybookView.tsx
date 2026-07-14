@@ -191,6 +191,7 @@ function PlaybookCreate() {
   const publish = useStore((s) => s.publishPlaybookDraft)
   const refine = useStore((s) => s.refinePlaybookDraft)
   const setDraftExampleRefs = useStore((s) => s.setDraftExampleRefs)
+  const renameDraft = useStore((s) => s.renamePlaybookDraft)
   const agreements = useStore((s) => s.agreements)
   const tickets = useStore((s) => s.tickets)
   const draft = drafts.find((d) => d.id === canvas.playbookDraftId) ?? drafts[0]
@@ -209,7 +210,16 @@ function PlaybookCreate() {
   return (
     <div className="space-y-3">
       <Card className="p-4">
-        <div className="flex items-center gap-2"><Wand2 size={16} className="text-ai-600" /><span className="text-[14px] font-bold text-slate-800">{draft.name}</span><Chip className="bg-ai-50 text-ai-700 ring-ai-500/20">{draft.stage}</Chip></div>
+        <div className="flex items-center gap-2">
+          <Wand2 size={16} className="shrink-0 text-ai-600" />
+          {draft.stage === 'collecting' ? (
+            <input value={draft.name} onChange={(e) => renameDraft(draft.id, e.target.value)} placeholder="Name this playbook…"
+              className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1 text-[14px] font-bold text-slate-800 outline-none hover:border-slate-200 focus:border-ai-400 focus:bg-white" />
+          ) : (
+            <span className="text-[14px] font-bold text-slate-800">{draft.name}</span>
+          )}
+          <Chip className="shrink-0 bg-ai-50 text-ai-700 ring-ai-500/20">{draft.stage}</Chip>
+        </div>
         <p className="mt-1 text-[12px] text-slate-500">“{draft.rawPrompt}”</p>
         {/* Step 1 (Eric): a full-width DROP ZONE + folder select + a narrative description —
             the Claude-project pattern. The checkbox picker is demoted to "Browse archive". */}
@@ -393,6 +403,12 @@ function PlaybookLibrary() {
                       <div><div className="text-[12.5px] font-semibold text-slate-700">{label}</div><div className="text-[11px] text-slate-400">{sourceDefaults[type]?.path ?? 'Pick sources in the builder'} · {sourceDefaults[type]?.exampleAgreementIds.length ?? 0} examples</div></div>
                     </button>
                   ))}
+                  <div className="my-1 border-t border-slate-100" />
+                  <button onClick={() => { setCreateOpen(false); startDraft('New Playbook', 'Other', 'Start a new playbook from scratch') }}
+                    className="flex w-full items-start gap-2 rounded-lg px-2.5 py-1.5 text-left hover:bg-slate-50">
+                    <Plus size={13} className="mt-0.5 shrink-0 text-slate-400" />
+                    <div><div className="text-[12.5px] font-semibold text-slate-700">Start from scratch</div><div className="text-[11px] text-slate-400">Name it yourself and pick your own sources in the builder</div></div>
+                  </button>
                 </div>
               </>
             )}

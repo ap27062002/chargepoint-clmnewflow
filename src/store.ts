@@ -208,6 +208,7 @@ interface CLMState {
   suggestToPlaybook: (s: { playbook_id: string; provision_name: string; kind: SuggestionKind; proposed_text: string; rationale?: string; source_agreement_id?: string; source_section?: string }) => void
   decidePlaybookSuggestion: (id: string, decision: 'accept' | 'reject' | 'redline' | 'defer') => void
   startPlaybookDraft: (name: string, agreement_type: AgreementType, rawPrompt: string, opts?: { sourceTemplateId?: string; sourcePath?: string; exampleRefs?: string[] }) => string
+  renamePlaybookDraft: (draftId: string, name: string) => void
   advancePlaybookDraft: (draftId: string) => void
   publishPlaybookDraft: (draftId: string) => void
   refinePlaybookDraft: (draftId: string, instruction: string) => string // returns the agent's confirmation
@@ -1341,6 +1342,7 @@ export const useStore = create<CLMState>((set, get) => ({
     set((s) => ({ playbookDrafts: [draft, ...s.playbookDrafts], canvas: { ...s.canvas, view: 'playbook', open: true, playbookMode: 'create', playbookDraftId: id } }))
     return id
   },
+  renamePlaybookDraft: (draftId, name) => set((s) => ({ playbookDrafts: s.playbookDrafts.map((d) => (d.id === draftId ? { ...d, name } : d)) })),
   setDraftExampleRefs: (draftId, exampleRefs) => set((s) => ({ playbookDrafts: s.playbookDrafts.map((d) => (d.id === draftId ? { ...d, exampleRefs } : d)) })),
   setPlaybookSourceDefault: (type, folder) => {
     set((s) => {
