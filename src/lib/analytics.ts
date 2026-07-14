@@ -211,8 +211,13 @@ export interface ResourcePerformance {
   slaBreaches: number           // currently-open matters past their SLA target
 }
 
-// "Who handled the matter" + cycle time, per assigned legal resource.
-export function resourcePerformance(tickets: Ticket[], agreements: Agreement[], users: User[], asOf = AS_OF): ResourcePerformance[] {
+// "Who handled the matter" + cycle time, per assigned legal resource by default. Pass groupBy to
+// re-key by a different field — e.g. initiator_id, for reportee-level reporting under "My team"
+// (a sales manager cares who on their team opened it, not which attorney it was routed to).
+export function resourcePerformance(
+  tickets: Ticket[], agreements: Agreement[], users: User[], asOf = AS_OF,
+  groupBy: (t: Ticket) => string | null | undefined = (t) => t.assigned_attorney_id,
+): ResourcePerformance[] {
   const agByTicket = new Map<string, Agreement[]>()
   for (const a of agreements) {
     if (!agByTicket.has(a.ticket_id)) agByTicket.set(a.ticket_id, [])
@@ -220,9 +225,10 @@ export function resourcePerformance(tickets: Ticket[], agreements: Agreement[], 
   }
   const byUser = new Map<string, Ticket[]>()
   for (const t of tickets) {
-    if (!t.assigned_attorney_id) continue
-    if (!byUser.has(t.assigned_attorney_id)) byUser.set(t.assigned_attorney_id, [])
-    byUser.get(t.assigned_attorney_id)!.push(t)
+    const key = groupBy(t)
+    if (!key) continue
+    if (!byUser.has(key)) byUser.set(key, [])
+    byUser.get(key)!.push(t)
   }
 
   return [...byUser.entries()].map(([userId, ts]) => {

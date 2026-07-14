@@ -53,16 +53,18 @@ function StageDwellTable({ rows }: { rows: StageDwellRow[] }) {
   )
 }
 
-function ResourceTable({ rows }: { rows: ResourcePerformance[] }) {
+function ResourceTable({ rows, byReportee }: { rows: ResourcePerformance[]; byReportee?: boolean }) {
   return (
     <Card className="overflow-hidden">
       <div className="border-b border-slate-100 px-4 py-2.5">
-        <SectionLabel>By legal resource — who handled the matter</SectionLabel>
-        <p className="mt-0.5 text-[11.5px] text-slate-400">Open/closed load, average cycle time on closed matters, and current SLA breaches per assigned attorney.</p>
+        <SectionLabel>{byReportee ? 'By team member — who opened the matter' : 'By legal resource — who handled the matter'}</SectionLabel>
+        <p className="mt-0.5 text-[11.5px] text-slate-400">
+          {byReportee ? 'Open/closed load, average cycle time on closed matters, and current SLA breaches per person on your team.' : 'Open/closed load, average cycle time on closed matters, and current SLA breaches per assigned attorney.'}
+        </p>
       </div>
       <table className="w-full text-left text-[12.5px]">
         <thead><tr className="border-b border-slate-100 text-[10.5px] uppercase tracking-wide text-slate-400">
-          <th className="px-4 py-2 font-semibold">Resource</th>
+          <th className="px-4 py-2 font-semibold">{byReportee ? 'Team member' : 'Resource'}</th>
           <th className="px-2 py-2 font-semibold">Open</th>
           <th className="px-2 py-2 font-semibold">Closed</th>
           <th className="px-2 py-2 font-semibold">Avg. cycle (days)</th>
@@ -120,7 +122,12 @@ export function ReportsView() {
   const avgCycle = cycles.length ? Math.round(cycles.reduce((s, x) => s + x, 0) / cycles.length) : null
   const breaches = openTickets.filter((t) => slaStatus(t.created_date, t.sla_target_date, AS_OF).state === 'breach').length
 
-  const resourceRows = resourcePerformance(scopedTickets, scopedAgreements, users, AS_OF)
+  // Under "My team", a sales manager cares who on their team opened the matter, not which
+  // attorney it was routed to — group by initiator instead of assigned attorney.
+  const byReportee = scope === 'team' && isManager
+  const resourceRows = byReportee
+    ? resourcePerformance(scopedTickets, scopedAgreements, users, AS_OF, (t) => t.initiator_id)
+    : resourcePerformance(scopedTickets, scopedAgreements, users, AS_OF)
   const dwellRows = stageDwellMetrics(scopedAgreements, AS_OF)
   const scopeOptions: Scope[] = ['mine', ...(isManager ? (['team'] as const) : []), ...(isLeadership ? (['all'] as const) : [])]
 
@@ -178,7 +185,7 @@ export function ReportsView() {
         </div>
       </Card>
 
-      <div className="mb-4"><ResourceTable rows={resourceRows} /></div>
+      <div className="mb-4"><ResourceTable rows={resourceRows} byReportee={byReportee} /></div>
       <StageDwellTable rows={dwellRows} />
     </div>
   )
