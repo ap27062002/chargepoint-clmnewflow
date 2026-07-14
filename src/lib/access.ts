@@ -17,6 +17,7 @@ export type Capability =
   | 'playbook_suggest' // suggest a clause be added to the playbook
   | 'playbook_presentation' // R54 — control the look & feel (layout/nest/render/publish), ADMIN ONLY
   | 'templates'      // template "Projects" workspace
+  | 'reports'        // analytics & reports — every role (legal, business stakeholders, auditors)
 
 export const ROLE_LABEL: Record<Role, string> = {
   initiator: 'Initiator',
@@ -27,11 +28,11 @@ export const ROLE_LABEL: Record<Role, string> = {
 }
 
 const ACCESS: Record<Role, Capability[]> = {
-  initiator:      ['queue', 'notifications', 'intake', 'review', 'pipeline'],
-  attorney:       ['queue', 'notifications', 'intake', 'review', 'disposition', 'comment', 'pipeline', 'playbook_view', 'audit', 'deal_summary', 'templates', 'playbook_suggest'],
-  contributor:    ['queue', 'notifications', 'review', 'comment', 'pipeline'],
-  playbook_owner: ['queue', 'notifications', 'playbook_view', 'playbook_edit', 'pipeline', 'audit', 'deal_summary', 'review', 'templates', 'playbook_suggest'],
-  administrator:  ['queue', 'notifications', 'admin', 'pipeline', 'audit', 'playbook_view', 'playbook_edit', 'playbook_presentation', 'deal_summary', 'templates'],
+  initiator:      ['queue', 'notifications', 'intake', 'review', 'pipeline', 'reports'],
+  attorney:       ['queue', 'notifications', 'intake', 'review', 'disposition', 'comment', 'pipeline', 'playbook_view', 'audit', 'deal_summary', 'templates', 'playbook_suggest', 'reports'],
+  contributor:    ['queue', 'notifications', 'review', 'comment', 'pipeline', 'reports'],
+  playbook_owner: ['queue', 'notifications', 'playbook_view', 'playbook_edit', 'pipeline', 'audit', 'deal_summary', 'review', 'templates', 'playbook_suggest', 'reports'],
+  administrator:  ['queue', 'notifications', 'admin', 'pipeline', 'audit', 'playbook_view', 'playbook_edit', 'playbook_presentation', 'deal_summary', 'templates', 'reports'],
 }
 
 export function can(role: Role, cap: Capability): boolean {
@@ -54,6 +55,7 @@ export const VIEW_CAP: Record<ViewKey, Capability> = {
   repository: 'review',
   contracts: 'pipeline',
   projects: 'templates',
+  reports: 'reports',
 }
 
 export function canView(role: Role, view: ViewKey): boolean {
@@ -69,6 +71,7 @@ export const CAP_LABEL: Record<Capability, string> = {
   comment: 'commenting',
   playbook_suggest: 'suggesting playbook additions', templates: 'the Templates workspace',
   playbook_presentation: 'the playbook look & feel (admin only)',
+  reports: 'analytics & reports',
 }
 
 // One-line summary of what each role CAN do — shown when access is denied.
@@ -89,11 +92,13 @@ export function startersFor(role: Role): Starter[] {
       return [
         { label: 'Create a ticket', sub: 'Negotiation or general legal support', prompt: 'create a ticket' },
         { label: 'Track my requests', sub: 'Status of my tickets', prompt: "what's on my plate?" },
+        { label: 'View reports', sub: 'Cycle time & matter status', prompt: 'open the reports' },
       ]
     case 'contributor':
       return [
         { label: "What I'm tagged on", sub: 'Provisions needing my input', prompt: "what's on my plate?" },
         { label: 'Open comments report', sub: 'Every unresolved comment on my matters', prompt: 'open comments report' },
+        { label: 'View reports', sub: 'Cycle time & matter status', prompt: 'open the reports' },
       ]
     case 'playbook_owner':
       return [
@@ -102,6 +107,7 @@ export function startersFor(role: Role): Starter[] {
         { label: 'Create a new playbook', sub: 'From a template + examples', prompt: 'create a new playbook' },
         { label: 'Build a new template', sub: 'From precedent + standards', prompt: 'create a new template project' },
         { label: 'Open comments report', sub: 'Every unresolved comment across your matters', prompt: 'open comments report' },
+        { label: 'View reports', sub: 'Throughput, SLA adherence & cycle time', prompt: 'open the reports' },
       ]
     case 'administrator':
       return [
@@ -111,6 +117,7 @@ export function startersFor(role: Role): Starter[] {
         { label: 'Review the audit log', sub: 'Immutable event history', prompt: 'show me the audit log' },
         { label: 'Consolidated open comments', sub: 'Every unresolved comment, portfolio-wide', prompt: 'open comments report' },
         { label: 'Assign a ticket', sub: 'Lead attorney, co-counsel, or visibility', prompt: 'assign a ticket' },
+        { label: 'View reports', sub: 'Throughput, SLA adherence & cycle time', prompt: 'open the reports' },
       ]
     case 'attorney':
     default:
@@ -120,6 +127,7 @@ export function startersFor(role: Role): Starter[] {
         { label: 'Open comments report', sub: 'Every unresolved comment across your matters', prompt: 'open comments report' },
         { label: 'Create a ticket', sub: 'Negotiation or general legal support', prompt: 'create a ticket' },
         { label: 'Review 2 new changes in playbook', sub: '2 refinement updates to approve', prompt: 'show me the NDA playbook' },
+        { label: 'View reports', sub: 'Who handled what, cycle time & SLA', prompt: 'open the reports' },
       ]
   }
 }

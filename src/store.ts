@@ -64,6 +64,9 @@ const ticketStatusForStatus = (s: AgreementStatus): ContractStatus => ({
   redline_received: 'Red Line Analysis', negotiation: 'In Negotiation',
   pending_execution: 'Ready to Sign', executed: 'Executed',
 } as Record<AgreementStatus, ContractStatus>)[s]
+// Reports & Analytics — append a real stage-entry timestamp every time an agreement's status
+// actually changes, so step-level SLA dwell time is computed from genuine transitions.
+const stageEntry = (status: AgreementStatus, date = now()) => ({ status, entered_date: date })
 
 interface CLMState {
   users: typeof users
@@ -702,7 +705,7 @@ export const useStore = create<CLMState>((set, get) => ({
     const baseDoc = s0.documents[a.current_version_id]
     set((s) => ({
       versions: [...s.versions, newVer],
-      agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, current_version_id: vid, status: 'redline_received' as const, ball_in_court: 'cp_legal' as const } : x)),
+      agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, current_version_id: vid, status: 'redline_received' as const, ball_in_court: 'cp_legal' as const, stage_history: [...(x.stage_history ?? []), stageEntry('redline_received')] } : x)),
       documents: baseDoc ? { ...s.documents, [vid]: { ...baseDoc, versionId: vid, subtitle: `${a.title} — v${nextNum} (Counterparty Response, 4 Jul 2026)` } } : s.documents,
     }))
     get().audit_push({ event_type: 'version_created', agreement_id: agreementId, summary: `Filed as ${a.agreement_type} v${nextNum} (Counterparty Response, 4 Jul 2026) from "${fileName}".` })
@@ -889,7 +892,7 @@ export const useStore = create<CLMState>((set, get) => ({
     const a = get().agreements.find((x) => x.id === agreementId)
     if (!a) return
     set((s) => ({
-      agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, status: 'sent_to_counterparty' as const, ball_in_court: 'counterparty' as const, last_activity_date: '2026-07-05', turn_count: (x.turn_count ?? 0) + 1 } : x)),
+      agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, status: 'sent_to_counterparty' as const, ball_in_court: 'counterparty' as const, last_activity_date: '2026-07-05', turn_count: (x.turn_count ?? 0) + 1, stage_history: [...(x.stage_history ?? []), stageEntry('sent_to_counterparty')] } : x)),
     }))
     get().audit_push({ event_type: 'status_changed', agreement_id: agreementId, summary: `Sent to ${receiverName.trim() || 'the counterparty'} for review — ball in their court.` })
     get().setToast(`Sent to ${receiverName.trim() || 'the counterparty'}.`)
@@ -1026,7 +1029,7 @@ export const useStore = create<CLMState>((set, get) => ({
       versions: [...s.versions, cpVer, workVer],
       documents: { ...s.documents, [cpVer.id]: cpDoc, [workVer.id]: workDoc },
       deviations: [...s.deviations, ...newDevs],
-      agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, status: 'redline_received', ball_in_court: 'cp_legal', current_version_id: workVer.id, red_line_count: redCount, turn_count: (x.turn_count ?? 0) + 1, last_activity_date: '2026-06-27' } : x)),
+      agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, status: 'redline_received', ball_in_court: 'cp_legal', current_version_id: workVer.id, red_line_count: redCount, turn_count: (x.turn_count ?? 0) + 1, last_activity_date: '2026-06-27', stage_history: [...(x.stage_history ?? []), stageEntry('redline_received')] } : x)),
       tickets: s.tickets.map((t) => (t.id === a.ticket_id ? { ...t, status: 'Red Line Analysis' } : t)),
       notifications: [{ id: nextId('N'), event: 'Counterparty redline received', body: `${a.title}: counterparty returned Draft ${nextNum}. Auto-created V${nextNum + 1}; playbook analysis found ${newDevs.length} new issue${newDevs.length === 1 ? '' : 's'} in their changes.`, channels: ['in_app', 'email'], ticket_id: a.ticket_id, created_date: now(), read: false, severity: 'warning' }, ...s.notifications],
     }))
@@ -1086,7 +1089,7 @@ export const useStore = create<CLMState>((set, get) => ({
     }
 
     set((s) => ({
-      agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, status: next, ball_in_court: ballForStatus(next) } : x)),
+      agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, status: next, ball_in_court: ballForStatus(next), stage_history: [...(x.stage_history ?? []), stageEntry(next)] } : x)),
       tickets: s.tickets.map((t) => (t.id === a.ticket_id ? { ...t, status: ticketStatusForStatus(next) } : t)),
     }))
     get().audit_push({ event_type: 'status_changed', agreement_id: agreementId, ticket_id: a.ticket_id, summary: `Stage advanced: ${a.status.replace(/_/g, ' ')} → ${next.replace(/_/g, ' ')}.` })
@@ -1146,7 +1149,7 @@ export const useStore = create<CLMState>((set, get) => ({
     }
     set((s) => ({
       envelopes: [env, ...s.envelopes.filter((e) => e.agreement_id !== agreementId)],
-      agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, status: 'pending_execution' } : x)),
+      agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, status: 'pending_execution', stage_history: [...(x.stage_history ?? []), stageEntry('pending_execution')] } : x)),
     }))
     get().audit_push({ event_type: 'signature_requested', agreement_id: agreementId, summary: `DocuSign envelope ${env.id} created; routed to CP signer.` })
     return env
@@ -1171,7 +1174,7 @@ export const useStore = create<CLMState>((set, get) => ({
       const openDevs = get().deviations.filter((d) => d.agreement_id === env.agreement_id && d.disposition_status === 'open')
       const uid = get().currentUserId
       set((s) => ({
-        agreements: s.agreements.map((x) => (x.id === env.agreement_id ? { ...x, status: 'executed', executed_date: now() } : x)),
+        agreements: s.agreements.map((x) => (x.id === env.agreement_id ? { ...x, status: 'executed', executed_date: now(), stage_history: [...(x.stage_history ?? []), stageEntry('executed')] } : x)),
         tickets: s.tickets.map((t) => (t.id === env.ticket_id ? { ...t, status: 'Executed', closed_date: now() } : t)),
         // executed record must be clean — resolve any still-open deviations to their recommended disposition
         deviations: s.deviations.map((d) => {
@@ -1263,7 +1266,7 @@ export const useStore = create<CLMState>((set, get) => ({
   sendRedline: (agreementId) => {
     const a = get().agreements.find((x) => x.id === agreementId); if (!a) return
     set((s) => ({
-      agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, status: 'negotiation', ball_in_court: 'counterparty' } : x)),
+      agreements: s.agreements.map((x) => (x.id === agreementId ? { ...x, status: 'negotiation', ball_in_court: 'counterparty', stage_history: [...(x.stage_history ?? []), stageEntry('negotiation')] } : x)),
       tickets: s.tickets.map((t) => (t.id === a.ticket_id ? { ...t, status: 'In Negotiation' } : t)),
       canvas: { ...s.canvas, sendBack: s.canvas.sendBack ? { ...s.canvas.sendBack, staged: true } : undefined },
     }))

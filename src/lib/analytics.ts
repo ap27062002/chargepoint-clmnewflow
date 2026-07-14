@@ -1,5 +1,5 @@
-import type { Playbook, Deviation, Agreement, Ticket, Version, AgreementStatus } from '@/types'
-import { slaStatus } from '@/lib/labels'
+import type { Playbook, Deviation, Agreement, Ticket, Version, AgreementStatus, User } from '@/types'
+import { slaStatus, agreementStatusMeta } from '@/lib/labels'
 
 export interface Rec { provision: string; rate: number; action: 'Revise' | 'Add' | 'Maintain'; detail: string }
 
@@ -193,4 +193,103 @@ export function leadershipMetrics(
     avgCycleDays, avgRedlineRounds, openExposure, executedCount: executed.length,
     stageFunnel, byCounterparty, attention: attention.slice(0, 4),
   }
+}
+
+// ===========================================================================
+// REPORTS & ANALYTICS — operational/compliance reporting over the matter
+// lifecycle: who handled it, intake-to-close cycle time, and step-level SLA
+// dwell time per stage. Built for legal leadership, business stakeholders
+// (sales/finance), and auditors — not just attorneys.
+// ===========================================================================
+
+export interface ResourcePerformance {
+  userId: string
+  name: string
+  openCount: number
+  closedCount: number
+  avgCycleDays: number | null   // across this resource's CLOSED matters only
+  slaBreaches: number           // currently-open matters past their SLA target
+}
+
+// "Who handled the matter" + cycle time, per assigned legal resource.
+export function resourcePerformance(tickets: Ticket[], agreements: Agreement[], users: User[], asOf = AS_OF): ResourcePerformance[] {
+  const agByTicket = new Map<string, Agreement[]>()
+  for (const a of agreements) {
+    if (!agByTicket.has(a.ticket_id)) agByTicket.set(a.ticket_id, [])
+    agByTicket.get(a.ticket_id)!.push(a)
+  }
+  const byUser = new Map<string, Ticket[]>()
+  for (const t of tickets) {
+    if (!t.assigned_attorney_id) continue
+    if (!byUser.has(t.assigned_attorney_id)) byUser.set(t.assigned_attorney_id, [])
+    byUser.get(t.assigned_attorney_id)!.push(t)
+  }
+
+  return [...byUser.entries()].map(([userId, ts]) => {
+    const closed = ts.filter((t) => t.status === 'Executed' || t.status === 'Resolved')
+    const open = ts.filter((t) => t.status !== 'Executed' && t.status !== 'Resolved')
+    const cycles = closed
+      .map((t) => {
+        const end = t.closed_date ?? agByTicket.get(t.id)?.find((a) => a.executed_date)?.executed_date ?? null
+        return end ? Math.round((new Date(end).getTime() - new Date(t.created_date).getTime()) / 86400000) : null
+      })
+      .filter((x): x is number => x !== null)
+    const avgCycleDays = cycles.length ? Math.round(cycles.reduce((s, x) => s + x, 0) / cycles.length) : null
+    const slaBreaches = open.filter((t) => slaStatus(t.created_date, t.sla_target_date, asOf).state === 'breach').length
+    return {
+      userId, name: users.find((u) => u.id === userId)?.name ?? userId,
+      openCount: open.length, closedCount: closed.length, avgCycleDays, slaBreaches,
+    }
+  }).sort((a, b) => (b.openCount + b.closedCount) - (a.openCount + a.closedCount))
+}
+
+export interface StageDwellRow {
+  status: AgreementStatus
+  label: string
+  avgDays: number | null
+  count: number          // how many agreements have passed through (or are sitting in) this stage
+  targetDays: number
+  withinTargetPct: number | null
+}
+
+// Step-level SLA targets, business days per stage (Eric's "intake through execution").
+export const STAGE_TARGET_DAYS: Record<AgreementStatus, number> = {
+  draft: 3, internal_review: 2, sent_to_counterparty: 1, redline_received: 4,
+  negotiation: 5, pending_execution: 2, executed: 0,
+}
+
+// Dwell time per lifecycle stage, computed from each agreement's stage_history (when a real
+// transition recorded one) with created_date as the implicit "entered draft" anchor otherwise —
+// so this is real elapsed time, not a canned number, even for agreements with sparse history.
+export function stageDwellMetrics(agreements: Agreement[], asOf = AS_OF): StageDwellRow[] {
+  const order = Object.keys(agreementStatusMeta) as AgreementStatus[]
+  const perStage = new Map<AgreementStatus, number[]>(order.map((s) => [s, []]))
+
+  for (const a of agreements) {
+    const hist = a.stage_history ?? []
+    const timeline: { status: AgreementStatus; date: string }[] =
+      hist.length && hist[0].status === 'draft' ? hist.map((h) => ({ status: h.status, date: h.entered_date }))
+        : [{ status: 'draft' as const, date: a.created_date }, ...hist.map((h) => ({ status: h.status, date: h.entered_date }))]
+
+    for (let i = 0; i < timeline.length; i++) {
+      const cur = timeline[i]
+      const isLast = i === timeline.length - 1
+      const endDate = !isLast ? timeline[i + 1].date : (a.status === 'executed' ? (a.executed_date ?? asOf) : asOf)
+      const days = Math.max(0, Math.round((new Date(endDate).getTime() - new Date(cur.date).getTime()) / 86400000))
+      perStage.get(cur.status)?.push(days)
+    }
+  }
+
+  return order.filter((s) => s !== 'executed').map((status) => {
+    const days = perStage.get(status) ?? []
+    const avgDays = days.length ? Math.round((days.reduce((s, x) => s + x, 0) / days.length) * 10) / 10 : null
+    const withinTargetPct = days.length ? Math.round((days.filter((d) => d <= STAGE_TARGET_DAYS[status]).length / days.length) * 100) : null
+    return { status, label: agreementStatusMeta[status].label, avgDays, count: days.length, targetDays: STAGE_TARGET_DAYS[status], withinTargetPct }
+  })
+}
+
+// A manager's own id + everyone whose manager_id points to them — "sales managers should be able
+// to run reports on the individuals reporting to them."
+export function teamUserIds(users: User[], managerId: string): string[] {
+  return [managerId, ...users.filter((u) => u.manager_id === managerId).map((u) => u.id)]
 }

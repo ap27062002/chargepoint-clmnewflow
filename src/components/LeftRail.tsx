@@ -1,10 +1,10 @@
 import { clsx } from 'clsx'
-import { Sparkles, LayoutDashboard, BookOpen, FolderTree, Lock, FileStack } from 'lucide-react'
+import { Sparkles, LayoutDashboard, BookOpen, FolderTree, Lock, FileStack, BarChart3 } from 'lucide-react'
 import { useStore } from '@/store'
 import { can } from '@/lib/access'
 import type { Role } from '@/types'
 
-type RailKey = 'agent' | 'dashboard' | 'repository' | 'playbook' | 'projects'
+type RailKey = 'agent' | 'dashboard' | 'repository' | 'playbook' | 'projects' | 'reports'
 type RailItem = {
   key: RailKey
   label: string
@@ -19,6 +19,8 @@ const ITEMS: RailItem[] = [
   { key: 'repository', label: 'Archive', icon: <FolderTree size={18} />, locked: true, show: (r) => can(r, 'review') || can(r, 'pipeline') },
   { key: 'playbook', label: 'Playbook', icon: <BookOpen size={18} />, show: (r) => can(r, 'playbook_view') },
   { key: 'projects', label: 'Templates', icon: <FileStack size={18} />, show: (r) => can(r, 'templates') },
+  // Reports & Analytics — every role gets this (legal leadership, business stakeholders, auditors).
+  { key: 'reports', label: 'Reports', icon: <BarChart3 size={18} />, show: (r) => can(r, 'reports') },
 ]
 
 export function LeftRail() {
@@ -31,7 +33,9 @@ export function LeftRail() {
   // Tomas, Priya, Dana, Marcus (contributor/administrator/initiator) are light-touch users —
   // they work entirely through the agent chat + their dashboard, not the full workspace nav.
   const RESTRICTED: Role[] = ['contributor', 'administrator', 'initiator']
-  const visible = ITEMS.filter((i) => (RESTRICTED.includes(role) ? i.key === 'agent' || i.key === 'dashboard' : !i.show || i.show(role)))
+  // Reports & Analytics is explicitly for everyone, including light-touch roles — legal
+  // leadership, business stakeholders (sales/finance), and auditors all need it.
+  const visible = ITEMS.filter((i) => (RESTRICTED.includes(role) ? i.key === 'agent' || i.key === 'dashboard' || i.key === 'reports' : !i.show || i.show(role)))
 
   const go = (k: RailKey) => {
     if (k === 'agent') closeCanvas()

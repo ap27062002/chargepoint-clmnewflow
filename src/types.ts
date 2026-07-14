@@ -18,6 +18,7 @@ export interface User {
   title: string
   expertise?: AgreementType[]
   color: string
+  manager_id?: string // Reports & Analytics — lets a manager (e.g. a sales manager) scope to their team
 }
 
 // ----- Ticket ---------------------------------------------------------------
@@ -97,6 +98,13 @@ export interface Agreement {
   drafting_purpose?: string
   drafting_term?: string
   drafting_jurisdiction?: string
+  // Reports & Analytics — step-level SLA: when each lifecycle stage was entered, in order.
+  // Optional/sparse for older seed data; every real stage transition appends to it going forward.
+  stage_history?: AgreementStageEntry[]
+}
+export interface AgreementStageEntry {
+  status: AgreementStatus
+  entered_date: string
 }
 
 // ----- Version --------------------------------------------------------------
@@ -339,6 +347,7 @@ export type ArtifactKind =
   | 'deal_execution'
   | 'projects'
   | 'template'
+  | 'reports'
   | 'playbook_create'
   | 'playbook_suggestions'
   | 'none'
@@ -423,6 +432,7 @@ export type ViewKey =
   | 'repository'
   | 'contracts'
   | 'projects'
+  | 'reports'
 
 export interface CanvasState {
   view: ViewKey

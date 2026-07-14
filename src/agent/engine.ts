@@ -875,6 +875,15 @@ const intents: Intent[] = [
     }),
   },
   {
+    name: 'reports', cap: 'reports',
+    test: (t) => has(t, 'reports', 'reporting', 'sla report', 'cycle time', 'who handled', 'open the reports', 'analytics report', 'run a report'),
+    reply: () => ({
+      text: `Opening **Reports & Analytics** — who handled each matter, intake-to-close cycle time, step-level SLA adherence from intake through execution, and throughput by stage. Exportable as CSV.`,
+      artifact: { kind: 'reports', title: 'Reports & Analytics' },
+      actions: [],
+    }),
+  },
+  {
     name: 'dashboard', cap: 'pipeline',
     test: (t) => has(t, 'dashboard', 'overview', 'pipeline', 'status', 'where are we', "what's going on", 'home'),
     reply: () => {
@@ -1071,6 +1080,7 @@ export function openArtifact(a: { kind: ArtifactKind; refId?: string; title?: st
     case 'admin': s.setView('admin'); break
     case 'audit': s.setView('audit'); break
     case 'repository': s.setView('repository'); break
+    case 'reports': s.setView('reports'); break
     case 'contracts': s.openContracts('all'); break
     case 'ticket_created': s.setView('dashboard'); break
     default: break

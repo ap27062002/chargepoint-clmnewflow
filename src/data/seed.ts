@@ -15,6 +15,9 @@ export const users: User[] = [
   { id: 'u_dana', name: 'Dana Whitfield', initials: 'DW', email: 'dana.whitfield@chargepoint.com', role: 'administrator', title: 'Legal Operations Lead', color: '#be185d' },
   { id: 'u_priya', name: 'Priya Anand', initials: 'PA', email: 'priya.anand@chargepoint.com', role: 'contributor', title: 'Information Security', color: '#0f766e' },
   { id: 'u_tomas', name: 'Tomas Klein', initials: 'TK', email: 'tomas.klein@chargepoint.com', role: 'contributor', title: 'Finance Business Partner', color: '#7c3aed' },
+  // Reports to Marcus — lets Reports & Analytics demo "sales managers running reports on their team."
+  { id: 'u_jordan', name: 'Jordan Lee', initials: 'JL', email: 'jordan.lee@chargepoint.com', role: 'initiator', title: 'Account Executive, Fleet Partnerships', color: '#0891b2', manager_id: 'u_marcus' },
+  { id: 'u_casey', name: 'Casey Morgan', initials: 'CM', email: 'casey.morgan@chargepoint.com', role: 'initiator', title: 'Sales Development Rep', color: '#c026d3', manager_id: 'u_marcus' },
 ]
 
 export const CURRENT_USER_ID = 'u_kirsten' // default persona = Assigned Attorney
@@ -162,7 +165,7 @@ export const tickets: Ticket[] = [
     description: 'Finance asks whether we have standard guidance on "residuals" language counterparties keep introducing.' },
 
   { id: 'TKT-1049', title: 'RFP review — Metro Transit Authority charging RFP terms', type: 'inquiry', status: 'Open',
-    counterparty_name: 'Metro Transit Authority', assigned_attorney_id: 'u_kirsten', initiator_id: 'u_marcus',
+    counterparty_name: 'Metro Transit Authority', assigned_attorney_id: 'u_kirsten', initiator_id: 'u_jordan',
     created_date: '2026-06-23', sla_target_date: '2026-07-03', priority: 'normal', agreement_ids: [],
     description: 'Business team needs legal review of the liability and insurance sections of the Metro Transit RFP before we respond. No agreement yet — general legal support.' },
   { id: 'TKT-1009', title: 'Mondelez — Mutual NDA', type: 'single_agreement', status: 'Executed',
@@ -171,7 +174,7 @@ export const tickets: Ticket[] = [
     description: 'Fleet-electrification pilot NDA. Executed via DocuSign.' },
 
   { id: 'TKT-1012', title: 'Clever Devices — Mutual NDA', type: 'single_agreement', status: 'Executed',
-    counterparty_name: 'Clever Devices', assigned_attorney_id: 'u_eric', initiator_id: 'u_marcus',
+    counterparty_name: 'Clever Devices', assigned_attorney_id: 'u_eric', initiator_id: 'u_casey',
     created_date: '2026-05-08', sla_target_date: '2026-05-22', priority: 'low', closed_date: '2026-05-21', agreement_ids: ['AGR-2152'],
     description: 'Transit-tech integration NDA. Executed.' },
 ]
@@ -182,15 +185,33 @@ export const tickets: Ticket[] = [
 export const agreements: Agreement[] = [
   { id: 'AGR-2201', ticket_id: 'TKT-1042', title: 'Vishay Intertechnology Mutual NDA', agreement_type: 'MNDA',
     status: 'redline_received', current_version_id: 'V-2201-3', playbook_id: 'pb_nda', paper_origin: 'cp_paper',
-    ball_in_court: 'cp_legal', red_line_count: 4, created_date: '2026-06-18', last_activity_date: '2026-06-25', turn_count: 3, contract_value: 0 },
+    ball_in_court: 'cp_legal', red_line_count: 4, created_date: '2026-06-18', last_activity_date: '2026-06-25', turn_count: 3, contract_value: 0,
+    stage_history: [
+      { status: 'draft', entered_date: '2026-06-18' },
+      { status: 'internal_review', entered_date: '2026-06-19' },
+      { status: 'sent_to_counterparty', entered_date: '2026-06-20' },
+      { status: 'redline_received', entered_date: '2026-06-22' },
+    ] },
 
   { id: 'AGR-2198', ticket_id: 'TKT-1039', title: 'Airbus Mutual NDA', agreement_type: 'MNDA',
     status: 'redline_received', current_version_id: 'V-2198-2', playbook_id: 'pb_nda', paper_origin: 'cp_paper',
-    ball_in_court: 'counterparty', red_line_count: 3, created_date: '2026-06-12', last_activity_date: '2026-06-20', turn_count: 4, contract_value: 0 },
+    ball_in_court: 'counterparty', red_line_count: 3, created_date: '2026-06-12', last_activity_date: '2026-06-20', turn_count: 4, contract_value: 0,
+    stage_history: [
+      { status: 'draft', entered_date: '2026-06-12' },
+      { status: 'internal_review', entered_date: '2026-06-13' },
+      { status: 'sent_to_counterparty', entered_date: '2026-06-14' },
+      { status: 'redline_received', entered_date: '2026-06-17' },
+    ] },
 
   { id: 'AGR-2180', ticket_id: 'TKT-1031', title: 'Northwind Master Services Agreement', agreement_type: 'MSA',
     status: 'redline_received', current_version_id: 'V-2180-3', playbook_id: 'pb_msa', paper_origin: 'cp_paper',
-    ball_in_court: 'cp_legal', red_line_count: 2, created_date: '2026-06-05', last_activity_date: '2026-06-24', turn_count: 2, contract_value: 2400000 },
+    ball_in_court: 'cp_legal', red_line_count: 2, created_date: '2026-06-05', last_activity_date: '2026-06-24', turn_count: 2, contract_value: 2400000,
+    stage_history: [
+      { status: 'draft', entered_date: '2026-06-05' },
+      { status: 'internal_review', entered_date: '2026-06-08' },
+      { status: 'sent_to_counterparty', entered_date: '2026-06-12' },
+      { status: 'redline_received', entered_date: '2026-06-19' },
+    ] },
   { id: 'AGR-2181', ticket_id: 'TKT-1031', title: 'Northwind Data Processing Addendum', agreement_type: 'DPA',
     status: 'sent_to_counterparty', current_version_id: 'V-2181-2', playbook_id: null, paper_origin: 'cp_paper',
     ball_in_court: 'counterparty', red_line_count: 0, created_date: '2026-06-05', last_activity_date: '2026-06-21', turn_count: 2, contract_value: 0 },
@@ -203,10 +224,28 @@ export const agreements: Agreement[] = [
     ball_in_court: 'cp_legal', red_line_count: 0, created_date: '2026-06-20', last_activity_date: '2026-06-20', turn_count: 0 },
   { id: 'AGR-2150', ticket_id: 'TKT-1009', title: 'Mondelez Mutual NDA', agreement_type: 'MNDA',
     status: 'executed', current_version_id: 'V-2150-4', playbook_id: 'pb_nda', paper_origin: 'cp_paper',
-    ball_in_court: 'cp_legal', red_line_count: 5, created_date: '2026-05-02', executed_date: '2026-05-19', last_activity_date: '2026-05-19', turn_count: 3, contract_value: 0 },
+    ball_in_court: 'cp_legal', red_line_count: 5, created_date: '2026-05-02', executed_date: '2026-05-19', last_activity_date: '2026-05-19', turn_count: 3, contract_value: 0,
+    stage_history: [
+      { status: 'draft', entered_date: '2026-05-02' },
+      { status: 'internal_review', entered_date: '2026-05-03' },
+      { status: 'sent_to_counterparty', entered_date: '2026-05-05' },
+      { status: 'redline_received', entered_date: '2026-05-09' },
+      { status: 'negotiation', entered_date: '2026-05-12' },
+      { status: 'pending_execution', entered_date: '2026-05-17' },
+      { status: 'executed', entered_date: '2026-05-19' },
+    ] },
   { id: 'AGR-2152', ticket_id: 'TKT-1012', title: 'Clever Devices Mutual NDA', agreement_type: 'MNDA',
     status: 'executed', current_version_id: 'V-2152-3', playbook_id: 'pb_nda', paper_origin: 'counterparty_paper',
-    ball_in_court: 'cp_legal', red_line_count: 6, created_date: '2026-05-08', executed_date: '2026-05-21', last_activity_date: '2026-05-21', turn_count: 4, contract_value: 0 },
+    ball_in_court: 'cp_legal', red_line_count: 6, created_date: '2026-05-08', executed_date: '2026-05-21', last_activity_date: '2026-05-21', turn_count: 4, contract_value: 0,
+    stage_history: [
+      { status: 'draft', entered_date: '2026-05-08' },
+      { status: 'internal_review', entered_date: '2026-05-09' },
+      { status: 'sent_to_counterparty', entered_date: '2026-05-10' },
+      { status: 'redline_received', entered_date: '2026-05-13' },
+      { status: 'negotiation', entered_date: '2026-05-16' },
+      { status: 'pending_execution', entered_date: '2026-05-19' },
+      { status: 'executed', entered_date: '2026-05-21' },
+    ] },
 ]
 
 // ============================================================================

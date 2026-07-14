@@ -16,6 +16,7 @@ import { DealExecutionView } from '@/views/DealExecutionView'
 import { Repository } from '@/views/Repository'
 import { ContractsList } from '@/views/ContractsList'
 import { ProjectsView } from '@/views/ProjectsView'
+import { ReportsView } from '@/views/ReportsView'
 
 function useBreadcrumb(): string {
   const canvas = useStore((s) => s.canvas)
@@ -25,7 +26,7 @@ function useBreadcrumb(): string {
     dashboard: 'Leadership overview', admin: 'Admin console',
     audit: 'Audit center', notifications: 'Notification center', queue: 'My queue',
     deal_summary: 'Deal summary', intake: 'NDA drafting brief',
-    repository: 'Archive', contracts: 'All contracts', projects: 'Templates',
+    repository: 'Archive', contracts: 'All contracts', projects: 'Templates', reports: 'Reports & Analytics',
   }
   if (canvas.view === 'ticket' || canvas.view === 'agreement') return 'Dashboard'
   if (canvas.view === 'playbook') {
@@ -106,6 +107,7 @@ export function Canvas() {
             {view === 'repository' && <Repository />}
             {view === 'contracts' && <ContractsList />}
             {view === 'projects' && <ProjectsView />}
+            {view === 'reports' && <ReportsView />}
           </>
         )}
       </div>
