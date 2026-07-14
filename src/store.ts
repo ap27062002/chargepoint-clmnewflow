@@ -7,7 +7,7 @@ import type {
   AgreementStatus, BallInCourt, ContractStatus,
   IntakePayload, InferredField, CounterpartyProfile, ContractsFilterPreset,
   SummaryAudience, PlaybookSuggestion, SuggestionKind, SuggestionState, PlaybookDraft, Provision, ProvisionTier,
-  TemplateProject, AgreementTemplate, TemplateIteration,
+  TemplateProject, AgreementTemplate, TemplateIteration, TemplateVersionEntry,
 } from '@/types'
 import { lookupCounterparty, inferDealContext } from '@/data/counterparties'
 import {
@@ -229,6 +229,7 @@ interface CLMState {
   saveTemplate: (projectId: string) => void
   buildPlaybookFromTemplate: (templateId: string) => void
   uploadTemplate: (fileName: string) => void // Templates §1 — drag-drop a form agreement
+  uploadTemplateVersion: (templateId: string, fileName: string, note: string) => void // upload an updated version + changelog note
 
   // chat
   pushChat: (m: ChatMessage) => void
@@ -1547,6 +1548,22 @@ export const useStore = create<CLMState>((set, get) => ({
     set((s) => ({ templates: [tpl, ...s.templates], canvas: { ...s.canvas, view: 'projects', open: true, templateId: tplId, projectId: undefined } }))
     get().audit_push({ event_type: 'playbook_updated', summary: `Template "${name}" uploaded to the library.` })
     get().setToast(`Template "${name}" added to the library.`)
+  },
+  // Upload a newer version of an EXISTING template — bumps the version number and records a
+  // changelog entry (the uploader's note on what changed), rather than creating a new template.
+  uploadTemplateVersion: (templateId, fileName, note) => {
+    const tpl = get().templates.find((t) => t.id === templateId); if (!tpl) return
+    const nextVersion = tpl.version + 1
+    const entry: TemplateVersionEntry = {
+      version: nextVersion, fileName, note: note.trim(), uploaded_by: get().currentUserId, uploaded_date: now(),
+    }
+    set((s) => ({
+      templates: s.templates.map((t) => (t.id === templateId
+        ? { ...t, version: nextVersion, source_summary: `Updated (${fileName}) — v${nextVersion}.`, versionHistory: [entry, ...(t.versionHistory ?? [])] }
+        : t)),
+    }))
+    get().audit_push({ event_type: 'playbook_updated', summary: `Template "${tpl.name}" updated to v${nextVersion}${note.trim() ? `: ${note.trim()}` : ''}.` })
+    get().setToast(`"${tpl.name}" updated to v${nextVersion}.`)
   },
   buildPlaybookFromTemplate: (templateId) => {
     const tpl = get().templates.find((t) => t.id === templateId); if (!tpl) return

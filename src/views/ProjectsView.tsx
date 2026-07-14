@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { clsx } from 'clsx'
-import { FolderKanban, FileStack, Plus, Sparkles, Wand2, BookOpen, Save, FileText } from 'lucide-react'
+import { FolderKanban, FileStack, Plus, Sparkles, Wand2, BookOpen, Save, FileText, UploadCloud } from 'lucide-react'
 import { useStore } from '@/store'
 import { comparativeAnalysis } from '@/data/playbookDerive'
 import { exportTemplateHtml } from '@/lib/templateGen'
 import { Card, Chip, Button, SectionLabel, Empty } from '@/components/ui'
+import { userById } from '@/data/seed'
+import { fmtDateTime } from '@/lib/labels'
 import type { TemplateProject, AgreementTemplate } from '@/types'
 
 const projStatusChip: Record<string, string> = {
@@ -164,6 +166,58 @@ function ProjectDetail({ project }: { project: TemplateProject }) {
   )
 }
 
+function UploadTemplateVersion({ template }: { template: AgreementTemplate }) {
+  const uploadTemplateVersion = useStore((s) => s.uploadTemplateVersion)
+  const [dragOver, setDragOver] = useState(false)
+  const [pendingFile, setPendingFile] = useState<string | null>(null)
+  const [note, setNote] = useState('')
+  const nextVersion = template.version + 1
+  const pick = (name?: string) => setPendingFile(name ?? `${template.name.replace(/[^a-z0-9]+/gi, '_')}_v${nextVersion}.docx`)
+  const submit = () => {
+    if (!pendingFile) return
+    uploadTemplateVersion(template.id, pendingFile, note.trim())
+    setPendingFile(null); setNote('')
+  }
+  return (
+    <Card className="p-4">
+      <SectionLabel className="mb-2 flex items-center gap-1.5"><UploadCloud size={13} /> Upload an updated version</SectionLabel>
+      {!pendingFile ? (
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => { e.preventDefault(); setDragOver(false); pick(e.dataTransfer.files?.[0]?.name) }}
+          onClick={() => pick()}
+          className={clsx('flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-5 text-center transition',
+            dragOver ? 'border-ai-400 bg-ai-50/50' : 'border-slate-300 bg-white hover:border-ai-300')}
+        >
+          <UploadCloud size={20} className="mb-1.5 text-slate-400" />
+          <div className="text-[13px] font-bold text-slate-700">Drag & drop, or click to select a file</div>
+          <div className="mt-0.5 text-[11.5px] text-slate-400">Replaces v{template.version} with v{nextVersion} — the current version stays in history below.</div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <FileText size={14} className="shrink-0 text-slate-400" />
+            <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-700">{pendingFile}</span>
+            <Chip className="bg-ai-50 text-ai-700 ring-ai-500/20 shrink-0">v{nextVersion}</Chip>
+            <button onClick={() => setPendingFile(null)} className="shrink-0 text-[11px] font-semibold text-slate-400 hover:text-slate-600">Remove</button>
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-400">What changed?</label>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} autoFocus
+              placeholder="e.g. Tightened the indemnity cap language and added a data-residency clause…"
+              className="w-full resize-none rounded-lg border border-slate-300 px-2.5 py-2 text-[13px] outline-none focus:border-ai-400" />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="outline" onClick={() => { setPendingFile(null); setNote('') }}>Cancel</Button>
+            <Button size="sm" variant="ai" icon={<UploadCloud size={13} />} onClick={submit}>Upload v{nextVersion}</Button>
+          </div>
+        </div>
+      )}
+    </Card>
+  )
+}
+
 function TemplateDetail({ template }: { template: AgreementTemplate }) {
   const playbooks = useStore((s) => s.playbooks)
   const buildPlaybook = useStore((s) => s.buildPlaybookFromTemplate)
@@ -198,6 +252,26 @@ function TemplateDetail({ template }: { template: AgreementTemplate }) {
             : <Button size="sm" variant="ai" icon={<BookOpen size={13} />} onClick={() => buildPlaybook(template.id)}>Build a playbook from this template</Button>}
         </div>
       </Card>
+
+      <UploadTemplateVersion template={template} />
+
+      {template.versionHistory && template.versionHistory.length > 0 && (
+        <Card className="p-4">
+          <SectionLabel className="mb-2">Version history</SectionLabel>
+          <div className="space-y-2">
+            {template.versionHistory.map((v) => (
+              <div key={v.version} className="rounded-lg border border-slate-200 px-3 py-2">
+                <div className="flex flex-wrap items-center gap-1.5 text-[12.5px]">
+                  <Chip className="bg-slate-100 text-slate-600 ring-slate-300/40">v{v.version}</Chip>
+                  <span className="font-semibold text-slate-700">{v.fileName}</span>
+                  <span className="text-[11px] text-slate-400">{userById(v.uploaded_by)?.name ?? v.uploaded_by} · {fmtDateTime(v.uploaded_date)}</span>
+                </div>
+                {v.note && <div className="mt-1 text-[12.5px] leading-relaxed text-slate-600">{v.note}</div>}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
     </div>
   )
 }

@@ -580,6 +580,13 @@ export type ProjectSourceKind = 'precedent' | 'third_party_standard' | 'concept_
 export interface ProjectSource { id: string; kind: ProjectSourceKind; name: string; detail: string; selected: boolean; agreementIds?: string[] }
 export interface TemplateIteration { id: string; role: 'user' | 'agent'; text: string; ts: string; changeNote?: string }
 export interface TemplateSection { id: string; heading: string; summary: string; parentId?: string; cpConcept?: boolean; body?: string }
+export interface TemplateVersionEntry {
+  version: number
+  fileName: string
+  note: string          // what changed, entered by the uploader
+  uploaded_by: string
+  uploaded_date: string
+}
 export interface AgreementTemplate {
   id: string
   name: string
@@ -593,6 +600,7 @@ export interface AgreementTemplate {
   sections: TemplateSection[]
   source_summary: string
   playbook_id?: string | null
+  versionHistory?: TemplateVersionEntry[]   // populated once a new version is uploaded
 }
 export type ProjectStatus = 'building' | 'iterating' | 'template_ready' | 'archived'
 export interface TemplateProject {
