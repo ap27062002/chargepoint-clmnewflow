@@ -3,7 +3,7 @@ import { clsx } from 'clsx'
 import {
   ArrowUp, Sparkles, ArrowUpRight, FileText, LayoutDashboard, BookOpen,
   GitPullRequestArrow, ScrollText, Inbox, Paperclip, X, PanelRightOpen,
-  PenTool, Settings, ShieldCheck, FolderTree, Table, Wand2, Send, FolderKanban, FileStack,
+  PenTool, Settings, ShieldCheck, FolderTree, Table, Wand2, Send, FolderKanban, FileStack, BarChart3,
 } from 'lucide-react'
 import { useStore } from '@/store'
 import { sendToAgent, openArtifact, submitTicketSource } from '@/agent/engine'
@@ -24,6 +24,7 @@ const artifactIcon: Record<ArtifactKind, JSX.Element> = {
   redline_doc: <GitPullRequestArrow size={13} />, send_back: <Send size={13} />, deal_execution: <PenTool size={13} />,
   projects: <FolderKanban size={13} />, template: <FileStack size={13} />,
   playbook_create: <Wand2 size={13} />, playbook_suggestions: <BookOpen size={13} />,
+  reports: <BarChart3 size={13} />,
   none: <FileText size={13} />,
 }
 

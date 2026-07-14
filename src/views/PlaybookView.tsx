@@ -550,13 +550,12 @@ export function PlaybookView() {
               </div>
             </div>
             <div className="flex items-center gap-1.5">
-              {/* Not relevant mid-draft — a brand-new playbook has no suggestions queue yet. */}
-              {mode !== 'create' && (
-                <button onClick={() => openCanvas({ view: 'playbook', playbookId: pb.id, playbookMode: 'suggestions' })} className={clsx('flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold', mode === 'suggestions' ? 'bg-white text-slate-800' : 'bg-slate-800 text-slate-200 hover:bg-slate-700')}>
-                  <Inbox size={13} /> Suggested {pendingCount > 0 && <span className="rounded-full bg-red-500 px-1.5 text-[10.5px] text-white">{pendingCount}</span>}
-                </button>
-              )}
-              {canEdit && <button onClick={() => startDraft('New Playbook', pb.agreement_type, 'Create a playbook from a template + examples')} className={clsx('flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold', mode === 'create' ? 'bg-white text-slate-800' : 'bg-slate-800 text-slate-200 hover:bg-slate-700')}><Plus size={13} /> Create</button>}
+              {/* mode is never 'create' here — that branch returns <PlaybookCreate/> earlier, before
+                  this shared header renders — so both buttons below are unconditional, not toggled. */}
+              <button onClick={() => openCanvas({ view: 'playbook', playbookId: pb.id, playbookMode: 'suggestions' })} className={clsx('flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold', mode === 'suggestions' ? 'bg-white text-slate-800' : 'bg-slate-800 text-slate-200 hover:bg-slate-700')}>
+                <Inbox size={13} /> Suggested {pendingCount > 0 && <span className="rounded-full bg-red-500 px-1.5 text-[10.5px] text-white">{pendingCount}</span>}
+              </button>
+              {canEdit && <button onClick={() => startDraft('New Playbook', pb.agreement_type, 'Create a playbook from a template + examples')} className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-2.5 py-1.5 text-[12px] font-semibold text-slate-200 hover:bg-slate-700"><Plus size={13} /> Create</button>}
               {/* R85 — publishing to a team folder is the owner's workflow (visual theme stays admin-only, R54). */}
               {canEdit && <div className="relative">
                 <button onClick={() => setPublishOpen((v) => !v)} className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-2.5 py-1.5 text-[12px] font-semibold text-slate-200 hover:bg-slate-700"><Share2 size={13} /> Publish</button>
