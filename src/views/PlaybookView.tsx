@@ -528,6 +528,11 @@ export function PlaybookView() {
 
   // Nav lands on the all-playbooks library; a card click opens the detail below.
   if (mode === 'library') return <PlaybookLibrary />
+  // Creating a NEW draft has nothing to do with whichever published playbook happens to be
+  // "active" (canvas.playbookId, defaulting to pb_nda) — the header below this point is that
+  // published playbook's own picker/name/owner/version, unrelated to the draft. Skip it here;
+  // PlaybookCreate has its own header showing the draft's actual name/stage.
+  if (mode === 'create') return <div className="h-full overflow-y-auto p-6"><PlaybookCreate /></div>
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -606,7 +611,6 @@ export function PlaybookView() {
 
       {mode === 'suggestions' ? <SuggestionsPanel playbookId={pb.id} />
         : mode === 'audit' ? <PlaybookAudit playbookId={pb.id} />
-        : mode === 'create' ? <PlaybookCreate />
         : (
           <>
             {/* Refinement banner */}
