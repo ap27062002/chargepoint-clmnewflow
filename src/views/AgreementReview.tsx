@@ -434,7 +434,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
   const canvas = useStore((s) => s.canvas)
   const navigate = useStore((s) => s.navigate)
   const openSendBack = useStore((s) => s.openSendBack)
-  // Initiators (e.g. Marcus) get a read-only view of the document: no Ask Claude panel, no
+  // Initiators (e.g. Marcus) get a read-only view of the document: no Ask Unify panel, no
   // deviation List — they can track and read a deal, not decide or draft on it.
   const isInitiator = useStore((s) => s.users.find((u) => u.id === s.currentUserId)?.role === 'initiator')
   const rawMode = canvas.reviewMode ?? 'directive'
@@ -505,7 +505,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
           </div>
           <div className="flex min-h-0 flex-1">
             {/* SPLIT: document (left) + review directive / ask claude / comments (right) — Eric §2.
-                Initiators get read-only, full-width document — no Ask Claude panel at all. */}
+                Initiators get read-only, full-width document — no Ask Unify panel at all. */}
             <div className={clsx('flex min-w-0 flex-1 flex-col', !isInitiator && 'border-r border-slate-200')}>
               {hasDoc
                 ? <DocumentViewer versionId={activeVerId!} agreementId={agreementId} focusClauseId={focusClause?.trim()} focusRef={canvas.reviewFocusRef} onAskAi={askAiAboutSelection} />
@@ -517,13 +517,13 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
             </div>
             {isInitiator ? null : rightTab === null ? (
               <div className="flex w-12 shrink-0 flex-col items-center gap-2 bg-white py-3">
-                <button onClick={() => setRightTab('ai')} title="Ask Claude" className="flex h-9 w-9 items-center justify-center rounded-lg text-ai-600 hover:bg-ai-50"><Sparkles size={16} /></button>
+                <button onClick={() => setRightTab('ai')} title="Ask Unify" className="flex h-9 w-9 items-center justify-center rounded-lg text-ai-600 hover:bg-ai-50"><Sparkles size={16} /></button>
               </div>
             ) : (
               <div className="flex w-[440px] shrink-0 flex-col bg-white">
                 <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-3 py-2">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 text-[13px] font-bold text-ai-700"><Sparkles size={14} /> Ask Claude</div>
+                    <div className="flex items-center gap-1.5 text-[13px] font-bold text-ai-700"><Sparkles size={14} /> Ask Unify</div>
                     <div className="text-[11px] text-slate-400">Playbook guidance, precedents, and drafting help.</div>
                   </div>
                   <button onClick={() => setRightTab(null)} title="Collapse panel" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><PanelRightClose size={15} /></button>
@@ -586,7 +586,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
             <div className="min-w-0 flex-1"><DocumentPreviewGate agreement={agreement} doc={activeDoc} versionLabel={reviewVersion?.label} onOpen={() => navigate({ wordOpenFor: agreementId })} /></div>
             {!isInitiator && (
               <div className="flex w-[360px] shrink-0 flex-col border-l border-slate-200 bg-white">
-                <div className="flex shrink-0 items-center gap-1.5 border-b border-slate-100 px-3 py-2 text-[13px] font-bold text-ai-700"><Sparkles size={14} /> Ask Claude</div>
+                <div className="flex shrink-0 items-center gap-1.5 border-b border-slate-100 px-3 py-2 text-[13px] font-bold text-ai-700"><Sparkles size={14} /> Ask Unify</div>
                 <div className="min-h-0 flex-1"><AIPanel agreementTitle={agreement.title} agreementId={agreementId} showAnalysis={false} isDraft={agreement.status === 'draft'} onStartDrafting={() => setStartDraftingOpen(true)} /></div>
               </div>
             )}

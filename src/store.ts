@@ -156,7 +156,7 @@ interface CLMState {
   editProvisionText: (playbookId: string, provisionId: string, field: 'standard' | 'fallback' | 'red_line', idx: number, text: string) => void // playbooks §5 manual inline edit
   addDocumentsToPlaybook: (playbookId: string) => void // playbooks §6 — feed more agreements post-creation
   // ---- Counter: read-only lookup of the AI-recommended counter language for a deviation —
-  // shown in a copy/paste textarea (Ask Claude panel), never written into the document directly.
+  // shown in a copy/paste textarea (Ask Unify panel), never written into the document directly.
   counterTextForDeviation: (deviationId: string) => string
   showDocComments: boolean            // Show/Hide Comments toggle — persists across tabs
   setShowDocComments: (v: boolean) => void
@@ -582,7 +582,7 @@ export const useStore = create<CLMState>((set, get) => ({
     get().setToast(multi ? `Generated ${types.length} agreements (${types.join(' + ')}) for ${cp} — reviewing in parallel.` : `Generated ${cp} NDA (V1) and routed to ${get().users.find((u) => u.id === p.attorneyId)?.name.split(' ')[0]}.`)
     return { ...t, agreement_ids: newAgreements.map((a) => a.id) }
   },
-  // ---- Counter: read-only — surfaces the AI-recommended language for copy/paste (Ask Claude
+  // ---- Counter: read-only — surfaces the AI-recommended language for copy/paste (Ask Unify
   // panel) instead of writing it into the document. Same source text `resolveDispositionInDocs`
   // uses for the bulk "apply recommended" path, just never mutates anything here.
   counterTextForDeviation: (deviationId) => {

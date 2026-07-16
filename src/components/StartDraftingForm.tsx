@@ -1,6 +1,6 @@
 // Draft-stage "Start drafting" form — purpose / term / jurisdiction. Writes REAL text into
 // the document (Term & Termination / Governing Law clauses), not just metadata. The exact
-// same info can be supplied conversationally in Ask Claude instead of this form.
+// same info can be supplied conversationally in Ask Unify instead of this form.
 import { useState } from 'react'
 import { X, PenLine } from 'lucide-react'
 import { useStore } from '@/store'
@@ -26,7 +26,7 @@ export function StartDraftingForm({ agreementId, onClose }: { agreementId: strin
           <h2 className="text-[15px] font-bold text-slate-800">Start drafting</h2>
           <button onClick={onClose} className="ml-auto rounded-lg p-1 text-slate-400 hover:bg-slate-100"><X size={16} /></button>
         </div>
-        <p className="mb-3 text-[12px] text-slate-500">Fill this in — or just tell Ask Claude "the purpose is a charging pilot, term 2 years, governed by Delaware" and I'll pick it up from there instead.</p>
+        <p className="mb-3 text-[12px] text-slate-500">Fill this in — or just tell Ask Unify "the purpose is a charging pilot, term 2 years, governed by Delaware" and I'll pick it up from there instead.</p>
 
         <label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Purpose</label>
         <textarea value={purpose} onChange={(e) => setPurpose(e.target.value)} rows={2} placeholder="e.g. Evaluate a charging-network pilot at Rivian's Irvine campus"

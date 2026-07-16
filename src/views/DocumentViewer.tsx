@@ -76,7 +76,7 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
   const [askBtn, setAskBtn] = useState<{ text: string; x: number; y: number } | null>(null)
 
   // Word-style margin comments: the team's comments live next to the document, anchored to
-  // their clauses. AI analysis lives in the Ask Claude panel now, not here.
+  // their clauses. AI analysis lives in the Ask Unify panel now, not here.
   const resolveMention = useStore((s) => s.resolveMention)
   const showComments = useStore((s) => s.showDocComments)
   const setShowComments = useStore((s) => s.setShowDocComments)
@@ -287,7 +287,7 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
           )}
         </div>
 
-        {/* Margin — team comments only; AI analysis lives in the Ask Claude panel. */}
+        {/* Margin — team comments only; AI analysis lives in the Ask Unify panel. */}
         {teamMsgs.length > 0 && (
           <div className="hidden w-[280px] shrink-0 lg:block">
             <div className="mb-2 rounded-lg border border-slate-200 bg-white p-0.5 shadow-card">

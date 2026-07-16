@@ -177,70 +177,91 @@ export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onStartDra
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [msgs.length])
 
+  const [tab, setTab] = useState<'analysis' | 'chat'>(showAnalysis && devs.length > 0 ? 'analysis' : 'chat')
+  const showTabs = showAnalysis // nothing to bifurcate when analysis is hidden — just chat, no tab bar
+  const onChatTab = !showTabs || tab === 'chat'
+
   return (
     <div className="flex h-full flex-col">
-      {/* Header lives one level up (the "Ask Claude" panel wrapper in AgreementReview) — no second header here. */}
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3">
-        {devs.length > 0 && (
-          <div className="space-y-2 border-b border-slate-100 pb-3">
-            <div className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wide text-ai-600"><Sparkles size={11} /> AI analysis ({devs.length})</div>
-            {devs.map((d) => <DeviationAnalysisCard key={d.id} d={d} onViewInDoc={onViewInDoc} />)}
-          </div>
-        )}
-        {msgs.length === 0 ? (
-          <>
-            <div className="text-[12px] text-slate-500">
-              {isDraft ? <>Drafting <span className="font-semibold">{agreementTitle}</span> — start the form below, or just tell me what to change.</> : <>Ask anything about <span className="font-semibold">{agreementTitle}</span>, or pick a capability:</>}
-            </div>
-            <div className="grid grid-cols-1 gap-1.5">
-              {isDraft ? (
-                <button onClick={onStartDrafting} className="flex items-center gap-2 rounded-lg border border-ai-200 bg-ai-50/40 px-2.5 py-2 text-left text-[12.5px] font-medium text-ai-700 transition hover:bg-ai-50">
-                  <PenLine size={13} />Start drafting
-                </button>
-              ) : (
-                <>
-                  {CAPS.map((c) => (
-                    <button key={c.label} onClick={() => ask(c.prompt)} className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-2 text-left text-[12.5px] font-medium text-slate-600 transition hover:border-ai-200 hover:bg-ai-50/50">
-                      <span className="text-ai-500">{c.icon}</span>{c.label}
-                    </button>
-                  ))}
-                  <button onClick={analyzeHighlight} className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-2 text-left text-[12.5px] font-medium text-slate-600 transition hover:border-ai-200 hover:bg-ai-50/50">
-                    <span className="text-ai-500"><Highlighter size={13} /></span>Analyze a highlighted clause
-                  </button>
-                </>
-              )}
-            </div>
-          </>
-        ) : (
-          msgs.map((m, i) => (
-            <div key={i} className={m.role === 'user' ? 'text-right' : ''}>
-              <div className={m.role === 'user' ? 'inline-block rounded-2xl bg-slate-800 px-3 py-2 text-[13px] text-white' : 'rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-card'}>
-                {m.role === 'user' ? m.text : <Markdown text={m.text} />}
-              </div>
-              {m.role === 'ai' && <div className="mt-1"><AiTag /></div>}
-            </div>
-          ))
-        )}
-      </div>
-
-      <div className="border-t border-slate-100 p-2.5">
-        {lastSel && (
-          <button onClick={suggestClauseToPlaybook}
-            className="mb-1.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-ai-200 py-1.5 text-[11.5px] font-semibold text-ai-700 hover:bg-ai-50">
-            <BookOpen size={12} /> Suggest this clause to the playbook
+      {/* Header lives one level up (the "Ask Unify" panel wrapper in AgreementReview) — no second header here. */}
+      {showTabs && (
+        <div className="flex shrink-0 gap-1 border-b border-slate-100 p-1.5">
+          <button onClick={() => setTab('analysis')} className={clsx('flex-1 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold transition', tab === 'analysis' ? 'bg-ai-50 text-ai-700' : 'text-slate-400 hover:bg-slate-50')}>
+            AI Analysis{devs.length > 0 ? ` (${devs.length})` : ''}
           </button>
-        )}
-        <div className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 focus-within:border-ai-400">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && ask(input)}
-            placeholder="Ask about this agreement…"
-            className="flex-1 text-[12.5px] outline-none placeholder:text-slate-400"
-          />
-          <button onClick={() => ask(input)} className="text-ai-600 hover:text-ai-700"><Send size={15} /></button>
+          <button onClick={() => setTab('chat')} className={clsx('flex-1 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold transition', tab === 'chat' ? 'bg-ai-50 text-ai-700' : 'text-slate-400 hover:bg-slate-50')}>
+            Chat
+          </button>
         </div>
-      </div>
+      )}
+
+      {showTabs && tab === 'analysis' && (
+        <div className="flex-1 space-y-2 overflow-y-auto p-3">
+          {devs.length > 0
+            ? devs.map((d) => <DeviationAnalysisCard key={d.id} d={d} onViewInDoc={onViewInDoc} />)
+            : <div className="py-8 text-center text-[12px] text-slate-400">No deviations flagged on this agreement.</div>}
+        </div>
+      )}
+
+      {onChatTab && (
+        <>
+          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3">
+            {msgs.length === 0 ? (
+              <>
+                <div className="text-[12px] text-slate-500">
+                  {isDraft ? <>Drafting <span className="font-semibold">{agreementTitle}</span> — start the form below, or just tell me what to change.</> : <>Ask anything about <span className="font-semibold">{agreementTitle}</span>, or pick a capability:</>}
+                </div>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {isDraft ? (
+                    <button onClick={onStartDrafting} className="flex items-center gap-2 rounded-lg border border-ai-200 bg-ai-50/40 px-2.5 py-2 text-left text-[12.5px] font-medium text-ai-700 transition hover:bg-ai-50">
+                      <PenLine size={13} />Start drafting
+                    </button>
+                  ) : (
+                    <>
+                      {CAPS.map((c) => (
+                        <button key={c.label} onClick={() => ask(c.prompt)} className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-2 text-left text-[12.5px] font-medium text-slate-600 transition hover:border-ai-200 hover:bg-ai-50/50">
+                          <span className="text-ai-500">{c.icon}</span>{c.label}
+                        </button>
+                      ))}
+                      <button onClick={analyzeHighlight} className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-2 text-left text-[12.5px] font-medium text-slate-600 transition hover:border-ai-200 hover:bg-ai-50/50">
+                        <span className="text-ai-500"><Highlighter size={13} /></span>Analyze a highlighted clause
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            ) : (
+              msgs.map((m, i) => (
+                <div key={i} className={m.role === 'user' ? 'text-right' : ''}>
+                  <div className={m.role === 'user' ? 'inline-block rounded-2xl bg-slate-800 px-3 py-2 text-[13px] text-white' : 'rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-card'}>
+                    {m.role === 'user' ? m.text : <Markdown text={m.text} />}
+                  </div>
+                  {m.role === 'ai' && <div className="mt-1"><AiTag /></div>}
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="border-t border-slate-100 p-2.5">
+            {lastSel && (
+              <button onClick={suggestClauseToPlaybook}
+                className="mb-1.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-ai-200 py-1.5 text-[11.5px] font-semibold text-ai-700 hover:bg-ai-50">
+                <BookOpen size={12} /> Suggest this clause to the playbook
+              </button>
+            )}
+            <div className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 focus-within:border-ai-400">
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && ask(input)}
+                placeholder="Ask about this agreement…"
+                className="flex-1 text-[12.5px] outline-none placeholder:text-slate-400"
+              />
+              <button onClick={() => ask(input)} className="text-ai-600 hover:text-ai-700"><Send size={15} /></button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

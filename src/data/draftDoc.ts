@@ -29,7 +29,7 @@ export function placeholderUploadDoc(versionId: string, agreementTitle: string, 
     title: agreementTitle.toUpperCase(),
     subtitle: `ChargePoint working draft (v1) — uploaded as "${fileName}"`,
     clauses: [
-      { id: `dc-${versionId}-0`, ref: '§1', heading: '1. Uploaded Document', runs: [{ text: `This draft was uploaded as "${fileName}". Its content isn't extracted in this demo — open it, then use Edit directly or Ask Claude to draft the body.`, type: 'normal' }], level: 1 },
+      { id: `dc-${versionId}-0`, ref: '§1', heading: '1. Uploaded Document', runs: [{ text: `This draft was uploaded as "${fileName}". Its content isn't extracted in this demo — open it, then use Edit directly or Ask Unify to draft the body.`, type: 'normal' }], level: 1 },
     ],
   }
 }
