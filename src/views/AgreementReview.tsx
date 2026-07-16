@@ -437,13 +437,11 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
   const activeDoc = documents[activeVerId ?? '']
   const hasDoc = !!activeDoc
 
-  // New flow: the tab lands on a preview first; "Open in Word" hands off to the exact same
-  // experience below. Keyed by agreementId so switching documents (pills, deep links) re-shows
-  // the preview, while tab-switching back to the same document's Review tab stays open.
+  // New flow: the Review tab (only — List/Compare/Send-back/Redline are unaffected) shows a
+  // preview of the document first; "Open in Word" launches a native-doc-styled interface with
+  // the exact same capabilities the split view had. Keyed by agreementId so switching documents
+  // re-shows the preview, while tab-switching back to the same document's Review tab stays open.
   const isWordOpen = canvas.wordOpenFor === agreementId
-  if (!isWordOpen) {
-    return <DocumentPreviewGate agreement={agreement} doc={activeDoc} versionLabel={reviewVersion?.label} onOpen={() => navigate({ wordOpenFor: agreementId })} />
-  }
 
   const askAiAboutSelection = (text: string) => { setRightTab('ai'); setAiSeed((prev) => ({ text, nonce: (prev?.nonce ?? 0) + 1 })) }
   const focusDeviation = (deviationId: string) => {
@@ -470,6 +468,56 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
 
   return (
     <div className="flex h-full flex-col">
+      {/* "Open in Word" — a native-doc-styled stand-in (no real Word integration exists). Same
+          document+AI-panel split the Review tab used to render inline, now framed as its own
+          window. Inlined (not a nested component fn) so re-renders don't remount AIPanel/
+          DocumentViewer and drop their in-progress state. */}
+      {isWordOpen && (
+        <div className="fixed inset-0 z-40 flex flex-col bg-white">
+          <div className="flex h-11 shrink-0 items-center gap-2 bg-[#185ABD] px-3 text-white">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[3px] bg-white text-[13px] font-bold text-[#185ABD]">W</div>
+            <span className="truncate text-[13px] font-semibold">{agreement.title} — Word</span>
+            <span className="ml-1 shrink-0 text-[11px] text-white/60">Saved</span>
+            <button onClick={() => navigate({ wordOpenFor: undefined })} title="Close" className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-red-500/80"><XIcon size={15} /></button>
+          </div>
+          <div className="flex shrink-0 items-center gap-4 border-b border-slate-200 bg-slate-50 px-4 py-1.5 text-[12px] font-semibold text-slate-400">
+            <span>File</span><span>Home</span><span>Insert</span>
+            <span className="border-b-2 border-[#185ABD] pb-1 text-[#185ABD]">Review</span>
+            <span className="ml-auto flex items-center gap-1 text-[11px] font-normal text-slate-400"><CheckCheck size={12} /> Track Changes: On</span>
+          </div>
+          <div className="flex min-h-0 flex-1">
+            {/* SPLIT: document (left) + review directive / ask claude / comments (right) — Eric §2.
+                Initiators get read-only, full-width document — no Ask Claude panel at all. */}
+            <div className={clsx('flex min-w-0 flex-1 flex-col', !isInitiator && 'border-r border-slate-200')}>
+              {hasDoc
+                ? <DocumentViewer versionId={activeVerId!} agreementId={agreementId} focusClauseId={focusClause?.trim()} focusRef={canvas.reviewFocusRef} onAskAi={askAiAboutSelection} />
+                : <div className="flex h-full flex-col items-center justify-center px-8 text-center text-sm text-slate-400">
+                    <FileText size={28} className="mb-2 text-slate-300" />
+                    {versions.find((v) => v.id === activeVerId)?.label ?? 'This version'} — no tracked-changes document to display.
+                    {documents['V-2201-2'] && agreementId === 'AGR-2201' && <button onClick={() => setSelVer(reviewVersion?.id)} className="mt-2 text-[12.5px] font-semibold text-brand-600 hover:underline">View the counterparty redline (Draft 2)</button>}
+                  </div>}
+            </div>
+            {isInitiator ? null : rightTab === null ? (
+              <div className="flex w-12 shrink-0 flex-col items-center gap-2 bg-white py-3">
+                <button onClick={() => setRightTab('ai')} title="Ask Claude" className="flex h-9 w-9 items-center justify-center rounded-lg text-ai-600 hover:bg-ai-50"><Sparkles size={16} /></button>
+              </div>
+            ) : (
+              <div className="flex w-[440px] shrink-0 flex-col bg-white">
+                <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 text-[13px] font-bold text-ai-700"><Sparkles size={14} /> Ask Claude</div>
+                    <div className="text-[11px] text-slate-400">Playbook guidance, precedents, and drafting help.</div>
+                  </div>
+                  <button onClick={() => setRightTab(null)} title="Collapse panel" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><PanelRightClose size={15} /></button>
+                </div>
+                <div className="min-h-0 flex-1">
+                  <AIPanel agreementTitle={agreement.title} seed={aiSeed} agreementId={agreementId} isDraft={agreement.status === 'draft'} onStartDrafting={() => setStartDraftingOpen(true)} />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {startDraftingOpen && <StartDraftingForm agreementId={agreementId} onClose={() => setStartDraftingOpen(false)} />}
       {/* On the Send-back screen the purple "Send to counterparty" button below is the actual
           send action — the stage-tracker's own CTA would be a redundant duplicate there. */}
@@ -511,37 +559,10 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
         ) : mode === 'issues' ? (
           <div className="min-w-0 flex-1 overflow-y-auto"><IssuesView agreementId={agreementId} onViewInDoc={(id) => { navigate({ reviewMode: 'directive' }); focusDeviation(id) }} /></div>
         ) : (
-          <>
-            {/* SPLIT: document (left) + review directive / ask claude / comments (right) — Eric §2.
-                Initiators get read-only, full-width document — no Ask Claude panel at all. */}
-            <div className={clsx('flex min-w-0 flex-1 flex-col', !isInitiator && 'border-r border-slate-200')}>
-              {hasDoc
-                ? <DocumentViewer versionId={activeVerId!} agreementId={agreementId} focusClauseId={focusClause?.trim()} focusRef={canvas.reviewFocusRef} onAskAi={askAiAboutSelection} />
-                : <div className="flex h-full flex-col items-center justify-center px-8 text-center text-sm text-slate-400">
-                    <FileText size={28} className="mb-2 text-slate-300" />
-                    {versions.find((v) => v.id === activeVerId)?.label ?? 'This version'} — no tracked-changes document to display.
-                    {documents['V-2201-2'] && agreementId === 'AGR-2201' && <button onClick={() => setSelVer(reviewVersion?.id)} className="mt-2 text-[12.5px] font-semibold text-brand-600 hover:underline">View the counterparty redline (Draft 2)</button>}
-                  </div>}
-            </div>
-            {isInitiator ? null : rightTab === null ? (
-              <div className="flex w-12 shrink-0 flex-col items-center gap-2 bg-white py-3">
-                <button onClick={() => setRightTab('ai')} title="Ask Claude" className="flex h-9 w-9 items-center justify-center rounded-lg text-ai-600 hover:bg-ai-50"><Sparkles size={16} /></button>
-              </div>
-            ) : (
-              <div className="flex w-[440px] shrink-0 flex-col bg-white">
-                <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-3 py-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 text-[13px] font-bold text-ai-700"><Sparkles size={14} /> Ask Claude</div>
-                    <div className="text-[11px] text-slate-400">Playbook guidance, precedents, and drafting help.</div>
-                  </div>
-                  <button onClick={() => setRightTab(null)} title="Collapse panel" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><PanelRightClose size={15} /></button>
-                </div>
-                <div className="min-h-0 flex-1">
-                  <AIPanel agreementTitle={agreement.title} seed={aiSeed} agreementId={agreementId} isDraft={agreement.status === 'draft'} onStartDrafting={() => setStartDraftingOpen(true)} />
-                </div>
-              </div>
-            )}
-          </>
+          // Review tab: a preview of the document's current state, gating the full editor —
+          // "Open in Word" opens the Word-styled interface above with the exact same
+          // capabilities this split used to render inline here.
+          <div className="min-w-0 flex-1"><DocumentPreviewGate agreement={agreement} doc={activeDoc} versionLabel={reviewVersion?.label} onOpen={() => navigate({ wordOpenFor: agreementId })} /></div>
         )}
       </div>
     </div>
