@@ -379,41 +379,43 @@ function PreviewRun({ run }: { run: DocRun }) {
 const hasVisibleText = (c: { runs: DocRun[] }) => !(c.runs.length === 0 || c.runs.every((r) => r.type === 'del' || !r.text.trim()))
 
 // Preview gate (new flow): landing on the Review tab no longer opens the full editor directly
-// — it shows a real preview of the document's current state first, with an "Open in Word" CTA.
-// Clicking through hands off to a native-doc-styled interface with the exact same capabilities
-// (tracked changes, dispositions, comments, playbook guidance) — nothing about that path changes.
+// — it shows a real, fully readable/scrollable preview of the document (PDF-viewer style),
+// with "Open in Word" as a corner CTA. Clicking through hands off to a native-doc-styled
+// interface with the exact same capabilities (tracked changes, dispositions, comments,
+// playbook guidance) — nothing about that path changes.
 function DocumentPreviewGate({ agreement, doc, versionLabel, onOpen }: { agreement: Agreement; doc: DocModel | undefined; versionLabel?: string; onOpen: () => void }) {
   return (
-    <div className="flex h-full flex-col items-center overflow-y-auto bg-slate-100 p-8">
-      <div className="flex w-full max-w-2xl items-center gap-3 pb-3">
+    <div className="flex h-full flex-col bg-slate-100">
+      <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 py-2.5">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><FileText size={16} /></div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[14px] font-bold text-slate-800">{agreement.title}</div>
-          <div className="truncate text-[11.5px] text-slate-400">{doc?.subtitle ?? versionLabel ?? 'No version available yet'}</div>
+          <div className="truncate text-[13px] font-bold text-slate-800">{agreement.title}</div>
+          <div className="truncate text-[11px] text-slate-400">{doc?.subtitle ?? versionLabel ?? 'No version available yet'}</div>
         </div>
         <Chip className={agreementStatusMeta[agreement.status].chip}>{agreementStatusMeta[agreement.status].label}</Chip>
+        <Button variant="primary" icon={<ExternalLink size={14} />} onClick={onOpen} title="Opens with the same tracked changes, dispositions, comments, and playbook guidance — nothing is limited in Word.">Open in Word</Button>
       </div>
 
-      <div className="relative w-full max-w-2xl overflow-hidden rounded-lg" style={{ maxHeight: 430 }}>
+      <div className="flex-1 overflow-y-auto py-8">
         {doc ? (
-          <div className="doc-prose bg-white p-10 font-serif text-[13px] text-slate-800 shadow-panel">
+          <div className="doc-prose mx-auto max-w-2xl rounded-lg bg-white p-10 font-serif text-[13.5px] text-slate-800 shadow-panel">
             <h1>{doc.title}</h1>
             <p className="mb-5 text-center text-[11px] not-italic text-slate-400">{doc.subtitle}</p>
-            {doc.clauses.filter(hasVisibleText).slice(0, 6).map((c) => (
+            {doc.clauses.filter(hasVisibleText).map((c) => (
               <div key={c.id}>
                 {c.heading && <h2>{c.heading}</h2>}
                 <p>{c.runs.map((r, i) => <PreviewRun key={i} run={r} />)}</p>
               </div>
             ))}
+            {doc.footnotes && (
+              <div className="mt-8 border-t border-slate-200 pt-3">
+                {doc.footnotes.map((f, i) => <p key={i} className="!mb-1 text-[11px] not-italic text-slate-500">{f}</p>)}
+              </div>
+            )}
           </div>
         ) : (
-          <div className="flex h-52 items-center justify-center rounded-lg border border-slate-200 bg-white text-[12.5px] text-slate-400">No document to preview yet for this agreement.</div>
+          <div className="mx-auto flex h-52 max-w-2xl items-center justify-center rounded-lg border border-slate-200 bg-white text-[12.5px] text-slate-400">No document to preview yet for this agreement.</div>
         )}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-slate-100 via-slate-100/85 to-transparent" />
-      </div>
-
-      <div className="mt-5 flex w-full max-w-2xl items-center justify-between gap-4">
-        <p className="text-[11.5px] leading-relaxed text-slate-400">Opens with the same tracked changes, dispositions, comments, and playbook guidance as reviewing here — nothing is limited in Word.</p>
-        <Button variant="primary" icon={<ExternalLink size={14} />} onClick={onOpen}>Open in Word</Button>
       </div>
     </div>
   )
