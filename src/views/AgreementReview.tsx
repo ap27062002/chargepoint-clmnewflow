@@ -393,7 +393,9 @@ function DocumentPreviewGate({ agreement, doc, versionLabel, onOpen }: { agreeme
           <div className="truncate text-[11px] text-slate-400">{doc?.subtitle ?? versionLabel ?? 'No version available yet'}</div>
         </div>
         <Chip className={agreementStatusMeta[agreement.status].chip}>{agreementStatusMeta[agreement.status].label}</Chip>
-        <Button variant="primary" icon={<ExternalLink size={14} />} onClick={onOpen} title="Opens with the same tracked changes, dispositions, comments, and playbook guidance — nothing is limited in Word.">Open in Word</Button>
+        <span title="Opens with the same tracked changes, dispositions, comments, and playbook guidance — nothing is limited in Word.">
+          <Button variant="primary" icon={<ExternalLink size={14} />} onClick={onOpen}>Open in Word</Button>
+        </span>
       </div>
 
       <div className="flex-1 overflow-y-auto py-8">
