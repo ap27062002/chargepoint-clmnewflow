@@ -121,7 +121,7 @@ const ANSWERS: { match: (t: string) => boolean; text: string }[] = [
 
 // Ask-anything chat + the AI's clause analysis, which now lives here instead of as margin
 // comments in the document — the document stays a clean read/preview surface.
-export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onStartDrafting, onViewInDoc }: { agreementTitle: string; seed?: { text: string; nonce: number } | null; agreementId?: string; isDraft?: boolean; onStartDrafting?: () => void; onViewInDoc?: (deviationId: string) => void }) {
+export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onStartDrafting, onViewInDoc, showAnalysis = true }: { agreementTitle: string; seed?: { text: string; nonce: number } | null; agreementId?: string; isDraft?: boolean; onStartDrafting?: () => void; onViewInDoc?: (deviationId: string) => void; showAnalysis?: boolean }) {
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [lastSel, setLastSel] = useState('')
@@ -130,7 +130,7 @@ export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onStartDra
   const suggestToPlaybook = useStore((s) => s.suggestToPlaybook)
   const agreement = useStore((s) => s.agreements.find((a) => a.id === agreementId))
   const playbookName = useStore((s) => s.playbooks.find((p) => p.id === agreement?.playbook_id)?.name)
-  const devs = useStore((s) => s.deviations).filter((d) => d.agreement_id === agreementId)
+  const devs = useStore((s) => s.deviations).filter((d) => showAnalysis && d.agreement_id === agreementId)
 
   const ask = (text: string) => {
     if (!text.trim()) return

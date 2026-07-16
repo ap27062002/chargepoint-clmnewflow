@@ -577,10 +577,20 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
         ) : mode === 'issues' ? (
           <div className="min-w-0 flex-1 overflow-y-auto"><IssuesView agreementId={agreementId} onViewInDoc={(id) => { navigate({ reviewMode: 'directive' }); focusDeviation(id) }} /></div>
         ) : (
-          // Review tab: a preview of the document's current state, gating the full editor —
-          // "Open in Word" opens the Word-styled interface above with the exact same
-          // capabilities this split used to render inline here.
-          <div className="min-w-0 flex-1"><DocumentPreviewGate agreement={agreement} doc={activeDoc} versionLabel={reviewVersion?.label} onOpen={() => navigate({ wordOpenFor: agreementId })} /></div>
+          <>
+            {/* Review tab: a preview of the document's current state, gating the full editor —
+                "Open in Word" opens the Word-styled interface above with the exact same
+                capabilities this split used to render inline here. A plain ask-anything chat
+                sits alongside for quick questions or minor-change requests — no AI analysis
+                cards here, that's a full-editor (Word view) thing. */}
+            <div className="min-w-0 flex-1"><DocumentPreviewGate agreement={agreement} doc={activeDoc} versionLabel={reviewVersion?.label} onOpen={() => navigate({ wordOpenFor: agreementId })} /></div>
+            {!isInitiator && (
+              <div className="flex w-[360px] shrink-0 flex-col border-l border-slate-200 bg-white">
+                <div className="flex shrink-0 items-center gap-1.5 border-b border-slate-100 px-3 py-2 text-[13px] font-bold text-ai-700"><Sparkles size={14} /> Ask Claude</div>
+                <div className="min-h-0 flex-1"><AIPanel agreementTitle={agreement.title} agreementId={agreementId} showAnalysis={false} /></div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
