@@ -458,6 +458,7 @@ export interface CanvasState {
   templateId?: string
   startDraftingAgreementId?: string       // opens the Start Drafting form for this agreement
   simpleSendAgreementId?: string          // opens the simplified (no-cleaning) send-to-counterparty screen
+  wordOpenFor?: string                    // agreementId the user has clicked "Open in Word" for — gates the preview screen
 }
 
 // ----- Ticketing §New — sequential chat wizard for creating a negotiation ticket ------------

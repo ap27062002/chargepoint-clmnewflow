@@ -1235,7 +1235,10 @@ export const useStore = create<CLMState>((set, get) => ({
     const versions = get().versions.filter((v) => v.agreement_id === agreementId)
     const cpLast = [...versions].reverse().find((v) => v.source === 'counterparty_response' || v.source === 'counterparty_draft')
     const base = cpLast?.id ?? versions[0]?.id ?? ''
-    set((s) => ({ canvas: { ...s.canvas, view: 'ticket', open: true, ticketId: get().agreements.find((a) => a.id === agreementId)?.ticket_id, agreementId, agreementTab: 'review', reviewMode: 'sendback', sendBack: { agreementId, baseVersionId: base, cumulative: false, staged: false } } }))
+    // Reached via an explicit action (stage-tracker CTA or agent chat "send back…") — treat that
+    // as equivalent to already having opened the document in Word, so it lands directly on the
+    // send-back screen rather than re-showing the preview gate.
+    set((s) => ({ canvas: { ...s.canvas, view: 'ticket', open: true, ticketId: get().agreements.find((a) => a.id === agreementId)?.ticket_id, agreementId, agreementTab: 'review', reviewMode: 'sendback', wordOpenFor: agreementId, sendBack: { agreementId, baseVersionId: base, cumulative: false, staged: false } } }))
   },
   setSendBackBase: (baseVersionId) => set((s) => (s.canvas.sendBack ? { canvas: { ...s.canvas, sendBack: { ...s.canvas.sendBack, baseVersionId, redline: undefined } } } : {})),
   setSendBackCumulative: (cumulative) => set((s) => (s.canvas.sendBack ? { canvas: { ...s.canvas, sendBack: { ...s.canvas.sendBack, cumulative, redline: undefined } } } : {})),

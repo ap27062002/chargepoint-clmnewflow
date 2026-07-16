@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { clsx } from 'clsx'
-import { ListChecks, FileText, MessageSquare, Sparkles, History, AtSign, CheckCircle2, FileQuestion, Wand2, BookOpen, GitCompareArrows, ArrowRight, PanelRightClose, Send, CheckCheck, Layers, X as XIcon, MoreVertical, FileDown } from 'lucide-react'
+import { ListChecks, FileText, MessageSquare, Sparkles, History, AtSign, CheckCircle2, FileQuestion, Wand2, BookOpen, GitCompareArrows, ArrowRight, PanelRightClose, Send, CheckCheck, Layers, X as XIcon, MoreVertical, FileDown, ExternalLink } from 'lucide-react'
 import { sendToAgent } from '@/agent/engine'
 import { can } from '@/lib/access'
-import type { Version } from '@/types'
+import type { Agreement, Version } from '@/types'
 import type { DocModel } from '@/data/documents'
 import { useStore } from '@/store'
 import { IssuesView } from '@/views/IssuesView'
@@ -16,7 +16,7 @@ import { Chip, Avatar, Button, Card } from '@/components/ui'
 import { MentionComposer } from '@/components/MentionComposer'
 import { CommentReplies } from '@/components/CommentReplies'
 import { StartDraftingForm } from '@/components/StartDraftingForm'
-import { sourceLabel, fmtDate, fmtDateTime } from '@/lib/labels'
+import { sourceLabel, fmtDate, fmtDateTime, agreementStatusMeta } from '@/lib/labels'
 import { diffVersions, clauseIdForDeviation, cleanCopyId } from '@/data/documents'
 import { userById } from '@/data/seed'
 
@@ -366,6 +366,48 @@ function SendBackPanel({ agreementId }: { agreementId: string }) {
   )
 }
 
+// Preview gate (new flow): landing on the Agreement Review tab no longer opens the full
+// editor directly — it shows a lightweight document preview first, with an "Open in Word"
+// CTA. Clicking through hands off to the exact same in-app experience as before (tracked
+// changes, dispositions, comments, playbook guidance — nothing about that path changes).
+function DocumentPreviewGate({ agreement, doc, versionLabel, onOpen }: { agreement: Agreement; doc: DocModel | undefined; versionLabel?: string; onOpen: () => void }) {
+  return (
+    <div className="flex h-full items-center justify-center overflow-y-auto bg-slate-50 p-8">
+      <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
+        <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><FileText size={22} /></div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[15px] font-bold text-slate-800">{agreement.title}</div>
+            <div className="truncate text-[12px] text-slate-400">{doc?.subtitle ?? versionLabel ?? 'No version available yet'}</div>
+          </div>
+          <Chip className={agreementStatusMeta[agreement.status].chip}>{agreementStatusMeta[agreement.status].label}</Chip>
+        </div>
+
+        <div className="relative mt-4 max-h-72 overflow-hidden rounded-xl border border-slate-100 bg-slate-50/60 p-5">
+          {doc ? (
+            <div className="space-y-3">
+              {doc.clauses.filter((c) => c.heading).slice(0, 6).map((c) => (
+                <div key={c.id}>
+                  <div className="text-[12.5px] font-bold text-slate-700">{c.heading}</div>
+                  <div className="mt-0.5 line-clamp-2 text-[12px] leading-relaxed text-slate-500">{c.runs.map((r) => r.text).join('')}</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex h-40 items-center justify-center text-[12.5px] text-slate-400">No document to preview yet for this agreement.</div>
+          )}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-slate-50 to-transparent" />
+        </div>
+
+        <div className="mt-5 flex items-center justify-between gap-4">
+          <p className="text-[11.5px] leading-relaxed text-slate-400">Opens with the same tracked changes, dispositions, comments, and playbook guidance as reviewing here — nothing is limited in Word.</p>
+          <Button variant="primary" icon={<ExternalLink size={14} />} onClick={onOpen}>Open in Word</Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Right panel = the AI assistant ONLY (Eric doc-review §1). Comments live inline in the
 // document margin, anchored to their clauses.
 type RightTab = 'ai' | null
@@ -387,6 +429,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
   const [startDraftingOpen, setStartDraftingOpen] = useState(false)
   const [focusClause, setFocusClause] = useState<string | undefined>()
   const [selVer, setSelVer] = useState<string | undefined>(undefined)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   // Eric §2: the attorney works on V3 (their working copy), not the counterparty's V2.
   const reviewVersion = versions.find((v) => v.source === 'cp_redline' && documents[v.id]) ?? versions.find((v) => v.source === 'counterparty_response') ?? versions[versions.length - 1]
@@ -394,8 +437,15 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
   const activeDoc = documents[activeVerId ?? '']
   const hasDoc = !!activeDoc
 
+  // New flow: the tab lands on a preview first; "Open in Word" hands off to the exact same
+  // experience below. Keyed by agreementId so switching documents (pills, deep links) re-shows
+  // the preview, while tab-switching back to the same document's Review tab stays open.
+  const isWordOpen = canvas.wordOpenFor === agreementId
+  if (!isWordOpen) {
+    return <DocumentPreviewGate agreement={agreement} doc={activeDoc} versionLabel={reviewVersion?.label} onOpen={() => navigate({ wordOpenFor: agreementId })} />
+  }
+
   const askAiAboutSelection = (text: string) => { setRightTab('ai'); setAiSeed((prev) => ({ text, nonce: (prev?.nonce ?? 0) + 1 })) }
-  const [historyOpen, setHistoryOpen] = useState(false)
   const focusDeviation = (deviationId: string) => {
     const cid = clauseIdForDeviation(activeDoc, deviationId) ?? clauseIdForDeviation(documents['V-2201-2'], deviationId)
     if (cid) setFocusClause(cid)
