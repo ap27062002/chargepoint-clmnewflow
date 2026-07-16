@@ -587,7 +587,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
             {!isInitiator && (
               <div className="flex w-[360px] shrink-0 flex-col border-l border-slate-200 bg-white">
                 <div className="flex shrink-0 items-center gap-1.5 border-b border-slate-100 px-3 py-2 text-[13px] font-bold text-ai-700"><Sparkles size={14} /> Ask Claude</div>
-                <div className="min-h-0 flex-1"><AIPanel agreementTitle={agreement.title} agreementId={agreementId} showAnalysis={false} /></div>
+                <div className="min-h-0 flex-1"><AIPanel agreementTitle={agreement.title} agreementId={agreementId} showAnalysis={false} isDraft={agreement.status === 'draft'} onStartDrafting={() => setStartDraftingOpen(true)} /></div>
               </div>
             )}
           </>
