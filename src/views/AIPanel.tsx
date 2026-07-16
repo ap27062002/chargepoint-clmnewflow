@@ -1,11 +1,104 @@
 import { useEffect, useRef, useState } from 'react'
-import { Send, BookOpen, Highlighter, PenLine } from 'lucide-react'
+import { clsx } from 'clsx'
+import { Send, BookOpen, Highlighter, PenLine, Sparkles, Check, CornerUpLeft, X, MoreHorizontal, Flag, FileText } from 'lucide-react'
 import { Markdown } from '@/components/Markdown'
-import { AiTag } from '@/components/ui'
+import { AiTag, Chip } from '@/components/ui'
 import { precedentAnswer } from '@/lib/precedent'
+import { riskMeta, dispositionMeta } from '@/lib/labels'
+import { can } from '@/lib/access'
 import { useStore } from '@/store'
+import type { Deviation } from '@/types'
 
 interface Msg { role: 'user' | 'ai'; text: string }
+
+// A good review comment: what they changed → why it matters → what to do. Strip the directive
+// prefix ("RED LINE — reject.", "ACCEPT — …") — the chips and buttons already say that.
+const cleanRec = (t: string): string => {
+  let s = t.replace(/^\s*(red ?line|accept|counter(?: to fallback(?: \d)?)?|missing(?:\/inconsistent)?|enhancement)[^—:.]{0,12}[—:.]\s*/i, '').trim()
+  if (s.length < 20) {
+    const i = t.indexOf('. ')
+    s = i > 0 && i < 60 && /red ?line|accept|counter|reject|missing|enhancement/i.test(t.slice(0, i)) ? t.slice(i + 2).trim() : t
+  }
+  if (s.length < 20) s = t
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+const recommendedFor = (d: Deviation): 'accepted' | 'countered' | 'rejected' =>
+  d.risk_category === 'accept' ? 'accepted' : d.risk_category === 'red_line' ? 'rejected' : 'countered'
+
+// AI analysis — moved here from the document margin so the doc itself stays a clean preview/
+// read surface. Same data, same actions (setDisposition/proposeCounter/flagAnalysis).
+function DeviationAnalysisCard({ d, onViewInDoc }: { d: Deviation; onViewInDoc?: (deviationId: string) => void }) {
+  const setDisposition = useStore((s) => s.setDisposition)
+  const proposeCounter = useStore((s) => s.proposeCounter)
+  const pendingCounter = useStore((s) => s.pendingCounter)
+  const flagAnalysis = useStore((s) => s.flagAnalysis)
+  const canDecide = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'disposition'))
+  const [isOpen, setIsOpen] = useState(false)
+  const [flagMenu, setFlagMenu] = useState(false)
+  const decided = d.disposition_status !== 'open'
+  const rm = riskMeta[d.risk_category]
+  const rec = recommendedFor(d)
+  return (
+    <div className={clsx('rounded-lg border bg-white p-2.5 shadow-card', decided ? 'border-slate-200 opacity-75' : 'border-ai-200')}>
+      <div className="flex items-center gap-1.5">
+        <Sparkles size={11} className="shrink-0 text-ai-600" />
+        <span className="truncate text-[11.5px] font-bold text-slate-700">{d.provision_name}</span>
+        <span className="ml-auto shrink-0 font-mono text-[10px] text-slate-400">{d.section_reference}</span>
+        <span className="relative shrink-0">
+          <button onClick={() => setFlagMenu((v) => !v)} title="Flag: incorrect analysis" className="rounded p-0.5 text-slate-300 hover:bg-slate-100 hover:text-slate-500"><MoreHorizontal size={12} /></button>
+          {flagMenu && (
+            <span className="absolute right-0 top-5 z-20 block w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-pop">
+              <span className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400"><Flag size={9} /> Flag: incorrect analysis</span>
+              {['Should have been Redline', 'Should have been Fallback', 'False positive'].map((r) => (
+                <button key={r} onClick={() => { flagAnalysis(d.id, r); setFlagMenu(false) }} className="block w-full rounded-md px-2 py-1 text-left text-[11px] text-slate-600 hover:bg-slate-50">{r}</button>
+              ))}
+            </span>
+          )}
+        </span>
+      </div>
+      {pendingCounter?.deviationId === d.id && (
+        <div className="mt-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-[10.5px] font-semibold text-amber-700 ring-1 ring-amber-200">↩ Counter proposed — edit the underlined text in the document, then Keep or Discard.</div>
+      )}
+      {decided ? (
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <Chip className={clsx('ring-1 ring-inset', dispositionMeta[d.disposition_status].chip)}>
+            {d.disposition_status === 'accepted' ? '✓' : d.disposition_status === 'countered' ? '↩' : '✕'} {dispositionMeta[d.disposition_status].label}
+          </Chip>
+          <span className="text-[10.5px] text-slate-400">resolved in the document</span>
+        </div>
+      ) : (
+        <>
+          <div className="mt-1 flex items-center gap-1"><Chip className={clsx('ring-1 ring-inset', rm.chip)}><span className={clsx('h-1.5 w-1.5 rounded-full', rm.dot)} /> {rm.label}</Chip></div>
+          <div className="mt-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Their change</div>
+          <div className="text-[11px] leading-snug text-slate-600" style={isOpen ? undefined : { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{d.counterparty_position}</div>
+          <div className="mt-1.5 text-[10px] font-bold uppercase tracking-wide text-ai-600">Why it matters</div>
+          <div className="text-[11px] leading-snug text-slate-600" style={isOpen ? undefined : { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{cleanRec(d.recommended_response)}</div>
+          {isOpen && (
+            <>
+              <div className="mt-1.5 text-[10px] font-bold uppercase tracking-wide text-brand-600">Our standard</div>
+              <div className="text-[11px] leading-snug text-slate-600">{d.template_position}</div>
+              {onViewInDoc && <button onClick={() => onViewInDoc(d.id)} className="mt-1.5 flex items-center gap-1 text-[10.5px] font-semibold text-brand-600 hover:underline"><FileText size={11} /> Clause {d.section_reference} in the document</button>}
+            </>
+          )}
+          <button onClick={() => setIsOpen((v) => !v)} className="mt-1 text-[10.5px] font-semibold text-slate-400 hover:text-slate-600">{isOpen ? 'See less' : 'See more'}</button>
+          {canDecide && (
+            <div className="mt-1.5 flex items-center gap-1">
+              {([['accepted', 'Accept', Check, 'bg-brand-500 border-brand-500 text-white', 'hover:bg-brand-50 hover:text-brand-700'],
+                 ['countered', 'Counter', CornerUpLeft, 'bg-amber-500 border-amber-500 text-white', 'hover:bg-amber-50 hover:text-amber-700'],
+                 ['rejected', 'Reject', X, 'bg-red-500 border-red-500 text-white', 'hover:bg-red-50 hover:text-red-700']] as const).map(([st, label, Icon, filled, tone]) => (
+                <button key={st} onClick={() => (st === 'countered' ? proposeCounter(d.id) : setDisposition(d.id, st))} title={rec === st ? 'AI-recommended action' : undefined}
+                  className={clsx('flex flex-1 items-center justify-center gap-1 rounded-md border py-1 text-[10.5px] font-semibold transition',
+                    rec === st ? filled : clsx('border-slate-200 text-slate-500', tone))}>
+                  <Icon size={11} /> {label}{rec === st ? ' ✦' : ''}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
 
 const CAPS = [
   { icon: <BookOpen size={13} />, label: 'Show playbook guidance for this clause', prompt: 'What does the playbook say about this clause?' },
@@ -22,8 +115,9 @@ const ANSWERS: { match: (t: string) => boolean; text: string }[] = [
   { match: (t) => t.includes('risk'), text: `**Top risks in the Vishay redline:**\n1. **Residuals (§1(f))** — red line; guts trade-secret protection.\n2. **Affiliate liability (§6)** — uncapped exposure for Affiliate breaches.\n3. **CI survival cut to 2yr (§8)** — below our 3yr floor.\n4. **Undefined "Restricted Information" (§14)** — unenforceable/ambiguous.\n\nItems 1 and 2 are the ones I'd hold firm on.` },
 ]
 
-// Pure ask-anything chat — the AI's clause analysis lives as margin comments in the document itself.
-export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onStartDrafting }: { agreementTitle: string; seed?: { text: string; nonce: number } | null; agreementId?: string; isDraft?: boolean; onStartDrafting?: () => void }) {
+// Ask-anything chat + the AI's clause analysis, which now lives here instead of as margin
+// comments in the document — the document stays a clean read/preview surface.
+export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onStartDrafting, onViewInDoc }: { agreementTitle: string; seed?: { text: string; nonce: number } | null; agreementId?: string; isDraft?: boolean; onStartDrafting?: () => void; onViewInDoc?: (deviationId: string) => void }) {
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [lastSel, setLastSel] = useState('')
@@ -32,6 +126,7 @@ export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onStartDra
   const suggestToPlaybook = useStore((s) => s.suggestToPlaybook)
   const agreement = useStore((s) => s.agreements.find((a) => a.id === agreementId))
   const playbookName = useStore((s) => s.playbooks.find((p) => p.id === agreement?.playbook_id)?.name)
+  const devs = useStore((s) => s.deviations).filter((d) => d.agreement_id === agreementId)
 
   const ask = (text: string) => {
     if (!text.trim()) return
@@ -82,6 +177,12 @@ export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onStartDra
     <div className="flex h-full flex-col">
       {/* Header lives one level up (the "Ask Claude" panel wrapper in AgreementReview) — no second header here. */}
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3">
+        {devs.length > 0 && (
+          <div className="space-y-2 border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wide text-ai-600"><Sparkles size={11} /> AI analysis ({devs.length})</div>
+            {devs.map((d) => <DeviationAnalysisCard key={d.id} d={d} onViewInDoc={onViewInDoc} />)}
+          </div>
+        )}
         {msgs.length === 0 ? (
           <>
             <div className="text-[12px] text-slate-500">

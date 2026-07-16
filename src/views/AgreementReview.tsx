@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { clsx } from 'clsx'
-import { ListChecks, FileText, MessageSquare, Sparkles, History, AtSign, CheckCircle2, FileQuestion, Wand2, BookOpen, GitCompareArrows, ArrowRight, PanelRightClose, Send, CheckCheck, Layers, X as XIcon, MoreVertical, FileDown, ExternalLink } from 'lucide-react'
+import { ListChecks, FileText, MessageSquare, Sparkles, History, AtSign, CheckCircle2, FileQuestion, Wand2, BookOpen, GitCompareArrows, ArrowRight, ArrowLeftToLine, PanelRightClose, Send, CheckCheck, Layers, X as XIcon, MoreVertical, FileDown, ExternalLink } from 'lucide-react'
 import { sendToAgent } from '@/agent/engine'
 import { can } from '@/lib/access'
 import type { Agreement, Version } from '@/types'
-import type { DocModel } from '@/data/documents'
+import type { DocModel, DocRun } from '@/data/documents'
 import { useStore } from '@/store'
 import { IssuesView } from '@/views/IssuesView'
 import { DocumentViewer } from '@/views/DocumentViewer'
@@ -366,43 +366,54 @@ function SendBackPanel({ agreementId }: { agreementId: string }) {
   )
 }
 
-// Preview gate (new flow): landing on the Agreement Review tab no longer opens the full
-// editor directly — it shows a lightweight document preview first, with an "Open in Word"
-// CTA. Clicking through hands off to the exact same in-app experience as before (tracked
-// changes, dispositions, comments, playbook guidance — nothing about that path changes).
+// Read-only rendering of a run for the preview page — same tracked-change coloring as the
+// real DocumentViewer, just not interactive (no accept/reject, no editing).
+function PreviewRun({ run }: { run: DocRun }) {
+  const cls = run.type === 'ins'
+    ? (run.party === 'counterparty' ? 'tc-ins-cp' : 'tc-ins')
+    : run.type === 'del'
+      ? (run.party === 'counterparty' ? 'tc-del-cp' : 'tc-del')
+      : ''
+  return <span className={cls}>{run.text}</span>
+}
+const hasVisibleText = (c: { runs: DocRun[] }) => !(c.runs.length === 0 || c.runs.every((r) => r.type === 'del' || !r.text.trim()))
+
+// Preview gate (new flow): landing on the Review tab no longer opens the full editor directly
+// — it shows a real preview of the document's current state first, with an "Open in Word" CTA.
+// Clicking through hands off to a native-doc-styled interface with the exact same capabilities
+// (tracked changes, dispositions, comments, playbook guidance) — nothing about that path changes.
 function DocumentPreviewGate({ agreement, doc, versionLabel, onOpen }: { agreement: Agreement; doc: DocModel | undefined; versionLabel?: string; onOpen: () => void }) {
   return (
-    <div className="flex h-full items-center justify-center overflow-y-auto bg-slate-50 p-8">
-      <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
-        <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><FileText size={22} /></div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[15px] font-bold text-slate-800">{agreement.title}</div>
-            <div className="truncate text-[12px] text-slate-400">{doc?.subtitle ?? versionLabel ?? 'No version available yet'}</div>
+    <div className="flex h-full flex-col items-center overflow-y-auto bg-slate-100 p-8">
+      <div className="flex w-full max-w-2xl items-center gap-3 pb-3">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[14px] font-bold text-slate-800">{agreement.title}</div>
+          <div className="truncate text-[11.5px] text-slate-400">{doc?.subtitle ?? versionLabel ?? 'No version available yet'}</div>
+        </div>
+        <Chip className={agreementStatusMeta[agreement.status].chip}>{agreementStatusMeta[agreement.status].label}</Chip>
+      </div>
+
+      <div className="relative w-full max-w-2xl overflow-hidden rounded-lg" style={{ maxHeight: 430 }}>
+        {doc ? (
+          <div className="doc-prose bg-white p-10 font-serif text-[13px] text-slate-800 shadow-panel">
+            <h1>{doc.title}</h1>
+            <p className="mb-5 text-center text-[11px] not-italic text-slate-400">{doc.subtitle}</p>
+            {doc.clauses.filter(hasVisibleText).slice(0, 6).map((c) => (
+              <div key={c.id}>
+                {c.heading && <h2>{c.heading}</h2>}
+                <p>{c.runs.map((r, i) => <PreviewRun key={i} run={r} />)}</p>
+              </div>
+            ))}
           </div>
-          <Chip className={agreementStatusMeta[agreement.status].chip}>{agreementStatusMeta[agreement.status].label}</Chip>
-        </div>
+        ) : (
+          <div className="flex h-52 items-center justify-center rounded-lg border border-slate-200 bg-white text-[12.5px] text-slate-400">No document to preview yet for this agreement.</div>
+        )}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-slate-100 via-slate-100/85 to-transparent" />
+      </div>
 
-        <div className="relative mt-4 max-h-72 overflow-hidden rounded-xl border border-slate-100 bg-slate-50/60 p-5">
-          {doc ? (
-            <div className="space-y-3">
-              {doc.clauses.filter((c) => c.heading).slice(0, 6).map((c) => (
-                <div key={c.id}>
-                  <div className="text-[12.5px] font-bold text-slate-700">{c.heading}</div>
-                  <div className="mt-0.5 line-clamp-2 text-[12px] leading-relaxed text-slate-500">{c.runs.map((r) => r.text).join('')}</div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="flex h-40 items-center justify-center text-[12.5px] text-slate-400">No document to preview yet for this agreement.</div>
-          )}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-slate-50 to-transparent" />
-        </div>
-
-        <div className="mt-5 flex items-center justify-between gap-4">
-          <p className="text-[11.5px] leading-relaxed text-slate-400">Opens with the same tracked changes, dispositions, comments, and playbook guidance as reviewing here — nothing is limited in Word.</p>
-          <Button variant="primary" icon={<ExternalLink size={14} />} onClick={onOpen}>Open in Word</Button>
-        </div>
+      <div className="mt-5 flex w-full max-w-2xl items-center justify-between gap-4">
+        <p className="text-[11.5px] leading-relaxed text-slate-400">Opens with the same tracked changes, dispositions, comments, and playbook guidance as reviewing here — nothing is limited in Word.</p>
+        <Button variant="primary" icon={<ExternalLink size={14} />} onClick={onOpen}>Open in Word</Button>
       </div>
     </div>
   )
@@ -478,7 +489,10 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
             <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[3px] bg-white text-[13px] font-bold text-[#185ABD]">W</div>
             <span className="truncate text-[13px] font-semibold">{agreement.title} — Word</span>
             <span className="ml-1 shrink-0 text-[11px] text-white/60">Saved</span>
-            <button onClick={() => navigate({ wordOpenFor: undefined })} title="Close" className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-red-500/80"><XIcon size={15} /></button>
+            {/* Returns to the same Review tab, showing the document preview again — not a generic close. */}
+            <button onClick={() => navigate({ wordOpenFor: undefined })} className="ml-auto flex shrink-0 items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1 text-[12px] font-semibold hover:bg-white/20">
+              <ArrowLeftToLine size={13} /> Go back to app
+            </button>
           </div>
           <div className="flex shrink-0 items-center gap-4 border-b border-slate-200 bg-slate-50 px-4 py-1.5 text-[12px] font-semibold text-slate-400">
             <span>File</span><span>Home</span><span>Insert</span>
@@ -511,7 +525,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
                   <button onClick={() => setRightTab(null)} title="Collapse panel" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><PanelRightClose size={15} /></button>
                 </div>
                 <div className="min-h-0 flex-1">
-                  <AIPanel agreementTitle={agreement.title} seed={aiSeed} agreementId={agreementId} isDraft={agreement.status === 'draft'} onStartDrafting={() => setStartDraftingOpen(true)} />
+                  <AIPanel agreementTitle={agreement.title} seed={aiSeed} agreementId={agreementId} isDraft={agreement.status === 'draft'} onStartDrafting={() => setStartDraftingOpen(true)} onViewInDoc={focusDeviation} />
                 </div>
               </div>
             )}
