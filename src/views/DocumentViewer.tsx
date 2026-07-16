@@ -78,24 +78,8 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
   // Word-style margin comments: the team's comments live next to the document, anchored to
   // their clauses. AI analysis lives in the Ask Claude panel now, not here.
   const resolveMention = useStore((s) => s.resolveMention)
-  const keepCounter = useStore((s) => s.keepCounter)
-  const discardCounter = useStore((s) => s.discardCounter)
-  const pendingCounter = useStore((s) => s.pendingCounter)
   const showComments = useStore((s) => s.showDocComments)
   const setShowComments = useStore((s) => s.setShowDocComments)
-  // Counter flow: when a counter is proposed, the cursor lands in the inserted text.
-  useEffect(() => {
-    if (pendingCounter && containerRef.current) {
-      const ins = containerRef.current.querySelector(`#clause-${pendingCounter.clauseId} .tc-ins`) as HTMLElement | null
-      if (ins) {
-        ins.focus()
-        const sel = window.getSelection(); const range = document.createRange()
-        range.selectNodeContents(ins); range.collapse(false); sel?.removeAllRanges(); sel?.addRange(range)
-        ins.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingCounter?.deviationId])
   const isVisibleClause = (c: { runs: DocRun[] }) => !(c.runs.length === 0 || c.runs.every((r) => r.type === 'del' || !r.text.trim()))
   // Match a human comment's provision_reference ('§3(e)' or a heading) to its clause.
   const clauseForRef = (ref?: string): string | undefined => {
@@ -269,10 +253,9 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
             // A rejected counterparty-introduced clause resolves to nothing — drop it from the clean doc.
             if (c.runs.length === 0 || c.runs.every((r) => r.type === 'del' || !r.text.trim())) return null
             const decided = dev && dev.disposition_status !== 'open'
-            const pending = pendingCounter?.clauseId === c.id && pendingCounter.versionId === versionId
             const lvl = c.level ?? 1
             return (
-              <div key={c.id} id={`clause-${c.id}`} className={clsx('clause relative rounded-md px-2 py-1 transition', pending && 'bg-amber-50/40 ring-1 ring-amber-200')} style={{ marginLeft: (lvl - 1) * 18 }}>
+              <div key={c.id} id={`clause-${c.id}`} className="clause relative rounded-md px-2 py-1 transition" style={{ marginLeft: (lvl - 1) * 18 }}>
                 {c.heading && (
                   <div className="flex items-center gap-2">
                     <h2 className={clsx('!mb-1', lvl === 2 && '!text-[13px]', lvl >= 3 && '!text-[12.5px] !font-semibold')}>{c.heading}</h2>
@@ -282,34 +265,16 @@ export function DocumentViewer({ versionId, agreementId, focusClauseId, focusRef
                       : <Chip className={clsx('ring-1 ring-inset', riskMeta[dev.risk_category].chip)}><span className={clsx('h-1.5 w-1.5 rounded-full', riskMeta[dev.risk_category].dot)} />{riskMeta[dev.risk_category].label}</Chip>)}
                   </div>
                 )}
-                {pending ? (
-                  <>
-                    {/* Counter flow: the AI counter language is IN the document as a tracked change,
-                        immediately editable — the caret lands in the underlined insertion. */}
-                    <p>
-                      {c.runs.map((r, i) => r.type === 'ins'
-                        ? <span key={i} className="tc-ins rounded-sm outline-none ring-amber-300 focus:ring-1" contentEditable suppressContentEditableWarning data-counter-ins>{r.text}</span>
-                        : <span key={i} className={r.type === 'del' ? 'tc-del' : ''} contentEditable={false}>{r.text}</span>)}
-                    </p>
-                    <div className="absolute -top-3 right-2 z-10 flex items-center gap-1 rounded-full bg-slate-900 p-0.5 shadow-pop">
-                      <button onClick={() => { const t = containerRef.current?.querySelector(`#clause-${c.id} [data-counter-ins]`)?.textContent ?? undefined; keepCounter(pendingCounter!.deviationId, t ?? undefined) }}
-                        className="flex items-center gap-1 rounded-full bg-brand-500 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-brand-600"><Check size={11} /> Keep counter</button>
-                      <button onClick={() => discardCounter(pendingCounter!.deviationId)}
-                        className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold text-slate-300 hover:bg-white/10"><X size={11} /> Discard</button>
-                    </div>
-                  </>
-                ) : (
-                  // Attorneys can click straight into the document and type — the body is directly
-                  // contenteditable (no separate "edit mode" toggle needed), and blurring persists.
-                  <p
-                    contentEditable={canEdit}
-                    suppressContentEditableWarning
-                    onBlur={canEdit ? (e) => { const t = e.currentTarget.textContent?.trim() ?? ''; if (t && t !== cleanText(c.runs).trim()) editClauseText(versionId, c.id, t) } : undefined}
-                    className={clsx(canEdit && 'cursor-text focus:outline-none')}
-                  >
-                    {c.runs.map((r, i) => <ChangeRun key={i} run={r} versionId={versionId} editable={canEdit} />)}
-                  </p>
-                )}
+                {/* Attorneys can click straight into the document and type — the body is directly
+                    contenteditable (no separate "edit mode" toggle needed), and blurring persists. */}
+                <p
+                  contentEditable={canEdit}
+                  suppressContentEditableWarning
+                  onBlur={canEdit ? (e) => { const t = e.currentTarget.textContent?.trim() ?? ''; if (t && t !== cleanText(c.runs).trim()) editClauseText(versionId, c.id, t) } : undefined}
+                  className={clsx(canEdit && 'cursor-text focus:outline-none')}
+                >
+                  {c.runs.map((r, i) => <ChangeRun key={i} run={r} versionId={versionId} editable={canEdit} />)}
+                </p>
                 {canEdit && c.heading && <ClauseEditor versionId={versionId} clauseId={c.id} />}
               </div>
             )

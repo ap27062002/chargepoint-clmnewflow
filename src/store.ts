@@ -155,11 +155,9 @@ interface CLMState {
   editDraftProvisionText: (draftId: string, provisionId: string, field: 'standard' | 'fallback' | 'red_line', idx: number, text: string) => void // edit content at CREATE time too
   editProvisionText: (playbookId: string, provisionId: string, field: 'standard' | 'fallback' | 'red_line', idx: number, text: string) => void // playbooks §5 manual inline edit
   addDocumentsToPlaybook: (playbookId: string) => void // playbooks §6 — feed more agreements post-creation
-  // ---- Counter flow (Eric E3): tracked-change insertion + keep/discard ----
-  pendingCounter: { deviationId: string; clauseId: string; versionId: string } | null
-  proposeCounter: (deviationId: string) => void
-  keepCounter: (deviationId: string, editedText?: string) => void
-  discardCounter: (deviationId: string) => void
+  // ---- Counter: read-only lookup of the AI-recommended counter language for a deviation —
+  // shown in a copy/paste textarea (Ask Claude panel), never written into the document directly.
+  counterTextForDeviation: (deviationId: string) => string
   showDocComments: boolean            // Show/Hide Comments toggle — persists across tabs
   setShowDocComments: (v: boolean) => void
   analysisFlags: { id: string; deviation_id: string; reason: string; status: 'open' | 'reviewed'; date: string }[]
@@ -345,7 +343,6 @@ export const useStore = create<CLMState>((set, get) => ({
   projects: seedProjects,
   templates: seedTemplates,
   routingStrategy: 'hybrid',
-  pendingCounter: null,
   showDocComments: true,
   analysisFlags: [],
   canvas: { view: 'dashboard', open: false },
@@ -585,49 +582,18 @@ export const useStore = create<CLMState>((set, get) => ({
     get().setToast(multi ? `Generated ${types.length} agreements (${types.join(' + ')}) for ${cp} — reviewing in parallel.` : `Generated ${cp} NDA (V1) and routed to ${get().users.find((u) => u.id === p.attorneyId)?.name.split(' ')[0]}.`)
     return { ...t, agreement_ids: newAgreements.map((a) => a.id) }
   },
-  // ---- Counter flow: insert AI counter language into the doc as a visible tracked change.
-  proposeCounter: (deviationId) => {
+  // ---- Counter: read-only — surfaces the AI-recommended language for copy/paste (Ask Claude
+  // panel) instead of writing it into the document. Same source text `resolveDispositionInDocs`
+  // uses for the bulk "apply recommended" path, just never mutates anything here.
+  counterTextForDeviation: (deviationId) => {
     const s0 = get()
     const d = s0.deviations.find((x) => x.id === deviationId)
-    if (!d) return
+    if (!d) return ''
     const a = s0.agreements.find((x) => x.id === d.agreement_id)
     const candidateIds = [a?.current_version_id, 'V-2201-3'].filter((x): x is string => !!x)
     const docId = candidateIds.find((id) => s0.documents[id]?.clauses.some((c) => c.deviationId === d.id || c.id === d.source_clause_id))
-    if (!docId) return
-    const doc = s0.documents[docId]
-    const clause = doc.clauses.find((c) => c.deviationId === d.id || c.id === d.source_clause_id)!
-    const base = clause.orig ?? clause.runs
-    const counterText = counterTextFor(s0.documents, d, clause.id) || d.template_position
-    const oldText = base.filter((r) => r.type !== 'del').map((r) => r.text).join('').trim()
-    const runs = [
-      { text: oldText + ' ', type: 'del' as const, party: 'cp' as const, cid: `pc-del-${d.id}` },
-      { text: counterText, type: 'ins' as const, party: 'cp' as const, cid: `pc-ins-${d.id}` },
-    ]
-    set((s) => ({
-      documents: { ...s.documents, [docId]: { ...doc, clauses: doc.clauses.map((c) => (c.id === clause.id ? { ...c, orig: base, runs } : c)) } },
-      pendingCounter: { deviationId, clauseId: clause.id, versionId: docId },
-    }))
-  },
-  keepCounter: (deviationId, editedText) => {
-    const pc = get().pendingCounter
-    if (!pc || pc.deviationId !== deviationId) return
-    const doc = get().documents[pc.versionId]
-    if (doc && editedText?.trim()) {
-      set((s) => ({ documents: { ...s.documents, [pc.versionId]: { ...doc, clauses: doc.clauses.map((c) => (c.id === pc.clauseId ? { ...c, runs: c.runs.map((r) => (r.cid === `pc-ins-${deviationId}` ? { ...r, text: editedText.trim() } : r)) } : c)) } } }))
-    }
-    // set the disposition WITHOUT re-resolving the doc (the tracked counter stays visible)
-    set((s) => ({ deviations: s.deviations.map((d) => (d.id === deviationId ? { ...d, disposition_status: 'countered', disposition_by: s.currentUserId, disposition_date: now() } : d)), pendingCounter: null }))
-    const d = get().deviations.find((x) => x.id === deviationId)
-    get().audit_push({ event_type: 'disposition_decided', agreement_id: d?.agreement_id, summary: `${d?.provision_name} — countered (tracked change kept in document).` })
-  },
-  discardCounter: (deviationId) => {
-    const pc = get().pendingCounter
-    if (!pc || pc.deviationId !== deviationId) return
-    const doc = get().documents[pc.versionId]
-    if (doc) {
-      set((s) => ({ documents: { ...s.documents, [pc.versionId]: { ...doc, clauses: doc.clauses.map((c) => (c.id === pc.clauseId && c.orig ? { ...c, runs: c.orig } : c)) } } }))
-    }
-    set({ pendingCounter: null })
+    const clause = docId ? s0.documents[docId].clauses.find((c) => c.deviationId === d.id || c.id === d.source_clause_id) : undefined
+    return (clause ? counterTextFor(s0.documents, d, clause.id) : '') || d.template_position || ''
   },
   setShowDocComments: (v) => set({ showDocComments: v }),
   flagAnalysis: (deviationId, reason) => {

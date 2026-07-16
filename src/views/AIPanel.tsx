@@ -26,15 +26,15 @@ const recommendedFor = (d: Deviation): 'accepted' | 'countered' | 'rejected' =>
   d.risk_category === 'accept' ? 'accepted' : d.risk_category === 'red_line' ? 'rejected' : 'countered'
 
 // AI analysis — moved here from the document margin so the doc itself stays a clean preview/
-// read surface. Same data, same actions (setDisposition/proposeCounter/flagAnalysis).
+// read surface. Same data, same actions (setDisposition/flagAnalysis).
 function DeviationAnalysisCard({ d, onViewInDoc }: { d: Deviation; onViewInDoc?: (deviationId: string) => void }) {
   const setDisposition = useStore((s) => s.setDisposition)
-  const proposeCounter = useStore((s) => s.proposeCounter)
-  const pendingCounter = useStore((s) => s.pendingCounter)
+  const counterTextForDeviation = useStore((s) => s.counterTextForDeviation)
   const flagAnalysis = useStore((s) => s.flagAnalysis)
   const canDecide = useStore((s) => can(s.users.find((u) => u.id === s.currentUserId)!.role, 'disposition'))
   const [isOpen, setIsOpen] = useState(false)
   const [flagMenu, setFlagMenu] = useState(false)
+  const [counterOpen, setCounterOpen] = useState(false)
   const decided = d.disposition_status !== 'open'
   const rm = riskMeta[d.risk_category]
   const rec = recommendedFor(d)
@@ -56,8 +56,12 @@ function DeviationAnalysisCard({ d, onViewInDoc }: { d: Deviation; onViewInDoc?:
           )}
         </span>
       </div>
-      {pendingCounter?.deviationId === d.id && (
-        <div className="mt-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-[10.5px] font-semibold text-amber-700 ring-1 ring-amber-200">↩ Counter proposed — edit the underlined text in the document, then Keep or Discard.</div>
+      {counterOpen && (
+        <div className="mt-1.5 rounded-md border border-amber-200 bg-amber-50/50 p-2">
+          <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">AI-recommended counter — copy into your response</div>
+          <textarea readOnly value={counterTextForDeviation(d.id)} onFocus={(e) => e.currentTarget.select()}
+            className="h-20 w-full resize-none rounded-md border border-amber-200 bg-white p-1.5 text-[11.5px] leading-snug text-slate-700 outline-none" />
+        </div>
       )}
       {decided ? (
         <div className="mt-1.5 flex items-center gap-1.5">
@@ -86,7 +90,7 @@ function DeviationAnalysisCard({ d, onViewInDoc }: { d: Deviation; onViewInDoc?:
               {([['accepted', 'Accept', Check, 'bg-brand-500 border-brand-500 text-white', 'hover:bg-brand-50 hover:text-brand-700'],
                  ['countered', 'Counter', CornerUpLeft, 'bg-amber-500 border-amber-500 text-white', 'hover:bg-amber-50 hover:text-amber-700'],
                  ['rejected', 'Reject', X, 'bg-red-500 border-red-500 text-white', 'hover:bg-red-50 hover:text-red-700']] as const).map(([st, label, Icon, filled, tone]) => (
-                <button key={st} onClick={() => (st === 'countered' ? proposeCounter(d.id) : setDisposition(d.id, st))} title={rec === st ? 'AI-recommended action' : undefined}
+                <button key={st} onClick={() => (st === 'countered' ? setCounterOpen((v) => !v) : setDisposition(d.id, st))} title={rec === st ? 'AI-recommended action' : undefined}
                   className={clsx('flex flex-1 items-center justify-center gap-1 rounded-md border py-1 text-[10.5px] font-semibold transition',
                     rec === st ? filled : clsx('border-slate-200 text-slate-500', tone))}>
                   <Icon size={11} /> {label}{rec === st ? ' ✦' : ''}
