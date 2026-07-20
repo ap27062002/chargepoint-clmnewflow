@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { clsx } from 'clsx'
 import { Send, BookOpen, Highlighter, PenLine, Sparkles, Check, CornerUpLeft, X, MoreHorizontal, Flag, FileText } from 'lucide-react'
 import { Markdown } from '@/components/Markdown'
-import { AiTag, Chip } from '@/components/ui'
+import { AiTag, Chip, Button } from '@/components/ui'
 import { precedentAnswer } from '@/lib/precedent'
 import { riskMeta, dispositionMeta } from '@/lib/labels'
 import { can } from '@/lib/access'
@@ -104,6 +104,41 @@ function DeviationAnalysisCard({ d, onViewInDoc }: { d: Deviation; onViewInDoc?:
   )
 }
 
+// Manual Drafting — the same purpose/term/jurisdiction questions the "Start drafting" modal
+// used to ask, now a plain inline list (no modal). Writes REAL text into the document via the
+// same store action; the exact same info can also just be told to the agent in Chat instead.
+function ManualDraftingList({ agreementId }: { agreementId: string }) {
+  const agreement = useStore((s) => s.agreements.find((a) => a.id === agreementId))
+  const startDrafting = useStore((s) => s.startDrafting)
+  const [purpose, setPurpose] = useState(agreement?.drafting_purpose ?? '')
+  const [term, setTerm] = useState(agreement?.drafting_term ?? '')
+  const [jurisdiction, setJurisdiction] = useState(agreement?.drafting_jurisdiction ?? '')
+  const apply = () => startDrafting(agreementId, { purpose, term, jurisdiction })
+  const QUESTIONS = [
+    { key: 'purpose', label: 'Purpose', hint: "e.g. Evaluate a charging-network pilot at Rivian's Irvine campus", value: purpose, onChange: setPurpose, multiline: true },
+    { key: 'term', label: 'Term', hint: 'e.g. 2 years', value: term, onChange: setTerm, multiline: false },
+    { key: 'jurisdiction', label: 'Jurisdiction', hint: 'e.g. Delaware', value: jurisdiction, onChange: setJurisdiction, multiline: false },
+  ] as const
+  return (
+    <div className="space-y-2.5">
+      <div className="text-[11.5px] text-slate-500">Answer these to draft the document — or just tell the agent in Chat instead.</div>
+      {QUESTIONS.map((q) => (
+        <div key={q.key} className="rounded-lg border border-slate-200 bg-white p-2.5">
+          <div className="text-[10.5px] font-bold uppercase tracking-wide text-slate-400">{q.label}</div>
+          {q.multiline ? (
+            <textarea value={q.value} onChange={(e) => q.onChange(e.target.value)} rows={2} placeholder={q.hint}
+              className="mt-1 w-full resize-none rounded-md border border-slate-200 px-2 py-1.5 text-[12.5px] outline-none focus:border-ai-400" />
+          ) : (
+            <input value={q.value} onChange={(e) => q.onChange(e.target.value)} placeholder={q.hint}
+              className="mt-1 w-full rounded-md border border-slate-200 px-2 py-1.5 text-[12.5px] outline-none focus:border-ai-400" />
+          )}
+        </div>
+      ))}
+      <Button variant="ai" icon={<PenLine size={13} />} onClick={apply} disabled={!purpose.trim() && !term.trim() && !jurisdiction.trim()} className="w-full">Apply to document</Button>
+    </div>
+  )
+}
+
 const CAPS = [
   { icon: <BookOpen size={13} />, label: 'Show playbook guidance for this clause', prompt: 'What does the playbook say about this clause?' },
 ]
@@ -119,9 +154,9 @@ const ANSWERS: { match: (t: string) => boolean; text: string }[] = [
   { match: (t) => t.includes('risk'), text: `**Top risks in the Vishay redline:**\n1. **Residuals (§1(f))** — red line; guts trade-secret protection.\n2. **Affiliate liability (§6)** — uncapped exposure for Affiliate breaches.\n3. **CI survival cut to 2yr (§8)** — below our 3yr floor.\n4. **Undefined "Restricted Information" (§14)** — unenforceable/ambiguous.\n\nItems 1 and 2 are the ones I'd hold firm on.` },
 ]
 
-// Ask-anything chat + the AI's clause analysis, which now lives here instead of as margin
-// comments in the document — the document stays a clean read/preview surface.
-export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onStartDrafting, onViewInDoc, showAnalysis = true }: { agreementTitle: string; seed?: { text: string; nonce: number } | null; agreementId?: string; isDraft?: boolean; onStartDrafting?: () => void; onViewInDoc?: (deviationId: string) => void; showAnalysis?: boolean }) {
+// Ask-anything chat + the AI's clause analysis (or, for drafting-stage agreements, the manual
+// drafting questions) — both live here instead of as margin comments / a modal.
+export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onViewInDoc, showAnalysis = true }: { agreementTitle: string; seed?: { text: string; nonce: number } | null; agreementId?: string; isDraft?: boolean; onViewInDoc?: (deviationId: string) => void; showAnalysis?: boolean }) {
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [lastSel, setLastSel] = useState('')
@@ -177,8 +212,10 @@ export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onStartDra
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [msgs.length])
 
-  const [tab, setTab] = useState<'analysis' | 'chat'>(showAnalysis && devs.length > 0 ? 'analysis' : 'chat')
-  const showTabs = showAnalysis // nothing to bifurcate when analysis is hidden — just chat, no tab bar
+  // Draft-stage agreements get "Manual Drafting" (the questions, as a list) instead of "AI
+  // Analysis" (there's nothing to analyze yet — nothing's been redlined). Same tab mechanics.
+  const [tab, setTab] = useState<'primary' | 'chat'>(isDraft || (showAnalysis && devs.length > 0) ? 'primary' : 'chat')
+  const showTabs = isDraft || showAnalysis // nothing to bifurcate otherwise — just chat, no tab bar
   const onChatTab = !showTabs || tab === 'chat'
 
   return (
@@ -186,8 +223,8 @@ export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onStartDra
       {/* Header lives one level up (the "Ask Unify" panel wrapper in AgreementReview) — no second header here. */}
       {showTabs && (
         <div className="flex shrink-0 gap-1 border-b border-slate-100 p-1.5">
-          <button onClick={() => setTab('analysis')} className={clsx('flex-1 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold transition', tab === 'analysis' ? 'bg-ai-50 text-ai-700' : 'text-slate-400 hover:bg-slate-50')}>
-            AI Analysis{devs.length > 0 ? ` (${devs.length})` : ''}
+          <button onClick={() => setTab('primary')} className={clsx('flex-1 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold transition', tab === 'primary' ? 'bg-ai-50 text-ai-700' : 'text-slate-400 hover:bg-slate-50')}>
+            {isDraft ? 'Manual Drafting' : `AI Analysis${devs.length > 0 ? ` (${devs.length})` : ''}`}
           </button>
           <button onClick={() => setTab('chat')} className={clsx('flex-1 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold transition', tab === 'chat' ? 'bg-ai-50 text-ai-700' : 'text-slate-400 hover:bg-slate-50')}>
             Chat
@@ -195,11 +232,17 @@ export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onStartDra
         </div>
       )}
 
-      {showTabs && tab === 'analysis' && (
-        <div className="flex-1 space-y-2 overflow-y-auto p-3">
-          {devs.length > 0
-            ? devs.map((d) => <DeviationAnalysisCard key={d.id} d={d} onViewInDoc={onViewInDoc} />)
-            : <div className="py-8 text-center text-[12px] text-slate-400">No deviations flagged on this agreement.</div>}
+      {showTabs && tab === 'primary' && (
+        <div className="flex-1 overflow-y-auto p-3">
+          {isDraft && agreementId ? (
+            <ManualDraftingList agreementId={agreementId} />
+          ) : (
+            <div className="space-y-2">
+              {devs.length > 0
+                ? devs.map((d) => <DeviationAnalysisCard key={d.id} d={d} onViewInDoc={onViewInDoc} />)
+                : <div className="py-8 text-center text-[12px] text-slate-400">No deviations flagged on this agreement.</div>}
+            </div>
+          )}
         </div>
       )}
 
@@ -209,14 +252,10 @@ export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onStartDra
             {msgs.length === 0 ? (
               <>
                 <div className="text-[12px] text-slate-500">
-                  {isDraft ? <>Drafting <span className="font-semibold">{agreementTitle}</span> — start the form below, or just tell me what to change.</> : <>Ask anything about <span className="font-semibold">{agreementTitle}</span>, or pick a capability:</>}
+                  {isDraft ? <>Drafting <span className="font-semibold">{agreementTitle}</span> — tell me what to change (purpose, term, jurisdiction, add a clause…), or fill in Manual Drafting.</> : <>Ask anything about <span className="font-semibold">{agreementTitle}</span>, or pick a capability:</>}
                 </div>
                 <div className="grid grid-cols-1 gap-1.5">
-                  {isDraft ? (
-                    <button onClick={onStartDrafting} className="flex items-center gap-2 rounded-lg border border-ai-200 bg-ai-50/40 px-2.5 py-2 text-left text-[12.5px] font-medium text-ai-700 transition hover:bg-ai-50">
-                      <PenLine size={13} />Start drafting
-                    </button>
-                  ) : (
+                  {isDraft ? null : (
                     <>
                       {CAPS.map((c) => (
                         <button key={c.label} onClick={() => ask(c.prompt)} className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-2 text-left text-[12.5px] font-medium text-slate-600 transition hover:border-ai-200 hover:bg-ai-50/50">

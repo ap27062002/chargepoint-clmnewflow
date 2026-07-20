@@ -15,7 +15,6 @@ import { StageTracker } from '@/views/StageTracker'
 import { Chip, Avatar, Button, Card } from '@/components/ui'
 import { MentionComposer } from '@/components/MentionComposer'
 import { CommentReplies } from '@/components/CommentReplies'
-import { StartDraftingForm } from '@/components/StartDraftingForm'
 import { sourceLabel, fmtDate, fmtDateTime, agreementStatusMeta } from '@/lib/labels'
 import { diffVersions, clauseIdForDeviation, cleanCopyId } from '@/data/documents'
 import { userById } from '@/data/seed'
@@ -441,7 +440,6 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
   const mode = rawMode === 'document' ? 'directive' : (isInitiator && (rawMode === 'issues' || rawMode === 'compare') ? 'directive' : rawMode) // 'document' aliases to the split
   const [rightTab, setRightTab] = useState<RightTab>(isInitiator ? null : 'ai')
   const [aiSeed, setAiSeed] = useState<{ text: string; nonce: number } | null>(null)
-  const [startDraftingOpen, setStartDraftingOpen] = useState(false)
   const [focusClause, setFocusClause] = useState<string | undefined>()
   const [selVer, setSelVer] = useState<string | undefined>(undefined)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -529,14 +527,13 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
                   <button onClick={() => setRightTab(null)} title="Collapse panel" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><PanelRightClose size={15} /></button>
                 </div>
                 <div className="min-h-0 flex-1">
-                  <AIPanel agreementTitle={agreement.title} seed={aiSeed} agreementId={agreementId} isDraft={agreement.status === 'draft'} onStartDrafting={() => setStartDraftingOpen(true)} onViewInDoc={focusDeviation} />
+                  <AIPanel agreementTitle={agreement.title} seed={aiSeed} agreementId={agreementId} isDraft={agreement.status === 'draft'} onViewInDoc={focusDeviation} />
                 </div>
               </div>
             )}
           </div>
         </div>
       )}
-      {startDraftingOpen && <StartDraftingForm agreementId={agreementId} onClose={() => setStartDraftingOpen(false)} />}
       {/* On the Send-back screen the purple "Send to counterparty" button below is the actual
           send action — the stage-tracker's own CTA would be a redundant duplicate there. */}
       <StageTracker agreementId={agreementId} hideSendBackCta={mode === 'sendback'} />
@@ -587,7 +584,7 @@ export function AgreementReview({ agreementId }: { agreementId: string }) {
             {!isInitiator && (
               <div className="flex w-[360px] shrink-0 flex-col border-l border-slate-200 bg-white">
                 <div className="flex shrink-0 items-center gap-1.5 border-b border-slate-100 px-3 py-2 text-[13px] font-bold text-ai-700"><Sparkles size={14} /> Ask Unify</div>
-                <div className="min-h-0 flex-1"><AIPanel agreementTitle={agreement.title} agreementId={agreementId} showAnalysis={false} isDraft={agreement.status === 'draft'} onStartDrafting={() => setStartDraftingOpen(true)} /></div>
+                <div className="min-h-0 flex-1"><AIPanel agreementTitle={agreement.title} agreementId={agreementId} showAnalysis={false} isDraft={agreement.status === 'draft'} /></div>
               </div>
             )}
           </>
