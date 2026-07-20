@@ -140,7 +140,7 @@ function ManualDraftingList({ agreementId }: { agreementId: string }) {
 }
 
 const CAPS = [
-  { icon: <BookOpen size={13} />, label: 'Show playbook guidance for this clause', prompt: 'What does the playbook say about this clause?' },
+  { icon: <BookOpen size={13} />, label: 'What does the playbook say about this highlighted clause?', prompt: 'What does the playbook say about this highlighted clause?' },
 ]
 
 // Precedent questions route to the REAL executed-contract corpus (R44) — no fabricated deals.
@@ -185,7 +185,8 @@ export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onViewInDo
   // via the global agent chat) so the confirmation lands right here, in the panel you clicked
   // from, instead of silently posting to a different, invisible conversation.
   const suggestClauseToPlaybook = () => {
-    if (!lastSel || !agreement) return
+    if (!agreement) return
+    if (!lastSel) { setMsgs((m) => [...m, { role: 'ai', text: 'Highlight a clause in the document first, then click this — I\'ll send it to the playbook owner for approval.' }]); return }
     const snippet = lastSel.length > 200 ? lastSel.slice(0, 200) + '…' : lastSel
     suggestToPlaybook({
       playbook_id: agreement.playbook_id ?? 'pb_nda', provision_name: 'Suggested clause', kind: 'fallback',
@@ -264,6 +265,9 @@ export function AIPanel({ agreementTitle, seed, agreementId, isDraft, onViewInDo
                       ))}
                       <button onClick={analyzeHighlight} className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-2 text-left text-[12.5px] font-medium text-slate-600 transition hover:border-ai-200 hover:bg-ai-50/50">
                         <span className="text-ai-500"><Highlighter size={13} /></span>Analyze a highlighted clause
+                      </button>
+                      <button onClick={suggestClauseToPlaybook} className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-2 text-left text-[12.5px] font-medium text-slate-600 transition hover:border-ai-200 hover:bg-ai-50/50">
+                        <span className="text-ai-500"><BookOpen size={13} /></span>Suggest the highlighted clause to the playbook
                       </button>
                     </>
                   )}
